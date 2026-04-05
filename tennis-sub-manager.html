@@ -996,29 +996,33 @@ function clearVolForm() {
 async function lookupMyVolunteer() {
   const email = document.getElementById('vol-lookup-email').value.trim().toLowerCase();
   if (!email) return;
-  const vols = await getVolunteers();
-  const mine = vols.filter(v => v.email.toLowerCase() === email);
   const el = document.getElementById('my-vol-list');
-  if (!mine.length) {
-    el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found for that email.</div>';
-    return;
-  }
-  el.innerHTML = mine.map(v => `
-    <div class="vol-card">
-      <div class="vol-header">
-        <div>
-          <div style="font-weight:500;">${v.name}</div>
-          <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+  try {
+    const vols = await getVolunteers();
+    const mine = vols.filter(v => v.email.toLowerCase() === email);
+    if (!mine.length) {
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found for that email.</div>';
+      return;
+    }
+    el.innerHTML = mine.map(v => `
+      <div class="vol-card">
+        <div class="vol-header">
+          <div>
+            <div style="font-weight:500;">${v.name}</div>
+            <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+          </div>
+          <span class="badge badge-${v.status || 'pending'}">${v.status || 'pending'}</span>
         </div>
-        <span class="badge badge-${v.status || 'pending'}">${v.status || 'pending'}</span>
+        <div class="times-list">
+          ${v.times.length === 4
+            ? '<span class="time-tag all">All 4 times ✓</span>'
+            : v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
+        </div>
       </div>
-      <div class="times-list">
-        ${v.times.length === 4
-          ? '<span class="time-tag all">All 4 times ✓</span>'
-          : v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
-      </div>
-    </div>
-  `).join('');
+    `).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-error">Failed to load submissions: ${e.message}</div>`;
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -1032,7 +1036,14 @@ async function loadBoard() {
   document.getElementById('board-list').innerHTML = '';
   document.getElementById('board-empty').classList.add('hidden');
 
-  allRequests = await getRequests();
+  try {
+    allRequests = await getRequests();
+  } catch(e) {
+    document.getElementById('board-loading').classList.add('hidden');
+    document.getElementById('board-list').innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+    return;
+  }
+
   document.getElementById('board-loading').classList.add('hidden');
   updateStats();
   renderBoard(currentFilter);
@@ -1124,9 +1135,16 @@ async function loadDispatch() {
   document.getElementById('dispatch-loading').classList.remove('hidden');
   document.getElementById('dispatch-list').innerHTML = '';
 
-  const requests  = await getRequests();
-  const open      = requests.filter(r => r.status === 'open');
+  let requests;
+  try {
+    requests = await getRequests();
+  } catch(e) {
+    document.getElementById('dispatch-loading').classList.add('hidden');
+    document.getElementById('dispatch-list').innerHTML = `<div class="alert alert-error">Failed to load requests: ${e.message}</div>`;
+    return;
+  }
 
+  const open = requests.filter(r => r.status === 'open');
   document.getElementById('dispatch-loading').classList.add('hidden');
 
   if (!open.length) {
