@@ -576,10 +576,10 @@
 <header>
   <div class="logo">Sub<span>Court</span></div>
   <nav>
-    <button class="active" onclick="showView('board')">Board</button>
-    <button onclick="showView('request')">Request Sub</button>
-    <button onclick="showView('volunteer')">Volunteer</button>
-    <button onclick="showView('dispatch')">Dispatch</button>
+    <button class="active" onclick="showView('board', this)">Board</button>
+    <button onclick="showView('request', this)">Request Sub</button>
+    <button onclick="showView('volunteer', this)">Volunteer</button>
+    <button onclick="showView('dispatch', this)">Dispatch</button>
   </nav>
 </header>
 
@@ -756,11 +756,11 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw3T8hgOIi5tNi7aROQY
 // ══════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════
-function showView(name) {
+function showView(name, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
-  event.target.classList.add('active');
+  if (btn) btn.classList.add('active');
   if (name === 'board') loadBoard();
   if (name === 'dispatch') loadDispatch();
   if (name === 'volunteer') buildCalendar();
