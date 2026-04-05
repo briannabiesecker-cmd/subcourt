@@ -649,12 +649,6 @@
             <option value="12:30">12:30 PM</option>
           </select>
         </div>
-        <div class="field span2">
-          <label>Notes (optional)</label>
-          <input type="text" id="req-notes" placeholder="Anything useful for the coordinator…" />
-        </div>
-      </div>
-
       <div class="mt12 flex gap8">
         <button class="btn btn-primary" onclick="submitRequest()">Submit request</button>
         <button class="btn btn-secondary" onclick="clearRequestForm()">Clear</button>
@@ -852,7 +846,6 @@ async function submitRequest() {
   const email     = document.getElementById('req-email').value.trim();
   const matchDate = document.getElementById('req-date').value;
   const matchTime = document.getElementById('req-time').value;
-  const notes     = document.getElementById('req-notes').value.trim();
 
   if (!name || !email || !matchDate) {
     showAlert('req-alert', 'error', 'Please fill in name, email, and match date.');
@@ -866,7 +859,7 @@ async function submitRequest() {
   }
 
   try {
-    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, notes });
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     clearRequestForm();
     clearCache();
@@ -876,7 +869,7 @@ async function submitRequest() {
 }
 
 function clearRequestForm() {
-  ['req-name','req-email','req-date','req-notes'].forEach(id => document.getElementById(id).value = '');
+  ['req-name','req-email','req-date'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('req-time').value = '';
 }
 
@@ -1124,7 +1117,6 @@ function requestCardHTML(r, showMatch) {
             ${timeDisplay}
             ${r.assignedSub ? `<div class="match-detail-item"><div class="detail-label">Sub assigned</div><div class="detail-value" style="color:var(--success);">${r.assignedSub}</div></div>` : ''}
           </div>
-          ${r.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--ink-light);">${r.notes}</div>` : ''}
         </div>
       </div>
     </div>
@@ -1160,8 +1152,6 @@ async function loadDispatch() {
             </div>
             ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
           </div>
-          ${r.notes ? `<div style="font-size:12px;color:var(--ink-light);margin-bottom:8px;">${r.notes}</div>` : ''}
-        </div>
         <div class="request-actions">
           <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
         </div>
