@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sub Manager — Tennis League</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --court: #2D5016;
+    --court-light: #3a6b1e;
+    --clay: #C4713A;
+    --clay-light: #e8956a;
+    --chalk: #F5F2EB;
+    --chalk-dark: #E8E3D8;
+    --ink: #1A1A18;
+    --ink-mid: #4A4A46;
+    --ink-light: #8A8A84;
+    --line: #D4CFC4;
+    --success: #2D6A2D;
+    --success-bg: #EAF3DE;
+    --danger: #A32D2D;
+    --danger-bg: #FCEBEB;
+    --warn-bg: #FAEEDA;
+    --warn: #854F0B;
+    --radius: 4px;
+    --radius-lg: 8px;
+  }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--chalk);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--court);
+    color: white;
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 3px solid var(--clay);
+  }
+
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    color: white;
+  }
+
+  .logo span { color: var(--clay-light); }
+
+  nav { display: flex; gap: 4px; }
+
+  nav button {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.75);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    transition: all 0.15s;
+  }
+
+  nav button:hover { background: rgba(255,255,255,0.1); color: white; }
+  nav button.active { background: var(--clay); border-color: var(--clay); color: white; }
+
+
+
+  /* ── Main Layout ── */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ── Section heading ── */
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 300;
+    color: var(--ink);
+  }
+
+  .section-sub {
+    font-size: 11px;
+    color: var(--ink-light);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 12px;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .card-title {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .card-meta {
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-top: 2px;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+
+  .badge-open { background: var(--warn-bg); color: var(--warn); }
+  .badge-filled { background: var(--success-bg); color: var(--success); }
+  .badge-cancelled { background: #F1EFE8; color: #5F5E5A; }
+  .badge-tbd { background: #E6F1FB; color: #185FA5; }
+  .badge-pending { background: var(--warn-bg); color: var(--warn); }
+  .badge-matched { background: var(--success-bg); color: var(--success); }
+
+  /* ── Forms ── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .form-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .form-grid.full { grid-template-columns: 1fr; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field.span2 { grid-column: span 2; }
+
+  label {
+    font-size: 11px;
+    color: var(--ink-mid);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="date"],
+  select,
+  textarea {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--court);
+  }
+
+  .time-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .time-chip {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: white;
+    color: var(--ink-mid);
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .time-chip:hover { border-color: var(--court); color: var(--court); }
+  .time-chip.selected { background: var(--court); border-color: var(--court); color: white; }
+  .time-chip.disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Buttons ── */
+  .btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 9px 20px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--court);
+    color: white;
+    border-color: var(--court);
+  }
+
+  .btn-primary:hover { background: var(--court-light); }
+
+  .btn-secondary {
+    background: white;
+    color: var(--ink);
+    border-color: var(--line);
+  }
+
+  .btn-secondary:hover { border-color: var(--ink-mid); }
+
+  .btn-clay {
+    background: var(--clay);
+    color: white;
+    border-color: var(--clay);
+  }
+
+  .btn-clay:hover { background: var(--clay-light); }
+
+  .btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  .btn-danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-color: #F7C1C1;
+  }
+
+  /* ── Alert ── */
+  .alert {
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .alert-success { background: var(--success-bg); color: var(--success); border: 1px solid #C0DD97; }
+  .alert-error { background: var(--danger-bg); color: var(--danger); border: 1px solid #F7C1C1; }
+  .alert-info { background: #E6F1FB; color: #185FA5; border: 1px solid #B5D4F4; }
+
+  /* ── Match Board ── */
+  .board-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    color: var(--ink-mid);
+    transition: all 0.15s;
+  }
+
+  .filter-btn.active {
+    background: var(--ink);
+    color: white;
+    border-color: var(--ink);
+  }
+
+  /* ── Sub Request Card ── */
+  .request-card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 10px;
+    border-left: 3px solid var(--clay);
+  }
+
+  .request-card.filled { border-left-color: var(--court); }
+  .request-card.cancelled { border-left-color: var(--ink-light); opacity: 0.7; }
+
+  .request-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .request-info { flex: 1; }
+  .request-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .match-detail {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .match-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .detail-label { font-size: 10px; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.4px; }
+  .detail-value { font-size: 13px; color: var(--ink); font-weight: 500; }
+
+  /* ── Volunteer card ── */
+  .vol-card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    margin-bottom: 8px;
+    border-left: 3px solid #9FE1CB;
+  }
+
+  .vol-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .times-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .time-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--chalk-dark);
+    border-radius: 3px;
+    color: var(--ink-mid);
+  }
+
+  .time-tag.all { background: #E1F5EE; color: #0F6E56; }
+
+  /* ── Matching panel ── */
+  .match-panel {
+    background: #F5F2EB;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-top: 10px;
+  }
+
+  .match-panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ink-light);
+    margin-bottom: 10px;
+  }
+
+  .candidate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+  }
+
+  .candidate-info { display: flex; flex-direction: column; gap: 2px; }
+  .candidate-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .candidate-meta { font-size: 11px; color: var(--ink-light); }
+  .candidate-rank { font-family: 'Fraunces', serif; font-size: 18px; color: var(--clay); margin-right: 10px; }
+
+  .rank-row { display: flex; align-items: center; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--ink-light);
+  }
+
+  .empty-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+
+  .stat-card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--court);
+    display: block;
+  }
+
+  .stat-label { font-size: 11px; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.4px; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+
+  /* ── Tabs inside view ── */
+  .inner-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+  }
+
+  .inner-tab {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    padding: 8px 14px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--ink-light);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+
+  .inner-tab.active { color: var(--court); border-bottom-color: var(--court); }
+
+  /* ── Calendar grid ── */
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+
+  .cal-day {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .cal-day-header {
+    background: var(--chalk-dark);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-mid);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .cal-day-times { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+
+  .cal-time-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .cal-time-row:hover { background: var(--chalk); }
+  .cal-time-row.selected { background: var(--success-bg); border-color: #C0DD97; }
+  .cal-time-row input[type="checkbox"] { accent-color: var(--court); width: 14px; height: 14px; }
+  .cal-time-label { font-size: 12px; color: var(--ink-mid); }
+  .cal-time-row.selected .cal-time-label { color: var(--success); }
+
+  /* ── Loading ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-light);
+    font-size: 12px;
+    padding: 1rem 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--line);
+    border-top-color: var(--court);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    header { padding: 0 1rem; }
+    main { padding: 1rem; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid .span2 { grid-column: span 1; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    nav button { padding: 5px 10px; font-size: 11px; }
+    .time-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── Utility ── */
+  .flex { display: flex; }
+  .gap8 { gap: 8px; }
+  .mt12 { margin-top: 12px; }
+  .mt8 { margin-top: 8px; }
+  .text-right { text-align: right; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Sub<span>Court</span></div>
+  <nav>
+    <button class="active" onclick="showView('board')">Board</button>
+    <button onclick="showView('request')">Request Sub</button>
+    <button onclick="showView('volunteer')">Volunteer</button>
+    <button onclick="showView('dispatch')">Dispatch</button>
+  </nav>
+</header>
+
+
+
+<main>
+
+  <!-- ── BOARD VIEW ── -->
+  <div id="view-board" class="view active">
+    <div class="section-header">
+      <div class="section-title">Open Requests</div>
+      <span class="section-sub">Live board</span>
+    </div>
+
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><span class="stat-num" id="stat-open">—</span><span class="stat-label">Open</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-filled">—</span><span class="stat-label">Filled</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-vols">—</span><span class="stat-label">Volunteers</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-urgent">—</span><span class="stat-label">Urgent (&lt;48h)</span></div>
+    </div>
+
+    <div class="board-filters">
+      <button class="filter-btn active" onclick="filterBoard('all', this)">All</button>
+      <button class="filter-btn" onclick="filterBoard('open', this)">Open</button>
+      <button class="filter-btn" onclick="filterBoard('filled', this)">Filled</button>
+      <button class="filter-btn" onclick="filterBoard('urgent', this)">Urgent</button>
+    </div>
+
+    <div id="board-loading" class="loading"><div class="spinner"></div>Loading requests…</div>
+    <div id="board-list"></div>
+    <div id="board-empty" class="empty hidden">
+      <span class="empty-icon">🎾</span>
+      <div>No requests match this filter.</div>
+    </div>
+  </div>
+
+  <!-- ── REQUEST VIEW ── -->
+  <div id="view-request" class="view">
+    <div class="section-header">
+      <div class="section-title">Request a Substitute</div>
+      <span class="section-sub">Submit when you can't play</span>
+    </div>
+
+    <div class="card">
+      <div id="req-alert" class="hidden"></div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="req-name" placeholder="Full name" />
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="req-email" placeholder="email@example.com" />
+        </div>
+        <div class="field">
+          <label>Match date</label>
+          <input type="date" id="req-date" />
+        </div>
+        <div class="field">
+          <label>Match time</label>
+          <select id="req-time">
+            <option value="">Unknown / TBD</option>
+            <option value="08:00">8:00 AM</option>
+            <option value="09:30">9:30 AM</option>
+            <option value="11:00">11:00 AM</option>
+            <option value="12:30">12:30 PM</option>
+          </select>
+        </div>
+        <div class="field span2">
+          <label>Notes (optional)</label>
+          <input type="text" id="req-notes" placeholder="Anything useful for the coordinator…" />
+        </div>
+      </div>
+
+      <div class="mt12 flex gap8">
+        <button class="btn btn-primary" onclick="submitRequest()">Submit request</button>
+        <button class="btn btn-secondary" onclick="clearRequestForm()">Clear</button>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="section-header">
+      <div class="section-title" style="font-size:17px;">Your Requests</div>
+    </div>
+
+    <div class="form-grid" style="max-width:360px; margin-bottom:1rem;">
+      <div class="field span2">
+        <label>Look up by email</label>
+        <div class="flex gap8">
+          <input type="email" id="lookup-email" placeholder="email@example.com" style="flex:1;" />
+          <button class="btn btn-secondary btn-sm" onclick="lookupMyRequests()">Look up</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="my-requests-list"></div>
+  </div>
+
+  <!-- ── VOLUNTEER VIEW ── -->
+  <div id="view-volunteer" class="view">
+    <div class="section-header">
+      <div class="section-title">Volunteer to Sub</div>
+      <span class="section-sub">Submit your availability</span>
+    </div>
+
+    <div class="alert alert-info">Select every date and time slot you are available to play. For pre-scheduled requests (more than 48 hours away with no assigned time), you must be available at all 4 time slots.</div>
+
+    <div class="card mt8">
+      <div id="vol-alert" class="hidden"></div>
+
+      <div class="form-grid" style="margin-bottom:1rem;">
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="vol-name" placeholder="Full name" />
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="vol-email" placeholder="email@example.com" />
+        </div>
+      </div>
+
+      <label style="display:block; margin-bottom:8px;">Select available dates &amp; times (MWF only)</label>
+      <div id="vol-calendar" class="cal-grid"></div>
+
+      <div id="vol-summary" class="alert alert-info hidden"></div>
+
+      <div class="flex gap8 mt12">
+        <button class="btn btn-clay" onclick="submitVolunteer()">Submit availability</button>
+        <button class="btn btn-secondary" onclick="clearVolForm()">Clear</button>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="section-header">
+      <div class="section-title" style="font-size:17px;">Your Submissions</div>
+    </div>
+
+    <div class="form-grid" style="max-width:360px; margin-bottom:1rem;">
+      <div class="field span2">
+        <label>Look up by email</label>
+        <div class="flex gap8">
+          <input type="email" id="vol-lookup-email" placeholder="email@example.com" style="flex:1;" />
+          <button class="btn btn-secondary btn-sm" onclick="lookupMyVolunteer()">Look up</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="my-vol-list"></div>
+  </div>
+
+  <!-- ── DISPATCH VIEW ── -->
+  <div id="view-dispatch" class="view">
+    <div class="section-header">
+      <div class="section-title">Dispatch</div>
+      <span class="section-sub">Run matching engine</span>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1rem;">
+      Select an open request below to run the matching engine. Candidates are ranked by skill proximity, then submission time. Confirm to mark the request as filled.
+    </div>
+
+    <div id="dispatch-loading" class="loading"><div class="spinner"></div>Loading…</div>
+    <div id="dispatch-list"></div>
+  </div>
+
+</main>
+
+<script>
+const TIMES = ['08:00','09:30','11:00','12:30'];
+const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:30':'12:30 PM'};
+
+// ══════════════════════════════════════════════════
+// CONFIG — paste your Apps Script URL here after deploying
+// ══════════════════════════════════════════════════
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw3T8hgOIi5tNi7aROQYGeXoQr2ajOi_bIs2lXxX8h7dg3Yvl9VMMuM-QRGaZRRBGpzQw/exec';
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'board') loadBoard();
+  if (name === 'dispatch') loadDispatch();
+  if (name === 'volunteer') buildCalendar();
+}
+
+// ══════════════════════════════════════════════════
+// APPS SCRIPT API HELPERS
+// ══════════════════════════════════════════════════
+async function apiGet(action) {
+  const url = `${SCRIPT_URL}?action=${action}`;
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  } catch(e) {
+    console.error('GET error:', e);
+    throw e;
+  }
+}
+
+async function apiPost(payload) {
+  try {
+    const r = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  } catch(e) {
+    console.error('POST error:', e);
+    throw e;
+  }
+}
+
+// ══════════════════════════════════════════════════
+// DATA FETCHING
+// ══════════════════════════════════════════════════
+let requestCache   = null;
+let volunteerCache = null;
+
+async function getRequests() {
+  if (requestCache) return requestCache;
+  requestCache = await apiGet('getRequests');
+  return requestCache;
+}
+
+async function getVolunteers() {
+  if (volunteerCache) return volunteerCache;
+  volunteerCache = await apiGet('getVolunteers');
+  return volunteerCache;
+}
+
+function clearCache() {
+  requestCache   = null;
+  volunteerCache = null;
+}
+
+// ══════════════════════════════════════════════════
+// SUB REQUESTS
+// ══════════════════════════════════════════════════
+async function submitRequest() {
+  const name      = document.getElementById('req-name').value.trim();
+  const email     = document.getElementById('req-email').value.trim();
+  const matchDate = document.getElementById('req-date').value;
+  const matchTime = document.getElementById('req-time').value;
+  const notes     = document.getElementById('req-notes').value.trim();
+
+  if (!name || !email || !matchDate) {
+    showAlert('req-alert', 'error', 'Please fill in name, email, and match date.');
+    return;
+  }
+
+  const dow = new Date(matchDate + 'T12:00:00').getDay();
+  if (![1, 3, 5].includes(dow)) {
+    showAlert('req-alert', 'error', 'Match dates must be Monday, Wednesday, or Friday.');
+    return;
+  }
+
+  try {
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, notes });
+    showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
+    clearRequestForm();
+    clearCache();
+  } catch(e) {
+    showAlert('req-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  }
+}
+
+function clearRequestForm() {
+  ['req-name','req-email','req-date','req-notes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('req-time').value = '';
+}
+
+async function lookupMyRequests() {
+  const email = document.getElementById('lookup-email').value.trim().toLowerCase();
+  if (!email) return;
+  const requests = await getRequests();
+  const mine = requests.filter(r => r.email.toLowerCase() === email);
+  const el = document.getElementById('my-requests-list');
+  if (!mine.length) {
+    el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No requests found for that email.</div>';
+    return;
+  }
+  el.innerHTML = mine.map(r => requestCardHTML(r, false)).join('');
+}
+
+// ══════════════════════════════════════════════════
+// VOLUNTEERS
+// ══════════════════════════════════════════════════
+let volSelections = {};
+
+async function getVolunteers() {
+  if (volunteerCache) return volunteerCache;
+  volunteerCache = await apiGet('getVolunteers');
+  return volunteerCache;
+}
+
+function buildCalendar() {
+  const cal = document.getElementById('vol-calendar');
+  cal.innerHTML = '';
+  volSelections = {};
+
+  // Generate next 6 weeks of MWF dates
+  const dates = [];
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const d = new Date(today);
+  d.setDate(d.getDate() + 1);
+
+  while (dates.length < 24) {
+    const dow = d.getDay();
+    if ([1,3,5].includes(dow)) {
+      dates.push(new Date(d));
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  dates.forEach(date => {
+    const key = dateKey(date);
+    volSelections[key] = [];
+    const label = date.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+    const div = document.createElement('div');
+    div.className = 'cal-day';
+    div.innerHTML = `
+      <div class="cal-day-header">${label}</div>
+      <div class="cal-day-times">
+        ${TIMES.map(t => `
+          <div class="cal-time-row" id="row-${key}-${t}" onclick="toggleTime('${key}','${t}')">
+            <input type="checkbox" id="chk-${key}-${t}" onclick="event.stopPropagation(); toggleTime('${key}','${t}')" />
+            <span class="cal-time-label">${TIME_LABELS[t]}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    cal.appendChild(div);
+  });
+}
+
+function toggleTime(dateKey, time) {
+  const arr = volSelections[dateKey];
+  const idx = arr.indexOf(time);
+  if (idx > -1) arr.splice(idx, 1);
+  else arr.push(time);
+
+  const row = document.getElementById(`row-${dateKey}-${time}`);
+  const chk = document.getElementById(`chk-${dateKey}-${time}`);
+  row.classList.toggle('selected', arr.includes(time));
+  chk.checked = arr.includes(time);
+  updateVolSummary();
+}
+
+function updateVolSummary() {
+  const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
+  const el = document.getElementById('vol-summary');
+  if (!entries.length) { el.classList.add('hidden'); return; }
+  const allFour = entries.filter(([,v]) => TIMES.every(t => v.includes(t)));
+  el.classList.remove('hidden');
+  el.textContent = `${entries.length} date(s) selected · ${allFour.length} eligible for TBD/pre-schedule requests (all 4 times)`;
+}
+
+async function submitVolunteer() {
+  const name  = document.getElementById('vol-name').value.trim();
+  const email = document.getElementById('vol-email').value.trim();
+
+  if (!name || !email) {
+    showAlert('vol-alert', 'error', 'Please enter your name and email.');
+    return;
+  }
+
+  const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
+  if (!entries.length) {
+    showAlert('vol-alert', 'error', 'Please select at least one date and time slot.');
+    return;
+  }
+
+  try {
+    await apiPost({
+      action: 'submitVolunteer',
+      name,
+      email,
+      entries: Object.entries(volSelections)
+        .filter(([,v]) => v.length > 0)
+        .map(([date, times]) => ({ date, times }))
+    });
+    showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
+    clearVolForm();
+    clearCache();
+  } catch(e) {
+    showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  }
+}
+
+function clearVolForm() {
+  document.getElementById('vol-name').value = '';
+  document.getElementById('vol-email').value = '';
+  buildCalendar();
+}
+
+async function lookupMyVolunteer() {
+  const email = document.getElementById('vol-lookup-email').value.trim().toLowerCase();
+  if (!email) return;
+  const vols = await getVolunteers();
+  const mine = vols.filter(v => v.email.toLowerCase() === email);
+  const el = document.getElementById('my-vol-list');
+  if (!mine.length) {
+    el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found for that email.</div>';
+    return;
+  }
+  el.innerHTML = mine.map(v => `
+    <div class="vol-card">
+      <div class="vol-header">
+        <div>
+          <div style="font-weight:500;">${v.name}</div>
+          <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+        </div>
+        <span class="badge badge-${v.status || 'pending'}">${v.status || 'pending'}</span>
+      </div>
+      <div class="times-list">
+        ${v.times.length === 4
+          ? '<span class="time-tag all">All 4 times ✓</span>'
+          : v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// ══════════════════════════════════════════════════
+// BOARD
+// ══════════════════════════════════════════════════
+let allRequests = [];
+let currentFilter = 'all';
+
+async function loadBoard() {
+  document.getElementById('board-loading').classList.remove('hidden');
+  document.getElementById('board-list').innerHTML = '';
+  document.getElementById('board-empty').classList.add('hidden');
+
+  allRequests = await getRequests();
+  document.getElementById('board-loading').classList.add('hidden');
+  updateStats();
+  renderBoard(currentFilter);
+}
+
+function updateStats() {
+  const open   = allRequests.filter(r => r.status === 'open').length;
+  const filled = allRequests.filter(r => r.status === 'filled').length;
+  const urgent = allRequests.filter(r => r.status === 'open' && isUrgent(r)).length;
+
+  getVolunteers().then(vols => {
+    document.getElementById('stat-vols').textContent = new Set(vols.map(v => v.email)).size;
+  });
+
+  document.getElementById('stat-open').textContent   = open;
+  document.getElementById('stat-filled').textContent = filled;
+  document.getElementById('stat-urgent').textContent = urgent;
+}
+
+function filterBoard(filter, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = filter;
+  renderBoard(filter);
+}
+
+function renderBoard(filter) {
+  let list = allRequests;
+  if (filter === 'open')   list = list.filter(r => r.status === 'open');
+  if (filter === 'filled') list = list.filter(r => r.status === 'filled');
+  if (filter === 'urgent') list = list.filter(r => r.status === 'open' && isUrgent(r));
+
+  // Sort: urgent first, then by date
+  list = list.sort((a,b) => {
+    if (isUrgent(a) && !isUrgent(b)) return -1;
+    if (!isUrgent(a) && isUrgent(b)) return 1;
+    return a.matchDate.localeCompare(b.matchDate);
+  });
+
+  const el = document.getElementById('board-list');
+  if (!list.length) {
+    el.innerHTML = '';
+    document.getElementById('board-empty').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('board-empty').classList.add('hidden');
+  el.innerHTML = list.map(r => requestCardHTML(r, false)).join('');
+}
+
+function requestCardHTML(r, showMatch) {
+  const urgent = isUrgent(r) && r.status === 'open';
+  const statusBadge = urgent
+    ? `<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>`
+    : `<span class="badge badge-${r.status}">${r.status}</span>`;
+
+  const timeDisplay = r.matchTime
+    ? `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value">${TIME_LABELS[r.matchTime] || r.matchTime}</div></div>`
+    : `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value"><span class="badge badge-tbd">TBD</span></div></div>`;
+
+  return `
+    <div class="request-card ${r.status}">
+      <div class="request-row">
+        <div class="request-info">
+          <div class="card-header" style="margin-bottom:6px;">
+            <div>
+              <div class="card-title">${r.name}</div>
+              <div class="card-meta">${r.email} · submitted ${formatTS(r.timestamp)}</div>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="match-detail">
+            <div class="match-detail-item">
+              <div class="detail-label">Date</div>
+              <div class="detail-value">${formatDate(r.matchDate)}</div>
+            </div>
+            ${timeDisplay}
+            ${r.assignedSub ? `<div class="match-detail-item"><div class="detail-label">Sub assigned</div><div class="detail-value" style="color:var(--success);">${r.assignedSub}</div></div>` : ''}
+          </div>
+          ${r.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--ink-light);">${r.notes}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════
+// DISPATCH (matching engine)
+// ══════════════════════════════════════════════════
+async function loadDispatch() {
+  document.getElementById('dispatch-loading').classList.remove('hidden');
+  document.getElementById('dispatch-list').innerHTML = '';
+
+  const requests  = await getRequests();
+  const open      = requests.filter(r => r.status === 'open');
+
+  document.getElementById('dispatch-loading').classList.add('hidden');
+
+  if (!open.length) {
+    document.getElementById('dispatch-list').innerHTML = '<div class="empty"><span class="empty-icon">✓</span>No open requests. All clear!</div>';
+    return;
+  }
+
+  const el = document.getElementById('dispatch-list');
+  el.innerHTML = open.map(r => `
+    <div class="request-card" id="dr-${r.id}">
+      <div class="request-row">
+        <div class="request-info">
+          <div class="card-header" style="margin-bottom:6px;">
+            <div>
+              <div class="card-title">${r.name}</div>
+              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + TIME_LABELS[r.matchTime] : '· <span class="badge badge-tbd">TBD</span>'}</div>
+            </div>
+            ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+          </div>
+          ${r.notes ? `<div style="font-size:12px;color:var(--ink-light);margin-bottom:8px;">${r.notes}</div>` : ''}
+        </div>
+        <div class="request-actions">
+          <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
+        </div>
+      </div>
+      <div id="match-result-${r.id}"></div>
+    </div>
+  `).join('');
+}
+
+async function runMatch(requestId) {
+  const container = document.getElementById(`match-result-${requestId}`);
+  container.innerHTML = '<div class="loading"><div class="spinner"></div>Running matching engine…</div>';
+
+  try {
+    const result = await apiPost({ action: 'runMatch', requestId });
+
+    if (!result.candidates || !result.candidates.length) {
+      container.innerHTML = `
+        <div class="match-panel">
+          <div class="match-panel-title">Matching engine results</div>
+          <div class="alert alert-error">No eligible candidates found.
+            Criteria: skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}.
+          </div>
+        </div>`;
+      return;
+    }
+
+    // We need request details to pass to confirmSub for emails
+    const requests = await getRequests();
+    const req = requests.find(r => r.id === requestId);
+
+    const cHTML = result.candidates.map((c, i) => `
+      <div class="candidate-row">
+        <div class="rank-row">
+          <div class="candidate-rank">${i+1}</div>
+          <div class="candidate-info">
+            <div class="candidate-name">${c.name}</div>
+            <div class="candidate-meta">${c.email} · rating diff: ±${c.ratingDiff.toFixed(1)} · submitted ${formatTS(c.timestamp)}</div>
+          </div>
+        </div>
+        ${i === 0
+          ? `<button class="btn btn-clay btn-sm" onclick="confirmSub('${requestId}','${c.email}','${c.name}','${c.rowIndex}')">Confirm</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="confirmSub('${requestId}','${c.email}','${c.name}','${c.rowIndex}')">Assign</button>`}
+      </div>
+    `).join('');
+
+    container.innerHTML = `
+      <div class="match-panel">
+        <div class="match-panel-title">
+          Candidates — ${result.candidates.length} found · skill window ±${result.skillWindow} · ${result.requireAllTimes ? 'all 4 times required' : result.matchTime + ' required'}
+        </div>
+        ${cHTML}
+      </div>`;
+  } catch(e) {
+    container.innerHTML = `<div class="alert alert-error">Matching engine error: ${e.message}</div>`;
+  }
+}
+
+async function confirmSub(requestId, subEmail, subName, volunteerRowIndex) {
+  if (!confirm(`Assign ${subName} as substitute? Confirmation emails will be sent to both players.`)) return;
+
+  const requests = await getRequests();
+  const req      = requests.find(r => r.id === requestId);
+  if (!req) return;
+
+  try {
+    await apiPost({
+      action:            'confirmSub',
+      requestId,
+      requestRowIndex:   req.rowIndex,
+      subEmail,
+      subName,
+      requestorName:     req.name,
+      requestorEmail:    req.email,
+      matchDate:         req.matchDate,
+      matchTime:         req.matchTime,
+      volunteerRowIndex: volunteerRowIndex || null
+    });
+
+    document.getElementById(`dr-${requestId}`).innerHTML = `
+      <div style="padding:10px 0;">
+        <div class="alert alert-success">✓ ${subName} confirmed. Confirmation emails sent to ${req.name} and ${subName}.</div>
+      </div>`;
+    clearCache();
+  } catch(e) {
+    alert('Could not confirm sub: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function isUrgent(req) {
+  if (!req.matchDate) return false;
+  const matchDT = new Date(req.matchDate + 'T' + (req.matchTime || '12:00') + ':00');
+  const now     = new Date();
+  const diffHrs = (matchDT - now) / 36e5;
+  return diffHrs <= 48 && diffHrs > 0;
+}
+
+function dateKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDate(str) {
+  if (!str) return '—';
+  const d = new Date(str + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+}
+
+function formatTS(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' +
+         d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+
+function showAlert(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type}`;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  if (type === 'success') setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+async function refreshAll() {
+  clearCache();
+  if (document.getElementById('view-board').classList.contains('active')) loadBoard();
+  if (document.getElementById('view-dispatch').classList.contains('active')) loadDispatch();
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+loadBoard();
+buildCalendar();
+
+
+</script>
+</body>
+</html>
