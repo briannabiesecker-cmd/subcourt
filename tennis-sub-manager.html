@@ -891,12 +891,6 @@ async function lookupMyRequests() {
 // ══════════════════════════════════════════════════
 let volSelections = {};
 
-async function getVolunteers() {
-  if (volunteerCache) return volunteerCache;
-  volunteerCache = await apiGet('getVolunteers');
-  return volunteerCache;
-}
-
 function buildCalendar() {
   const cal = document.getElementById('vol-calendar');
   cal.innerHTML = '';
