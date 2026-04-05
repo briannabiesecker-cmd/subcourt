@@ -1331,8 +1331,10 @@ async function refreshAll() {
 // ══════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════
-loadBoard();
-buildCalendar();
+document.addEventListener('DOMContentLoaded', () => {
+  loadBoard();
+  buildCalendar();
+});
 
 
 </script>
