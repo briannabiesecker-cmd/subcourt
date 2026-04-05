@@ -489,49 +489,6 @@
 
   .inner-tab.active { color: var(--court); border-bottom-color: var(--court); }
 
-  /* ── Calendar grid ── */
-  .cal-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 10px;
-    margin-bottom: 1.5rem;
-  }
-
-  .cal-day {
-    background: white;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-
-  .cal-day-header {
-    background: var(--chalk-dark);
-    padding: 8px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--ink-mid);
-    border-bottom: 1px solid var(--line);
-  }
-
-  .cal-day-times { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
-
-  .cal-time-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    padding: 5px 8px;
-    border-radius: var(--radius);
-    border: 1px solid transparent;
-    transition: all 0.15s;
-  }
-
-  .cal-time-row:hover { background: var(--chalk); }
-  .cal-time-row.selected { background: var(--success-bg); border-color: #C0DD97; }
-  .cal-time-row input[type="checkbox"] { accent-color: var(--court); width: 14px; height: 14px; }
-  .cal-time-label { font-size: 12px; color: var(--ink-mid); }
-  .cal-time-row.selected .cal-time-label { color: var(--success); }
-
   /* ── Loading ── */
   .loading {
     display: flex;
@@ -569,6 +526,130 @@
   .mt8 { margin-top: 8px; }
   .text-right { text-align: right; }
   .hidden { display: none !important; }
+
+  /* ── Typeahead ── */
+  .typeahead-wrap { position: relative; }
+  .typeahead-input {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    color: var(--ink);
+    background: white;
+    width: 100%;
+    transition: border-color 0.15s;
+  }
+  .typeahead-input:focus { outline: none; border-color: var(--court); }
+  .typeahead-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    z-index: 50;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .typeahead-item {
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--ink);
+    border-bottom: 1px solid var(--chalk-dark);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .typeahead-item:last-child { border-bottom: none; }
+  .typeahead-item:hover, .typeahead-item.highlighted { background: var(--chalk); }
+  .typeahead-email { font-size: 11px; color: var(--ink-light); }
+  .selected-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    background: var(--success-bg);
+    border: 1px solid #C0DD97;
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--success);
+    font-family: 'DM Mono', monospace;
+  }
+  .clear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--success);
+    font-size: 16px;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.6;
+    font-family: 'DM Mono', monospace;
+  }
+  .clear-btn:hover { opacity: 1; }
+  input:disabled {
+    background: var(--chalk-dark) !important;
+    color: var(--ink-light) !important;
+    cursor: not-allowed;
+  }
+
+  /* ── Date list calendar ── */
+  .date-list { display: flex; flex-direction: column; gap: 4px; }
+  .month-header {
+    font-size: 10px;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 10px 0 4px;
+    font-weight: 500;
+  }
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .date-row.any-selected { background: var(--success-bg); border-color: #C0DD97; }
+  .date-row-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    min-width: 100px;
+  }
+  .date-row.any-selected .date-row-label { color: var(--success); }
+  .select-all-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-right: 10px;
+    border-right: 1px solid var(--line);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .select-all-wrap input[type="checkbox"] { width: 13px; height: 13px; accent-color: var(--court); cursor: pointer; }
+  .select-all-label { font-size: 11px; color: var(--ink-light); white-space: nowrap; }
+  .time-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .time-chip-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 4px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: white;
+    color: var(--ink-mid);
+    cursor: pointer;
+    transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .time-chip-btn:hover { border-color: var(--court); color: var(--court); }
+  .time-chip-btn.on { background: var(--court); border-color: var(--court); color: white; }
 </style>
 </head>
 <body>
@@ -629,11 +710,27 @@
       <div class="form-grid">
         <div class="field">
           <label>Your name</label>
-          <input type="text" id="req-name" placeholder="Full name" />
+          <div class="typeahead-wrap">
+            <div id="req-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="req-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('req')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="req-input-state">
+              <input class="typeahead-input" id="req-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('req', this.value)"
+                onblur="onTypeaheadBlur('req')"
+                onfocus="onTypeaheadFocus('req')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="req-dropdown" style="display:none;"></div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label>Your email</label>
-          <input type="email" id="req-email" placeholder="email@example.com" />
+          <input type="email" id="req-email" placeholder="Auto-filled on selection" disabled />
         </div>
         <div class="field">
           <label>Match date</label>
@@ -683,26 +780,42 @@
       <span class="section-sub">Submit your availability</span>
     </div>
 
-    <div class="alert alert-info">Select every date and time slot you are available to play. For pre-scheduled requests (more than 48 hours away with no assigned time), you must be available at all 4 time slots.</div>
+    <div class="alert alert-info">Select every date and time you are available. For TBD or pre-scheduled requests, you must be available at all 4 times.</div>
 
     <div class="card mt8">
       <div id="vol-alert" class="hidden"></div>
 
-      <div class="form-grid" style="margin-bottom:1rem;">
+      <div class="form-grid" style="margin-bottom:1.25rem;">
         <div class="field">
           <label>Your name</label>
-          <input type="text" id="vol-name" placeholder="Full name" />
+          <div class="typeahead-wrap">
+            <div id="vol-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="vol-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('vol')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="vol-input-state">
+              <input class="typeahead-input" id="vol-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('vol', this.value)"
+                onblur="onTypeaheadBlur('vol')"
+                onfocus="onTypeaheadFocus('vol')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label>Your email</label>
-          <input type="email" id="vol-email" placeholder="email@example.com" />
+          <input type="email" id="vol-email" placeholder="Auto-filled on selection" disabled />
         </div>
       </div>
 
-      <label style="display:block; margin-bottom:8px;">Select available dates &amp; times (MWF only)</label>
-      <div id="vol-calendar" class="cal-grid"></div>
+      <label style="display:block; margin-bottom:8px; font-size:11px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:500;">Select available dates &amp; times (MWF only)</label>
+      <div id="vol-calendar"></div>
 
-      <div id="vol-summary" class="alert alert-info hidden"></div>
+      <div id="vol-summary" class="alert alert-info hidden" style="margin-top:12px;"></div>
 
       <div class="flex gap8 mt12">
         <button class="btn btn-clay" onclick="submitVolunteer()">Submit availability</button>
@@ -818,8 +931,90 @@ async function apiGetWithParams(params) {
 }
 
 // ══════════════════════════════════════════════════
-// DATA FETCHING
+// TYPEAHEAD
 // ══════════════════════════════════════════════════
+let playerList = [];
+const taBlurTimers = {};
+
+async function loadPlayerList() {
+  if (playerList.length) return playerList;
+  try {
+    const data = await apiGet('getPlayers');
+    playerList = data;
+  } catch(e) { playerList = []; }
+  return playerList;
+}
+
+function onTypeaheadInput(prefix, val) {
+  showTypeaheadDropdown(prefix, val);
+}
+
+function onTypeaheadFocus(prefix) {
+  clearTimeout(taBlurTimers[prefix]);
+  const val = document.getElementById(prefix + '-name-input').value;
+  showTypeaheadDropdown(prefix, val);
+}
+
+function onTypeaheadBlur(prefix) {
+  taBlurTimers[prefix] = setTimeout(() => {
+    document.getElementById(prefix + '-dropdown').style.display = 'none';
+  }, 150);
+}
+
+async function showTypeaheadDropdown(prefix, val) {
+  const dd = document.getElementById(prefix + '-dropdown');
+  const players = await loadPlayerList();
+  const matches = val.trim()
+    ? players.filter(p => p.name.toLowerCase().includes(val.toLowerCase()))
+    : players;
+
+  if (!matches.length) {
+    dd.innerHTML = '<div class="typeahead-item" style="color:var(--ink-light);">No players found</div>';
+    dd.style.display = 'block';
+    return;
+  }
+
+  dd.innerHTML = matches.map((p, i) => `
+    <div class="typeahead-item ${i === 0 && val ? 'highlighted' : ''}"
+      onmousedown="selectTypeaheadPlayer('${prefix}', '${p.name}', '${p.email}')">
+      <span>${val ? highlightMatch(p.name, val) : p.name}</span>
+      <span class="typeahead-email">${p.email}</span>
+    </div>
+  `).join('');
+  dd.style.display = 'block';
+}
+
+function highlightMatch(name, query) {
+  const idx = name.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return name;
+  return name.slice(0, idx) +
+    '<strong>' + name.slice(idx, idx + query.length) + '</strong>' +
+    name.slice(idx + query.length);
+}
+
+function selectTypeaheadPlayer(prefix, name, email) {
+  clearTimeout(taBlurTimers[prefix]);
+  document.getElementById(prefix + '-input-state').style.display = 'none';
+  document.getElementById(prefix + '-selected-state').style.display = 'block';
+  document.getElementById(prefix + '-selected-name').textContent = name;
+  document.getElementById(prefix + '-email').value = email;
+  document.getElementById(prefix + '-dropdown').style.display = 'none';
+}
+
+function clearTypeahead(prefix) {
+  document.getElementById(prefix + '-input-state').style.display = 'block';
+  document.getElementById(prefix + '-selected-state').style.display = 'none';
+  document.getElementById(prefix + '-name-input').value = '';
+  document.getElementById(prefix + '-email').value = '';
+  document.getElementById(prefix + '-dropdown').style.display = 'none';
+  document.getElementById(prefix + '-name-input').focus();
+}
+
+function getTypeaheadValue(prefix) {
+  const name = document.getElementById(prefix + '-selected-name').textContent.trim();
+  const email = document.getElementById(prefix + '-email').value.trim();
+  return { name, email };
+}
 let requestCache   = null;
 let volunteerCache = null;
 
@@ -844,13 +1039,17 @@ function clearCache() {
 // SUB REQUESTS
 // ══════════════════════════════════════════════════
 async function submitRequest() {
-  const name      = document.getElementById('req-name').value.trim();
-  const email     = document.getElementById('req-email').value.trim();
+  const { name, email } = getTypeaheadValue('req');
   const matchDate = document.getElementById('req-date').value;
   const matchTime = document.getElementById('req-time').value;
 
-  if (!name || !email || !matchDate) {
-    showAlert('req-alert', 'error', 'Please fill in name, email, and match date.');
+  if (!name || !email) {
+    showAlert('req-alert', 'error', 'Please select your name from the dropdown.');
+    return;
+  }
+
+  if (!matchDate) {
+    showAlert('req-alert', 'error', 'Please fill in the match date.');
     return;
   }
 
@@ -871,7 +1070,8 @@ async function submitRequest() {
 }
 
 function clearRequestForm() {
-  ['req-name','req-email','req-date'].forEach(id => document.getElementById(id).value = '');
+  clearTypeahead('req');
+  document.getElementById('req-date').value = '';
   document.getElementById('req-time').value = '';
 }
 
@@ -904,34 +1104,48 @@ function buildCalendar() {
     today.setHours(0,0,0,0);
     const d = new Date(today);
     d.setDate(d.getDate() + 1);
-
     while (dates.length < 24) {
-      const dow = d.getDay();
-      if ([1,3,5].includes(dow)) {
-        dates.push(new Date(d));
-      }
+      if ([1,3,5].includes(d.getDay())) dates.push(new Date(d));
       d.setDate(d.getDate() + 1);
     }
 
+    const list = document.createElement('div');
+    list.className = 'date-list';
+    let lastMonth = '';
+
     dates.forEach(date => {
-      const key = dateKey(date);
-      volSelections[key] = [];
+      const k = dateKey(date);
+      volSelections[k] = [];
+
+      const month = date.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      if (month !== lastMonth) {
+        const mh = document.createElement('div');
+        mh.className = 'month-header';
+        mh.textContent = month;
+        list.appendChild(mh);
+        lastMonth = month;
+      }
+
       const label = date.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
-      const div = document.createElement('div');
-      div.className = 'cal-day';
-      div.innerHTML = `
-        <div class="cal-day-header">${label}</div>
-        <div class="cal-day-times">
+      const row = document.createElement('div');
+      row.className = 'date-row';
+      row.id = 'daterow-' + k;
+      row.innerHTML = `
+        <div class="date-row-label">${label}</div>
+        <div class="select-all-wrap" onclick="toggleAllTimes('${k}')">
+          <input type="checkbox" id="allchk-${k}" onclick="event.stopPropagation(); toggleAllTimes('${k}')" />
+          <span class="select-all-label">All times</span>
+        </div>
+        <div class="time-chips">
           ${TIMES.map(t => `
-            <div class="cal-time-row" id="row-${key}-${t}" onclick="toggleTime('${key}','${t}')">
-              <input type="checkbox" id="chk-${key}-${t}" onclick="event.stopPropagation(); toggleTime('${key}','${t}')" />
-              <span class="cal-time-label">${TIME_LABELS[t]}</span>
-            </div>
+            <button class="time-chip-btn" id="chip-${k}-${t}" onclick="toggleTime('${k}','${t}')">${TIME_LABELS[t]}</button>
           `).join('')}
         </div>
       `;
-      cal.appendChild(div);
+      list.appendChild(row);
     });
+
+    cal.appendChild(list);
   } catch(e) {
     const cal = document.getElementById('vol-calendar');
     if (cal) cal.innerHTML = `<div class="alert alert-error">Calendar error: ${e.message}</div>`;
@@ -939,17 +1153,36 @@ function buildCalendar() {
   }
 }
 
-function toggleTime(dateKey, time) {
-  const arr = volSelections[dateKey];
+function toggleAllTimes(k) {
+  const allOn = TIMES.every(t => volSelections[k].includes(t));
+  volSelections[k] = allOn ? [] : [...TIMES];
+  refreshDateRow(k);
+  updateVolSummary();
+}
+
+function toggleTime(k, time) {
+  const arr = volSelections[k];
   const idx = arr.indexOf(time);
   if (idx > -1) arr.splice(idx, 1);
   else arr.push(time);
-
-  const row = document.getElementById(`row-${dateKey}-${time}`);
-  const chk = document.getElementById(`chk-${dateKey}-${time}`);
-  row.classList.toggle('selected', arr.includes(time));
-  chk.checked = arr.includes(time);
+  refreshDateRow(k);
   updateVolSummary();
+}
+
+function refreshDateRow(k) {
+  const arr = volSelections[k];
+  const row = document.getElementById('daterow-' + k);
+  const allChk = document.getElementById('allchk-' + k);
+  if (!row) return;
+  const anyOn = arr.length > 0;
+  const allOn = TIMES.every(t => arr.includes(t));
+  row.className = 'date-row' + (anyOn ? ' any-selected' : '');
+  allChk.checked = allOn;
+  allChk.indeterminate = anyOn && !allOn;
+  TIMES.forEach(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    if (chip) chip.className = 'time-chip-btn' + (arr.includes(t) ? ' on' : '');
+  });
 }
 
 function updateVolSummary() {
@@ -958,15 +1191,14 @@ function updateVolSummary() {
   if (!entries.length) { el.classList.add('hidden'); return; }
   const allFour = entries.filter(([,v]) => TIMES.every(t => v.includes(t)));
   el.classList.remove('hidden');
-  el.textContent = `${entries.length} date(s) selected · ${allFour.length} eligible for TBD/pre-schedule requests (all 4 times)`;
+  el.textContent = `${entries.length} date(s) selected · ${allFour.length} eligible for TBD requests (all 4 times)`;
 }
 
 async function submitVolunteer() {
-  const name  = document.getElementById('vol-name').value.trim();
-  const email = document.getElementById('vol-email').value.trim();
+  const { name, email } = getTypeaheadValue('vol');
 
   if (!name || !email) {
-    showAlert('vol-alert', 'error', 'Please enter your name and email.');
+    showAlert('vol-alert', 'error', 'Please select your name from the dropdown.');
     return;
   }
 
@@ -981,9 +1213,7 @@ async function submitVolunteer() {
       action: 'submitVolunteer',
       name,
       email,
-      entries: Object.entries(volSelections)
-        .filter(([,v]) => v.length > 0)
-        .map(([date, times]) => ({ date, times }))
+      entries: entries.map(([date, times]) => ({ date, times }))
     });
     showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
     clearVolForm();
@@ -994,8 +1224,7 @@ async function submitVolunteer() {
 }
 
 function clearVolForm() {
-  document.getElementById('vol-name').value = '';
-  document.getElementById('vol-email').value = '';
+  clearTypeahead('vol');
   document.getElementById('vol-summary').classList.add('hidden');
   buildCalendar();
 }
