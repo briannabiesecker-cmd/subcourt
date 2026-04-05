@@ -1017,6 +1017,7 @@ function getTypeaheadValue(prefix) {
 }
 let requestCache   = null;
 let volunteerCache = null;
+let configCache    = null;
 
 async function getRequests() {
   if (requestCache) return requestCache;
@@ -1030,9 +1031,20 @@ async function getVolunteers() {
   return volunteerCache;
 }
 
+async function getAppConfig() {
+  if (configCache) return configCache;
+  try {
+    configCache = await apiGet('getConfig');
+  } catch(e) {
+    configCache = { calendarLookaheadDays: 30 };
+  }
+  return configCache;
+}
+
 function clearCache() {
   requestCache   = null;
   volunteerCache = null;
+  // Note: configCache intentionally not cleared — config changes require page refresh
 }
 
 // ══════════════════════════════════════════════════
@@ -1093,17 +1105,20 @@ async function lookupMyRequests() {
 // ══════════════════════════════════════════════════
 let volSelections = {};
 
-function buildCalendar() {
+async function buildCalendar() {
   try {
     const cal = document.getElementById('vol-calendar');
     cal.innerHTML = '';
     volSelections = {};
 
+    const config = await getAppConfig();
+    const lookahead = config.calendarLookaheadDays || 30;
+
     const dates = [];
     const today = new Date();
     today.setHours(0,0,0,0);
     const cutoff = new Date(today);
-    cutoff.setDate(cutoff.getDate() + 30);
+    cutoff.setDate(cutoff.getDate() + lookahead);
     const d = new Date(today);
     d.setDate(d.getDate() + 1);
     while (d <= cutoff) {
@@ -1420,12 +1435,13 @@ async function runMatch(requestId) {
     const result = await apiPost({ action: 'runMatch', requestId });
 
     if (!result.candidates || !result.candidates.length) {
+      const phaseDesc = result.phase === 'last-minute'
+        ? 'no skill restriction, exact time required'
+        : `skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}`;
       container.innerHTML = `
         <div class="match-panel">
           <div class="match-panel-title">Matching engine results</div>
-          <div class="alert alert-error">No eligible candidates found.
-            Criteria: skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}.
-          </div>
+          <div class="alert alert-error">No eligible candidates found. Criteria: ${phaseDesc}.</div>
         </div>`;
       return;
     }
@@ -1449,10 +1465,18 @@ async function runMatch(requestId) {
       </div>
     `).join('');
 
+    const phaseLabel = result.phase === 'last-minute'
+      ? 'Last minute — no skill restriction'
+      : result.phase === 'post-schedule'
+        ? `Skill window ±${result.skillWindow}`
+        : `Skill window ±${result.skillWindow}`;
+
+    const availLabel = result.requireAllTimes ? 'all 4 times required' : result.matchTime + ' required';
+
     container.innerHTML = `
       <div class="match-panel">
         <div class="match-panel-title">
-          Candidates — ${result.candidates.length} found · skill window ±${result.skillWindow} · ${result.requireAllTimes ? 'all 4 times required' : result.matchTime + ' required'}
+          Candidates — ${result.candidates.length} found · ${phaseLabel} · ${availLabel}
         </div>
         ${cHTML}
       </div>`;
