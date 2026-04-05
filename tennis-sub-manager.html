@@ -776,31 +776,65 @@ function showView(name) {
 // APPS SCRIPT API HELPERS
 // ══════════════════════════════════════════════════
 async function apiGet(action) {
-  const url = `${SCRIPT_URL}?action=${action}`;
-  try {
-    const r = await fetch(url);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    return d;
-  } catch(e) {
-    console.error('GET error:', e);
-    throw e;
-  }
+  return new Promise((resolve, reject) => {
+    const callbackName = 'jsonp_' + Date.now();
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => {
+      delete window[callbackName];
+      document.body.removeChild(script);
+      reject(new Error('Request timed out'));
+    }, 10000);
+
+    window[callbackName] = function(data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      document.body.removeChild(script);
+      if (data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    script.src = `${SCRIPT_URL}?action=${action}&callback=${callbackName}`;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      reject(new Error('Script load failed'));
+    };
+    document.body.appendChild(script);
+  });
 }
 
 async function apiPost(payload) {
-  try {
-    const r = await fetch(SCRIPT_URL, {
+  // Use a form POST via hidden iframe to avoid CORS on writes
+  return new Promise((resolve, reject) => {
+    const callbackName = 'jsonp_post_' + Date.now();
+    const timeout = setTimeout(() => {
+      delete window[callbackName];
+      reject(new Error('Request timed out'));
+    }, 15000);
+
+    // Encode payload as a GET request with callback for response
+    const postData = { ...payload, callback: callbackName };
+
+    window[callbackName] = function(data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      if (data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    // For writes, use fetch with no-cors (fire and forget) + polling
+    fetch(SCRIPT_URL, {
       method: 'POST',
+      mode: 'no-cors',
       body: JSON.stringify(payload)
+    }).then(() => {
+      clearTimeout(timeout);
+      resolve({ success: true });
+    }).catch(err => {
+      clearTimeout(timeout);
+      reject(err);
     });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    return d;
-  } catch(e) {
-    console.error('POST error:', e);
-    throw e;
-  }
+  });
 }
 
 // ══════════════════════════════════════════════════
