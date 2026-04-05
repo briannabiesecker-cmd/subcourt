@@ -1002,6 +1002,7 @@ async function submitVolunteer() {
 function clearVolForm() {
   document.getElementById('vol-name').value = '';
   document.getElementById('vol-email').value = '';
+  document.getElementById('vol-summary').classList.add('hidden');
   buildCalendar();
 }
 
@@ -1101,7 +1102,7 @@ function requestCardHTML(r, showMatch) {
     : `<span class="badge badge-${r.status}">${r.status}</span>`;
 
   const timeDisplay = r.matchTime
-    ? `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value">${TIME_LABELS[r.matchTime] || r.matchTime}</div></div>`
+    ? `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value">${formatTime(r.matchTime)}</div></div>`
     : `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value"><span class="badge badge-tbd">TBD</span></div></div>`;
 
   return `
@@ -1155,7 +1156,7 @@ async function loadDispatch() {
           <div class="card-header" style="margin-bottom:6px;">
             <div>
               <div class="card-title">${r.name}</div>
-              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + TIME_LABELS[r.matchTime] : '· <span class="badge badge-tbd">TBD</span>'}</div>
+              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + formatTime(r.matchTime) : '· <span class="badge badge-tbd">TBD</span>'}</div>
             </div>
             ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
           </div>
@@ -1267,8 +1268,36 @@ function dateKey(d) {
 
 function formatDate(str) {
   if (!str) return '—';
-  const d = new Date(str + 'T12:00:00');
-  return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  // Handle Google Sheets date serial numbers and ISO strings
+  const s = str.toString().trim();
+  if (!s) return '—';
+  // Already a clean YYYY-MM-DD string
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  }
+  // ISO timestamp from Sheets
+  if (s.includes('T')) {
+    const d = new Date(s);
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  }
+  return s;
+}
+
+function formatTime(str) {
+  if (!str) return 'TBD';
+  const s = str.toString().trim();
+  if (!s) return 'TBD';
+  // Clean HH:MM format
+  if (/^\d{2}:\d{2}$/.test(s)) return TIME_LABELS[s] || s;
+  // Sheets time serial (fraction of a day) or full timestamp
+  if (s.includes('T') || s.includes('1899')) {
+    const d = new Date(s);
+    const hh = d.getUTCHours().toString().padStart(2,'0');
+    const mm = d.getUTCMinutes().toString().padStart(2,'0');
+    return TIME_LABELS[`${hh}:${mm}`] || `${hh}:${mm}`;
+  }
+  return s;
 }
 
 function formatTS(ts) {
