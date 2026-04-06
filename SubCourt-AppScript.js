@@ -496,8 +496,9 @@ function deleteVolunteer(params) {
 function testAdminAuth() {
   var testEmail = 'brianna.biesecker@gmail.com'; // change if needed
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
-  var rows  = sheet.getDataRange().getValues();
-  Logger.log('Range: ' + sheet.getDataRange().getA1Notation());
+  var lastRow = sheet.getLastRow();
+  var rows  = sheet.getRange(1, 1, lastRow, 4).getValues();
+  Logger.log('Range: A1:D' + lastRow);
   Logger.log('Total rows (inc header): ' + rows.length);
   rows.forEach(function(r, i) {
     Logger.log('Row ' + i + ': name=' + r[0] + ' | email=' + r[1] + ' | rating=' + r[2] + ' | isAdmin=' + r[3] + ' (type=' + typeof r[3] + ')');
@@ -524,9 +525,12 @@ function debugAdmin(params) {
 }
 
 function isAdminEmail(email) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
-  const rows  = sheet.getDataRange().getValues();
-  rows.shift();
+  const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+  // Read A:D explicitly — getDataRange() misses col D when booleans are stored as checkboxes
+  const rows = sheet.getRange(1, 1, lastRow, 4).getValues();
+  rows.shift(); // remove header
   return rows.some(function(r) {
     const rowEmail = (r[1] || '').toLowerCase().trim();
     const flag     = r[3]; // column D = isAdmin
