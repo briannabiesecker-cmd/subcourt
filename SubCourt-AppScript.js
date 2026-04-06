@@ -493,6 +493,18 @@ function deleteVolunteer(params) {
 // ADMIN AUTH
 // ──────────────────────────────────────────────────
 
+function testAdminAuth() {
+  var testEmail = 'brianna.biesecker@gmail.com'; // change if needed
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var rows  = sheet.getDataRange().getValues();
+  Logger.log('Range: ' + sheet.getDataRange().getA1Notation());
+  Logger.log('Total rows (inc header): ' + rows.length);
+  rows.forEach(function(r, i) {
+    Logger.log('Row ' + i + ': name=' + r[0] + ' | email=' + r[1] + ' | rating=' + r[2] + ' | isAdmin=' + r[3] + ' (type=' + typeof r[3] + ')');
+  });
+  Logger.log('isAdminEmail result for ' + testEmail + ': ' + isAdminEmail(testEmail));
+}
+
 function debugAdmin(params) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   var rows  = sheet.getDataRange().getValues();
