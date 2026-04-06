@@ -857,12 +857,17 @@
       <hr class="divider" />
     </div>
 
+    <div class="alert alert-info" style="margin-bottom:1.25rem;">
+      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
+    </div>
+
     <div class="card">
       <div id="req-alert" class="hidden"></div>
 
       <div class="form-grid">
         <div class="field">
           <label>Your name</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Start typing your name and select it from the list.</div>
           <div class="typeahead-wrap">
             <div id="req-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -887,10 +892,12 @@
         </div>
         <div class="field">
           <label>Match date</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The date of the match you need covered.</div>
           <input type="date" id="req-date" />
         </div>
         <div class="field">
           <label>Match time</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Select your start time, or leave as TBD if unsure.</div>
           <select id="req-time">
             <option value="">Unknown / TBD</option>
             <option value="08:00">8:00 AM</option>
@@ -900,8 +907,9 @@
           </select>
         </div>
 
-        <div class="field span2" style="margin-top:4px;">
-          <label style="font-size:11px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:500;">Group partners — all 3 required</label>
+        <div class="field span2" style="margin-top:8px;">
+          <label>Who else is in your group?</label>
+          <div style="font-size:13px;color:var(--ink-light);">Enter the names of your 3 partners. They'll be copied on the confirmation email so everyone stays in the loop.</div>
         </div>
 
         <!-- Partner 2 -->
