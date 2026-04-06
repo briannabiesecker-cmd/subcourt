@@ -1162,6 +1162,19 @@ async function submitRequest() {
   }
 
   try {
+    const existing = await getRequests();
+    const duplicate = existing.find(r =>
+      r.email.toLowerCase() === email.toLowerCase() &&
+      r.matchDate === matchDate &&
+      r.status !== 'cancelled'
+    );
+    if (duplicate) {
+      showAlert('req-alert', 'error',
+        'You already have a request for ' + formatDate(matchDate) + '. Contact the coordinator to make changes.'
+      );
+      return;
+    }
+
     await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     clearRequestForm();
