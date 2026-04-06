@@ -3,7 +3,7 @@
 // MTC Tennis Team
 // ══════════════════════════════════════════════════
 
-const SHEET_ID = '1X2oM9GwH206qzFHBqi-oIPZ2wPdn43tIfcMRtvOw9wM';
+const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
 
 const TABS = {
   players:    'Players',
@@ -209,9 +209,11 @@ function doGet(e) {
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
-    else if (action === 'sendAdminCode')     result = sendAdminCode(e.parameter);
-    else if (action === 'verifyAdminCode')   result = verifyAdminCode(e.parameter);
-    else if (action === 'debugAdmin')        result = debugAdmin(e.parameter);
+    else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
+    else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
+    else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
+    else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
+    else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
     else if (action === 'ping')            result = { version: 'V32', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -495,15 +497,22 @@ function deleteVolunteer(params) {
 
 function testAdminAuth() {
   var testEmail = 'brianna.biesecker@gmail.com'; // change if needed
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  Logger.log('Spreadsheet name: ' + ss.getName() + ' | ID: ' + ss.getId());
+  var sheet = ss.getSheetByName(TABS.players);
   var lastRow = sheet.getLastRow();
-  var rows  = sheet.getRange(1, 1, lastRow, 4).getValues();
-  Logger.log('Range: A1:D' + lastRow);
-  Logger.log('Total rows (inc header): ' + rows.length);
+  var lastCol = sheet.getLastColumn();
+  Logger.log('lastRow=' + lastRow + ' lastCol=' + lastCol);
+  // Read direct cell values
+  Logger.log('D1 direct: [' + sheet.getRange('D1').getValue() + '] type=' + typeof sheet.getRange('D1').getValue());
+  Logger.log('D2 direct: [' + sheet.getRange('D2').getValue() + '] type=' + typeof sheet.getRange('D2').getValue());
+  Logger.log('D3 direct: [' + sheet.getRange('D3').getValue() + '] type=' + typeof sheet.getRange('D3').getValue());
+  // Also log what getLastColumn sees
+  var rows = sheet.getRange(1, 1, lastRow, 4).getValues();
   rows.forEach(function(r, i) {
-    Logger.log('Row ' + i + ': name=' + r[0] + ' | email=' + r[1] + ' | rating=' + r[2] + ' | isAdmin=' + r[3] + ' (type=' + typeof r[3] + ')');
+    Logger.log('Row ' + i + ': r[3]=[' + r[3] + '] type=' + typeof r[3]);
   });
-  Logger.log('isAdminEmail result for ' + testEmail + ': ' + isAdminEmail(testEmail));
+  Logger.log('isAdminEmail result: ' + isAdminEmail(testEmail));
 }
 
 function debugAdmin(params) {
@@ -578,6 +587,106 @@ function verifyAdminCode(params) {
   if (code !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
 
   props.deleteProperty('admin_code_' + email);
+  return { success: true };
+}
+
+// ──────────────────────────────────────────────────
+// COORDINATOR RATINGS
+// ──────────────────────────────────────────────────
+
+function getCoordinatorRatings(params) {
+  var coordEmail = (params.email || '').toLowerCase().trim();
+  var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var lastRow    = sheet.getLastRow();
+  if (lastRow < 2) return { players: [] };
+
+  var lastCol  = Math.max(sheet.getLastColumn(), 9); // ensure we read through col I
+  var allData  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers  = allData[0];
+
+  // Find this coordinator's column (cols E–I = index 4–8)
+  var coordColIdx = -1;
+  for (var i = 4; i <= 8; i++) {
+    if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
+      coordColIdx = i;
+      break;
+    }
+  }
+
+  var players = [];
+  for (var r = 1; r < allData.length; r++) {
+    var row = allData[r];
+    if (!row[0]) continue; // skip empty rows
+    players.push({
+      name:     row[0] || '',
+      email:    (row[1] || '').toLowerCase(),
+      myRating: coordColIdx >= 0 ? (row[coordColIdx] !== '' ? row[coordColIdx] : '') : ''
+    });
+  }
+  return { players: players };
+}
+
+function saveCoordinatorRatings(params) {
+  var coordEmail = (params.coordEmail || '').toLowerCase().trim();
+  var ratings    = JSON.parse(params.ratings || '[]'); // [{playerEmail, rating}]
+  var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var lastRow    = sheet.getLastRow();
+  var lastCol    = Math.max(sheet.getLastColumn(), 9);
+  var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers    = allData[0];
+
+  // Find or claim coordinator column
+  var coordColIdx = -1;
+  for (var i = 4; i <= 8; i++) {
+    var h = (headers[i] || '').toString().toLowerCase().trim();
+    if (h === coordEmail) { coordColIdx = i; break; }
+  }
+  if (coordColIdx === -1) {
+    for (var j = 4; j <= 8; j++) {
+      if (!headers[j]) {
+        coordColIdx = j;
+        sheet.getRange(1, j + 1).setValue(coordEmail); // write email as header
+        break;
+      }
+    }
+  }
+  if (coordColIdx === -1) return { success: false, error: 'Max 5 coordinators reached.' };
+
+  // Build player email → row number map
+  var emailToRow = {};
+  for (var r = 1; r < allData.length; r++) {
+    var e = (allData[r][1] || '').toLowerCase().trim();
+    if (e) emailToRow[e] = r + 1; // 1-indexed sheet row
+  }
+
+  // Write ratings
+  ratings.forEach(function(item) {
+    var pe = (item.playerEmail || '').toLowerCase().trim();
+    if (!emailToRow[pe]) return;
+    var rowNum = emailToRow[pe];
+    var val    = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
+    var cell   = sheet.getRange(rowNum, coordColIdx + 1);
+    cell.setNumberFormat('0.0');
+    cell.setValue(val);
+  });
+
+  // Recalculate averages in col C
+  var coordCols = [];
+  for (var k = 4; k <= 8; k++) {
+    if (headers[k] || k === coordColIdx) coordCols.push(k + 1);
+  }
+  // re-read to get updated values
+  var updated = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  for (var row = 1; row < updated.length; row++) {
+    if (!updated[row][0]) continue;
+    var vals = coordCols.map(function(col) {
+      var v = updated[row][col - 1];
+      return (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
+    }).filter(function(v) { return v !== null; });
+    var avg = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
+    sheet.getRange(row + 1, 3).setValue(avg);
+  }
+
   return { success: true };
 }
 

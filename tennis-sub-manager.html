@@ -655,6 +655,52 @@
   .time-chip-btn:hover { border-color: var(--clay); color: var(--clay); }
   .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; }
 
+  /* ── Player rating grid ── */
+  .player-rating-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: white;
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    box-shadow: var(--shadow-sm);
+    gap: 12px;
+  }
+  .player-rating-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .player-rating-email {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ink-light);
+  }
+  .player-rating-input {
+    width: 80px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    font-family: inherit;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
+  }
+  .player-rating-input:focus {
+    outline: none;
+    border-color: var(--clay);
+    box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
+  }
+
   /* ── Home page ── */
   .home-hero {
     text-align: center;
@@ -1067,6 +1113,25 @@
 
       <div class="inner-tabs">
         <button class="inner-tab active" onclick="showAdminTab('dispatch', this)">Dispatch</button>
+        <button class="inner-tab" onclick="showAdminTab('players', this)">Player Ratings</button>
+      </div>
+
+      <div id="admin-tab-players" style="display:none;">
+        <div id="players-alert" class="hidden" style="margin-top:1rem;"></div>
+        <div class="card mt8" style="padding:1rem 1.5rem;">
+          <p style="font-size:14px;color:var(--ink-mid);margin-bottom:0;">You are editing <strong>your ratings only</strong>. Other coordinators' ratings and the final average are not shown here.</p>
+        </div>
+        <div id="players-loading" class="loading"><div class="spinner"></div>Loading players…</div>
+        <div id="players-list" style="display:none;">
+          <div style="margin:1.25rem 0 0.75rem;display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:13px;color:var(--ink-light);">Rate each player 1.0 – 5.0. Leave blank if unknown.</div>
+            <button class="btn btn-clay btn-sm" onclick="saveAllRatings()">Save all ratings</button>
+          </div>
+          <div id="players-grid"></div>
+          <div style="margin-top:1rem;text-align:right;">
+            <button class="btn btn-clay" onclick="saveAllRatings()">Save all ratings</button>
+          </div>
+        </div>
       </div>
 
       <div id="admin-tab-dispatch">
@@ -2069,6 +2134,8 @@ function unlockAdmin(name) {
   document.getElementById('admin-auth-panel').style.display = 'none';
   document.getElementById('admin-content').style.display = 'block';
   document.getElementById('admin-logged-in-as').textContent = name;
+  document.getElementById('admin-tab-players').style.display = 'none';
+  document.getElementById('admin-tab-dispatch').style.display = '';
   loadDispatch();
 }
 
@@ -2094,7 +2161,77 @@ async function resendAdminCode() {
 function showAdminTab(tab, btn) {
   document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  document.getElementById('admin-tab-dispatch').style.display = tab === 'dispatch' ? '' : 'none';
+  document.getElementById('admin-tab-players').style.display  = tab === 'players'  ? '' : 'none';
   if (tab === 'dispatch') loadDispatch();
+  if (tab === 'players')  loadCoordinatorRatings();
+}
+
+// ══════════════════════════════════════════════════
+// PLAYER RATINGS
+// ══════════════════════════════════════════════════
+let playerRatings = []; // current loaded player list with coordinator's ratings
+
+async function loadCoordinatorRatings() {
+  const email = sessionStorage.getItem('adminEmail');
+  if (!email) return;
+  document.getElementById('players-loading').classList.remove('hidden');
+  document.getElementById('players-list').style.display = 'none';
+  document.getElementById('players-alert').classList.add('hidden');
+
+  try {
+    const result = await apiPost({ action: 'getCoordinatorRatings', email });
+    playerRatings = result.players || [];
+    document.getElementById('players-loading').classList.add('hidden');
+
+    if (!playerRatings.length) {
+      document.getElementById('players-grid').innerHTML =
+        '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
+      document.getElementById('players-list').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('players-grid').innerHTML = playerRatings.map((p, i) => `
+      <div class="player-rating-row">
+        <div class="player-rating-name">${p.name}<span class="player-rating-email">${p.email}</span></div>
+        <input type="number" class="player-rating-input" id="pr-${i}"
+          min="1.0" max="5.0" step="0.5"
+          value="${p.myRating !== '' ? p.myRating : ''}"
+          placeholder="—" />
+      </div>
+    `).join('');
+
+    document.getElementById('players-list').style.display = 'block';
+  } catch(e) {
+    document.getElementById('players-loading').classList.add('hidden');
+    showAlert('players-alert', 'error', 'Failed to load players: ' + e.message);
+  }
+}
+
+async function saveAllRatings() {
+  const email = sessionStorage.getItem('adminEmail');
+  if (!email) return;
+
+  const ratings = playerRatings.map((p, i) => {
+    const input = document.getElementById(`pr-${i}`);
+    const val   = input ? input.value.trim() : '';
+    return { playerEmail: p.email, rating: val !== '' ? parseFloat(val) : '' };
+  });
+
+  // Validate range
+  const invalid = ratings.filter(r => r.rating !== '' && (r.rating < 1.0 || r.rating > 5.0));
+  if (invalid.length) {
+    showAlert('players-alert', 'error', 'All ratings must be between 1.0 and 5.0.');
+    return;
+  }
+
+  try {
+    await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
+    showAlert('players-alert', 'success', 'Ratings saved successfully.');
+    await loadCoordinatorRatings();
+  } catch(e) {
+    showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
+  }
 }
 
 // ══════════════════════════════════════════════════
