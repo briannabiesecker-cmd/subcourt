@@ -970,7 +970,7 @@
       <span class="section-sub">Submit your availability</span>
     </div>
 
-    <div class="alert alert-info">Select every date and time you are available. For TBD or pre-scheduled requests, you must be available at all 4 times.</div>
+    <div class="alert alert-info">Select every date and time slot you're free to play. The more times you select, the more matches you can be considered for.</div>
 
     <div class="card mt8">
       <div id="vol-alert" class="hidden"></div>
@@ -1439,7 +1439,7 @@ function updateVolSummary() {
   if (!entries.length) { el.classList.add('hidden'); return; }
   const allFour = entries.filter(([,v]) => TIMES.every(t => v.includes(t)));
   el.classList.remove('hidden');
-  el.textContent = `${entries.length} date(s) selected · ${allFour.length} eligible for TBD requests (all 4 times)`;
+  el.textContent = `${entries.length} date(s) selected · ${allFour.length} with all time slots open`;
 }
 
 async function submitVolunteer() {
