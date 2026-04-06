@@ -831,7 +831,7 @@
       </div>
 
       <div class="mt12 flex gap8">
-        <button class="btn btn-primary" onclick="submitRequest()">Submit request</button>
+        <button class="btn btn-primary" id="req-submit-btn" onclick="submitRequest()">Submit request</button>
         <button class="btn btn-secondary" onclick="clearRequestForm()">Clear</button>
       </div>
     </div>
@@ -909,7 +909,7 @@
       <div id="vol-summary" class="alert alert-info hidden" style="margin-top:12px;"></div>
 
       <div class="flex gap8 mt12">
-        <button class="btn btn-clay" onclick="submitVolunteer()">Submit availability</button>
+        <button class="btn btn-clay" id="vol-submit-btn" onclick="submitVolunteer()">Submit availability</button>
         <button class="btn btn-secondary" onclick="clearVolForm()">Clear</button>
       </div>
     </div>
@@ -1161,6 +1161,10 @@ async function submitRequest() {
     return;
   }
 
+  const btn = document.getElementById('req-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
   try {
     const existing = await getRequests();
     const duplicate = existing.find(r =>
@@ -1177,10 +1181,14 @@ async function submitRequest() {
 
     await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     clearRequestForm();
     clearCache();
   } catch(e) {
     showAlert('req-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit request';
   }
 }
 
@@ -1331,6 +1339,10 @@ async function submitVolunteer() {
     return;
   }
 
+  const btn = document.getElementById('vol-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
   try {
     const existing = await getVolunteers();
     const duplicates = entries
@@ -1355,11 +1367,15 @@ async function submitVolunteer() {
       entries: entries.map(([date, times]) => ({ date, times: times.map(t => t.replace(':', '_')) }))
     });
     showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     buildCalendar();
     clearCache();
     await loadMySubmissions(email);
   } catch(e) {
     showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit availability';
   }
 }
 
