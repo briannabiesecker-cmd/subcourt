@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sub Manager — Tennis League</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --court: #2D5016;
+    --court-light: #3a6b1e;
+    --clay: #C4713A;
+    --clay-light: #e8956a;
+    --chalk: #F5F2EB;
+    --chalk-dark: #E8E3D8;
+    --ink: #1A1A18;
+    --ink-mid: #4A4A46;
+    --ink-light: #8A8A84;
+    --line: #D4CFC4;
+    --success: #2D6A2D;
+    --success-bg: #EAF3DE;
+    --danger: #A32D2D;
+    --danger-bg: #FCEBEB;
+    --warn-bg: #FAEEDA;
+    --warn: #854F0B;
+    --radius: 4px;
+    --radius-lg: 8px;
+  }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--chalk);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--court);
+    color: white;
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 3px solid var(--clay);
+  }
+
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    color: white;
+  }
+
+  .logo span { color: var(--clay-light); }
+
+  nav { display: flex; gap: 4px; }
+
+  nav button {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.75);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    transition: all 0.15s;
+  }
+
+  nav button:hover { background: rgba(255,255,255,0.1); color: white; }
+  nav button.active { background: var(--clay); border-color: var(--clay); color: white; }
+
+
+
+  /* ── Main Layout ── */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ── Section heading ── */
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 300;
+    color: var(--ink);
+  }
+
+  .section-sub {
+    font-size: 11px;
+    color: var(--ink-light);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 12px;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .card-title {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .card-meta {
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-top: 2px;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+
+  .badge-open { background: var(--warn-bg); color: var(--warn); }
+  .badge-filled { background: var(--success-bg); color: var(--success); }
+  .badge-cancelled { background: #F1EFE8; color: #5F5E5A; }
+  .badge-tbd { background: #E6F1FB; color: #185FA5; }
+  .badge-pending { background: var(--warn-bg); color: var(--warn); }
+  .badge-matched { background: var(--success-bg); color: var(--success); }
+
+  /* ── Forms ── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .form-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .form-grid.full { grid-template-columns: 1fr; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field.span2 { grid-column: span 2; }
+
+  label {
+    font-size: 11px;
+    color: var(--ink-mid);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="date"],
+  select,
+  textarea {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--court);
+  }
+
+  .time-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .time-chip {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: white;
+    color: var(--ink-mid);
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .time-chip:hover { border-color: var(--court); color: var(--court); }
+  .time-chip.selected { background: var(--court); border-color: var(--court); color: white; }
+  .time-chip.disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Buttons ── */
+  .btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 9px 20px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--court);
+    color: white;
+    border-color: var(--court);
+  }
+
+  .btn-primary:hover { background: var(--court-light); }
+
+  .btn-secondary {
+    background: white;
+    color: var(--ink);
+    border-color: var(--line);
+  }
+
+  .btn-secondary:hover { border-color: var(--ink-mid); }
+
+  .btn-clay {
+    background: var(--clay);
+    color: white;
+    border-color: var(--clay);
+  }
+
+  .btn-clay:hover { background: var(--clay-light); }
+
+  .btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  .btn-danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-color: #F7C1C1;
+  }
+
+  /* ── Alert ── */
+  .alert {
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .alert-success { background: var(--success-bg); color: var(--success); border: 1px solid #C0DD97; }
+  .alert-error { background: var(--danger-bg); color: var(--danger); border: 1px solid #F7C1C1; }
+  .alert-info { background: #E6F1FB; color: #185FA5; border: 1px solid #B5D4F4; }
+
+  /* ── Match Board ── */
+  .board-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    color: var(--ink-mid);
+    transition: all 0.15s;
+  }
+
+  .filter-btn.active {
+    background: var(--ink);
+    color: white;
+    border-color: var(--ink);
+  }
+
+  /* ── Sub Request Card ── */
+  .request-card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 10px;
+    border-left: 3px solid var(--clay);
+  }
+
+  .request-card.filled { border-left-color: var(--court); }
+  .request-card.cancelled { border-left-color: var(--ink-light); opacity: 0.7; }
+
+  .request-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .request-info { flex: 1; }
+  .request-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .match-detail {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .match-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .detail-label { font-size: 10px; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.4px; }
+  .detail-value { font-size: 13px; color: var(--ink); font-weight: 500; }
+
+  /* ── Volunteer card ── */
+  .vol-card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    margin-bottom: 8px;
+    border-left: 3px solid #9FE1CB;
+  }
+
+  .vol-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .times-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .time-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--chalk-dark);
+    border-radius: 3px;
+    color: var(--ink-mid);
+  }
+
+  .time-tag.all { background: #E1F5EE; color: #0F6E56; }
+
+  /* ── Matching panel ── */
+  .match-panel {
+    background: #F5F2EB;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-top: 10px;
+  }
+
+  .match-panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ink-light);
+    margin-bottom: 10px;
+  }
+
+  .candidate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+  }
+
+  .candidate-info { display: flex; flex-direction: column; gap: 2px; }
+  .candidate-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .candidate-meta { font-size: 11px; color: var(--ink-light); }
+  .candidate-rank { font-family: 'Fraunces', serif; font-size: 18px; color: var(--clay); margin-right: 10px; }
+
+  .rank-row { display: flex; align-items: center; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--ink-light);
+  }
+
+  .empty-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+
+  .stat-card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--court);
+    display: block;
+  }
+
+  .stat-label { font-size: 11px; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.4px; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+
+  /* ── Tabs inside view ── */
+  .inner-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+  }
+
+  .inner-tab {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    padding: 8px 14px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--ink-light);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+
+  .inner-tab.active { color: var(--court); border-bottom-color: var(--court); }
+
+  /* ── Loading ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-light);
+    font-size: 12px;
+    padding: 1rem 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--line);
+    border-top-color: var(--court);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    header { padding: 0 1rem; }
+    main { padding: 1rem; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid .span2 { grid-column: span 1; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    nav button { padding: 5px 10px; font-size: 11px; }
+    .time-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── Utility ── */
+  .flex { display: flex; }
+  .gap8 { gap: 8px; }
+  .mt12 { margin-top: 12px; }
+  .mt8 { margin-top: 8px; }
+  .text-right { text-align: right; }
+  .hidden { display: none !important; }
+
+  /* ── Typeahead ── */
+  .typeahead-wrap { position: relative; }
+  .typeahead-input {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    color: var(--ink);
+    background: white;
+    width: 100%;
+    transition: border-color 0.15s;
+  }
+  .typeahead-input:focus { outline: none; border-color: var(--court); }
+  .typeahead-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    z-index: 50;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .typeahead-item {
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--ink);
+    border-bottom: 1px solid var(--chalk-dark);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .typeahead-item:last-child { border-bottom: none; }
+  .typeahead-item:hover, .typeahead-item.highlighted { background: var(--chalk); }
+  .typeahead-email { font-size: 11px; color: var(--ink-light); }
+  .selected-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    background: var(--success-bg);
+    border: 1px solid #C0DD97;
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--success);
+    font-family: 'DM Mono', monospace;
+  }
+  .clear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--success);
+    font-size: 16px;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.6;
+    font-family: 'DM Mono', monospace;
+  }
+  .clear-btn:hover { opacity: 1; }
+  input:disabled {
+    background: var(--chalk-dark) !important;
+    color: var(--ink-light) !important;
+    cursor: not-allowed;
+  }
+
+  /* ── Date list calendar ── */
+  .date-list { display: flex; flex-direction: column; gap: 4px; }
+  .month-header {
+    font-size: 10px;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 10px 0 4px;
+    font-weight: 500;
+  }
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .date-row.any-selected { background: var(--success-bg); border-color: #C0DD97; }
+  .date-row-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    min-width: 100px;
+  }
+  .date-row.any-selected .date-row-label { color: var(--success); }
+  .select-all-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-right: 10px;
+    border-right: 1px solid var(--line);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .select-all-wrap input[type="checkbox"] { width: 13px; height: 13px; accent-color: var(--court); cursor: pointer; }
+  .select-all-label { font-size: 11px; color: var(--ink-light); white-space: nowrap; }
+  .time-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .time-chip-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 4px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: white;
+    color: var(--ink-mid);
+    cursor: pointer;
+    transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .time-chip-btn:hover { border-color: var(--court); color: var(--court); }
+  .time-chip-btn.on { background: var(--court); border-color: var(--court); color: white; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Sub<span>Court</span></div>
+  <nav>
+    <button class="active" onclick="showView('board', this)">Board</button>
+    <button onclick="showView('request', this)">Request Sub</button>
+    <button onclick="showView('volunteer', this)">Volunteer</button>
+    <button onclick="showView('dispatch', this)">Dispatch</button>
+  </nav>
+</header>
+
+
+
+<main>
+
+  <!-- ── BOARD VIEW ── -->
+  <div id="view-board" class="view active">
+    <div class="section-header">
+      <div class="section-title">Open Requests</div>
+      <span class="section-sub">Live board</span>
+    </div>
+
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><span class="stat-num" id="stat-open">—</span><span class="stat-label">Open</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-filled">—</span><span class="stat-label">Filled</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-vols">—</span><span class="stat-label">Volunteers</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-urgent">—</span><span class="stat-label">Urgent (&lt;48h)</span></div>
+    </div>
+
+    <div class="board-filters">
+      <button class="filter-btn active" onclick="filterBoard('all', this)">All</button>
+      <button class="filter-btn" onclick="filterBoard('open', this)">Open</button>
+      <button class="filter-btn" onclick="filterBoard('filled', this)">Filled</button>
+      <button class="filter-btn" onclick="filterBoard('urgent', this)">Urgent</button>
+    </div>
+
+    <div id="board-loading" class="loading"><div class="spinner"></div>Loading requests…</div>
+    <div id="board-list"></div>
+    <div id="board-empty" class="empty hidden">
+      <span class="empty-icon">🎾</span>
+      <div>No requests match this filter.</div>
+    </div>
+  </div>
+
+  <!-- ── REQUEST VIEW ── -->
+  <div id="view-request" class="view">
+    <div class="section-header">
+      <div class="section-title">Request a Substitute</div>
+      <span class="section-sub">Submit when you can't play</span>
+    </div>
+
+    <div class="card">
+      <div id="req-alert" class="hidden"></div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Your name</label>
+          <div class="typeahead-wrap">
+            <div id="req-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="req-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('req')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="req-input-state">
+              <input class="typeahead-input" id="req-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('req', this.value)"
+                onblur="onTypeaheadBlur('req')"
+                onfocus="onTypeaheadFocus('req')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="req-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="req-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+        <div class="field">
+          <label>Match date</label>
+          <input type="date" id="req-date" />
+        </div>
+        <div class="field">
+          <label>Match time</label>
+          <select id="req-time">
+            <option value="">Unknown / TBD</option>
+            <option value="08:00">8:00 AM</option>
+            <option value="09:30">9:30 AM</option>
+            <option value="11:00">11:00 AM</option>
+            <option value="12:30">12:30 PM</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt12 flex gap8">
+        <button class="btn btn-primary" onclick="submitRequest()">Submit request</button>
+        <button class="btn btn-secondary" onclick="clearRequestForm()">Clear</button>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="section-header">
+      <div class="section-title" style="font-size:17px;">Your Requests</div>
+    </div>
+
+    <div class="form-grid" style="max-width:360px; margin-bottom:1rem;">
+      <div class="field span2">
+        <label>Look up by email</label>
+        <div class="flex gap8">
+          <input type="email" id="lookup-email" placeholder="email@example.com" style="flex:1;" />
+          <button class="btn btn-secondary btn-sm" onclick="lookupMyRequests()">Look up</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="my-requests-list"></div>
+  </div>
+
+  <!-- ── VOLUNTEER VIEW ── -->
+  <div id="view-volunteer" class="view">
+    <div class="section-header">
+      <div class="section-title">Volunteer to Sub</div>
+      <span class="section-sub">Submit your availability</span>
+    </div>
+
+    <div class="alert alert-info">Select every date and time you are available. For TBD or pre-scheduled requests, you must be available at all 4 times.</div>
+
+    <div class="card mt8">
+      <div id="vol-alert" class="hidden"></div>
+
+      <div class="form-grid" style="margin-bottom:1.25rem;">
+        <div class="field">
+          <label>Your name</label>
+          <div class="typeahead-wrap">
+            <div id="vol-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="vol-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('vol')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="vol-input-state">
+              <input class="typeahead-input" id="vol-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('vol', this.value)"
+                onblur="onTypeaheadBlur('vol')"
+                onfocus="onTypeaheadFocus('vol')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="vol-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+      </div>
+
+      <label style="display:block; margin-bottom:8px; font-size:11px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:500;">Select available dates &amp; times (MWF only)</label>
+      <div id="vol-calendar"></div>
+
+      <div id="vol-summary" class="alert alert-info hidden" style="margin-top:12px;"></div>
+
+      <div class="flex gap8 mt12">
+        <button class="btn btn-clay" onclick="submitVolunteer()">Submit availability</button>
+        <button class="btn btn-secondary" onclick="clearVolForm()">Clear</button>
+      </div>
+    </div>
+
+    <div id="my-vol-section" style="display:none;">
+      <hr class="divider" />
+      <div class="section-header">
+        <div class="section-title" style="font-size:17px;">Your Submissions</div>
+      </div>
+      <div id="my-vol-list"></div>
+    </div>
+  </div>
+
+  <!-- ── DISPATCH VIEW ── -->
+  <div id="view-dispatch" class="view">
+    <div class="section-header">
+      <div class="section-title">Dispatch</div>
+      <span class="section-sub">Run matching engine</span>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1rem;">
+      Select an open request below to run the matching engine. Candidates are ranked by skill proximity, then submission time. Confirm to mark the request as filled.
+    </div>
+
+    <div id="dispatch-loading" class="loading"><div class="spinner"></div>Loading…</div>
+    <div id="dispatch-list"></div>
+  </div>
+
+</main>
+
+<script>
+const TIMES = ['08:00','09:30','11:00','12:30'];
+const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:30':'12:30 PM'};
+
+// ══════════════════════════════════════════════════
+// CONFIG — paste your Apps Script URL here after deploying
+// ══════════════════════════════════════════════════
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxr-kM_2if-fdkXFu_le83WYsX3MtEVQAh1tR7I9zAO2TKHBtjgVYe_AHIlvpQicqGHsg/exec';
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+function showView(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'board') loadBoard();
+  if (name === 'dispatch') loadDispatch();
+  if (name === 'volunteer') buildCalendar();
+}
+
+// ══════════════════════════════════════════════════
+// APPS SCRIPT API HELPERS
+// ══════════════════════════════════════════════════
+async function apiGet(action) {
+  return apiGetWithParams({ action });
+}
+
+async function apiPost(payload) {
+  // Convert to GET/JSONP to avoid CORS issues with Apps Script
+  const params = { ...payload };
+  // Serialize any object values as JSON strings
+  Object.keys(params).forEach(k => {
+    if (typeof params[k] === 'object') params[k] = JSON.stringify(params[k]);
+  });
+  return apiGetWithParams(params);
+}
+
+async function apiGetWithParams(params) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => {
+      delete window[callbackName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('Request timed out'));
+    }, 15000);
+
+    window[callbackName] = function(data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      if (data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    const qs = Object.entries({ ...params, callback: callbackName })
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+
+    script.src = `${SCRIPT_URL}?${qs}`;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      reject(new Error('Script load failed'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+// ══════════════════════════════════════════════════
+// TYPEAHEAD
+// ══════════════════════════════════════════════════
+let playerList = [];
+const taBlurTimers = {};
+
+async function loadPlayerList() {
+  if (playerList.length) return playerList;
+  try {
+    const data = await apiGet('getPlayers');
+    playerList = data;
+  } catch(e) { playerList = []; }
+  return playerList;
+}
+
+function onTypeaheadInput(prefix, val) {
+  showTypeaheadDropdown(prefix, val);
+}
+
+function onTypeaheadFocus(prefix) {
+  clearTimeout(taBlurTimers[prefix]);
+  const val = document.getElementById(prefix + '-name-input').value;
+  showTypeaheadDropdown(prefix, val);
+}
+
+function onTypeaheadBlur(prefix) {
+  taBlurTimers[prefix] = setTimeout(() => {
+    document.getElementById(prefix + '-dropdown').style.display = 'none';
+  }, 150);
+}
+
+async function showTypeaheadDropdown(prefix, val) {
+  const dd = document.getElementById(prefix + '-dropdown');
+  const players = await loadPlayerList();
+  const matches = val.trim()
+    ? players.filter(p => p.name.toLowerCase().includes(val.toLowerCase()))
+    : players;
+
+  if (!matches.length) {
+    dd.innerHTML = '<div class="typeahead-item" style="color:var(--ink-light);">No players found</div>';
+    dd.style.display = 'block';
+    return;
+  }
+
+  dd.innerHTML = matches.map((p, i) => `
+    <div class="typeahead-item ${i === 0 && val ? 'highlighted' : ''}"
+      onmousedown="selectTypeaheadPlayer('${prefix}', '${p.name}', '${p.email}')">
+      <span>${val ? highlightMatch(p.name, val) : p.name}</span>
+      <span class="typeahead-email">${p.email}</span>
+    </div>
+  `).join('');
+  dd.style.display = 'block';
+}
+
+function highlightMatch(name, query) {
+  const idx = name.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return name;
+  return name.slice(0, idx) +
+    '<strong>' + name.slice(idx, idx + query.length) + '</strong>' +
+    name.slice(idx + query.length);
+}
+
+function selectTypeaheadPlayer(prefix, name, email) {
+  clearTimeout(taBlurTimers[prefix]);
+  document.getElementById(prefix + '-input-state').style.display = 'none';
+  document.getElementById(prefix + '-selected-state').style.display = 'block';
+  document.getElementById(prefix + '-selected-name').textContent = name;
+  document.getElementById(prefix + '-email').value = email;
+  document.getElementById(prefix + '-dropdown').style.display = 'none';
+  if (prefix === 'vol') loadMySubmissions(email);
+}
+
+function clearTypeahead(prefix) {
+  document.getElementById(prefix + '-input-state').style.display = 'block';
+  document.getElementById(prefix + '-selected-state').style.display = 'none';
+  document.getElementById(prefix + '-name-input').value = '';
+  document.getElementById(prefix + '-email').value = '';
+  document.getElementById(prefix + '-dropdown').style.display = 'none';
+  document.getElementById(prefix + '-name-input').focus();
+  if (prefix === 'vol') {
+    document.getElementById('my-vol-section').style.display = 'none';
+    document.getElementById('my-vol-list').innerHTML = '';
+    volEditSelections = {};
+  }
+}
+
+function getTypeaheadValue(prefix) {
+  const name = document.getElementById(prefix + '-selected-name').textContent.trim();
+  const email = document.getElementById(prefix + '-email').value.trim();
+  return { name, email };
+}
+let requestCache   = null;
+let volunteerCache = null;
+let configCache    = null;
+
+async function getRequests() {
+  if (requestCache) return requestCache;
+  requestCache = await apiGet('getRequests');
+  return requestCache;
+}
+
+async function getVolunteers() {
+  if (volunteerCache) return volunteerCache;
+  volunteerCache = await apiGet('getVolunteers');
+  return volunteerCache;
+}
+
+async function getAppConfig() {
+  if (configCache) return configCache;
+  try {
+    configCache = await apiGet('getConfig');
+  } catch(e) {
+    configCache = { calendarLookaheadDays: 30 };
+  }
+  return configCache;
+}
+
+function clearCache() {
+  requestCache   = null;
+  volunteerCache = null;
+  // Note: configCache intentionally not cleared — config changes require page refresh
+}
+
+// ══════════════════════════════════════════════════
+// SUB REQUESTS
+// ══════════════════════════════════════════════════
+async function submitRequest() {
+  const { name, email } = getTypeaheadValue('req');
+  const matchDate = document.getElementById('req-date').value;
+  const matchTime = document.getElementById('req-time').value;
+
+  if (!name || !email) {
+    showAlert('req-alert', 'error', 'Please select your name from the dropdown.');
+    return;
+  }
+
+  if (!matchDate) {
+    showAlert('req-alert', 'error', 'Please fill in the match date.');
+    return;
+  }
+
+  const dow = new Date(matchDate + 'T12:00:00').getDay();
+  if (![1, 3, 5].includes(dow)) {
+    showAlert('req-alert', 'error', 'Match dates must be Monday, Wednesday, or Friday.');
+    return;
+  }
+
+  try {
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime });
+    showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
+    clearRequestForm();
+    clearCache();
+  } catch(e) {
+    showAlert('req-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  }
+}
+
+function clearRequestForm() {
+  clearTypeahead('req');
+  document.getElementById('req-date').value = '';
+  document.getElementById('req-time').value = '';
+}
+
+async function lookupMyRequests() {
+  const email = document.getElementById('lookup-email').value.trim().toLowerCase();
+  if (!email) return;
+  const requests = await getRequests();
+  const mine = requests.filter(r => r.email.toLowerCase() === email);
+  const el = document.getElementById('my-requests-list');
+  if (!mine.length) {
+    el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No requests found for that email.</div>';
+    return;
+  }
+  el.innerHTML = mine.map(r => requestCardHTML(r, false)).join('');
+}
+
+// ══════════════════════════════════════════════════
+// VOLUNTEERS
+// ══════════════════════════════════════════════════
+let volSelections = {};
+
+async function buildCalendar() {
+  try {
+    const cal = document.getElementById('vol-calendar');
+    cal.innerHTML = '';
+    volSelections = {};
+
+    const config = await getAppConfig();
+    const lookahead = config.calendarLookaheadDays || 30;
+
+    const dates = [];
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() + lookahead);
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    while (d <= cutoff) {
+      if ([1,3,5].includes(d.getDay())) dates.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+
+    const list = document.createElement('div');
+    list.className = 'date-list';
+    let lastMonth = '';
+
+    dates.forEach(date => {
+      const k = dateKey(date);
+      volSelections[k] = [];
+
+      const month = date.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      if (month !== lastMonth) {
+        const mh = document.createElement('div');
+        mh.className = 'month-header';
+        mh.textContent = month;
+        list.appendChild(mh);
+        lastMonth = month;
+      }
+
+      const label = date.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      const row = document.createElement('div');
+      row.className = 'date-row';
+      row.id = 'daterow-' + k;
+      row.innerHTML = `
+        <div class="date-row-label">${label}</div>
+        <div class="select-all-wrap" onclick="toggleAllTimes('${k}')">
+          <input type="checkbox" id="allchk-${k}" onclick="event.stopPropagation(); toggleAllTimes('${k}')" />
+          <span class="select-all-label">All times</span>
+        </div>
+        <div class="time-chips">
+          ${TIMES.map(t => `
+            <button class="time-chip-btn" id="chip-${k}-${t}" onclick="toggleTime('${k}','${t}')">${TIME_LABELS[t]}</button>
+          `).join('')}
+        </div>
+      `;
+      list.appendChild(row);
+    });
+
+    cal.appendChild(list);
+  } catch(e) {
+    const cal = document.getElementById('vol-calendar');
+    if (cal) cal.innerHTML = `<div class="alert alert-error">Calendar error: ${e.message}</div>`;
+    console.error('buildCalendar error:', e);
+  }
+}
+
+function toggleAllTimes(k) {
+  const allOn = TIMES.every(t => volSelections[k].includes(t));
+  volSelections[k] = allOn ? [] : [...TIMES];
+  refreshDateRow(k);
+  updateVolSummary();
+}
+
+function toggleTime(k, time) {
+  const arr = volSelections[k];
+  const idx = arr.indexOf(time);
+  if (idx > -1) arr.splice(idx, 1);
+  else arr.push(time);
+  refreshDateRow(k);
+  updateVolSummary();
+}
+
+function refreshDateRow(k) {
+  const arr = volSelections[k];
+  const row = document.getElementById('daterow-' + k);
+  const allChk = document.getElementById('allchk-' + k);
+  if (!row) return;
+  const anyOn = arr.length > 0;
+  const allOn = TIMES.every(t => arr.includes(t));
+  row.className = 'date-row' + (anyOn ? ' any-selected' : '');
+  allChk.checked = allOn;
+  allChk.indeterminate = anyOn && !allOn;
+  TIMES.forEach(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    if (chip) chip.className = 'time-chip-btn' + (arr.includes(t) ? ' on' : '');
+  });
+}
+
+function updateVolSummary() {
+  const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
+  const el = document.getElementById('vol-summary');
+  if (!entries.length) { el.classList.add('hidden'); return; }
+  const allFour = entries.filter(([,v]) => TIMES.every(t => v.includes(t)));
+  el.classList.remove('hidden');
+  el.textContent = `${entries.length} date(s) selected · ${allFour.length} eligible for TBD requests (all 4 times)`;
+}
+
+async function submitVolunteer() {
+  const { name, email } = getTypeaheadValue('vol');
+
+  if (!name || !email) {
+    showAlert('vol-alert', 'error', 'Please select your name from the dropdown.');
+    return;
+  }
+
+  const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
+  if (!entries.length) {
+    showAlert('vol-alert', 'error', 'Please select at least one date and time slot.');
+    return;
+  }
+
+  try {
+    await apiPost({
+      action: 'submitVolunteer',
+      name,
+      email,
+      entries: entries.map(([date, times]) => ({ date, times: times.map(t => t.replace(':', '_')) }))
+    });
+    showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
+    buildCalendar();
+    clearCache();
+    await loadMySubmissions(email);
+  } catch(e) {
+    showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  }
+}
+
+function clearVolForm() {
+  clearTypeahead('vol');
+  document.getElementById('vol-summary').classList.add('hidden');
+  buildCalendar();
+}
+
+async function loadMySubmissions(email) {
+  const el      = document.getElementById('my-vol-list');
+  const section = document.getElementById('my-vol-section');
+  volEditSelections = {};
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  section.style.display = 'block';
+
+  try {
+    volunteerCache = null;
+    const vols = await getVolunteers();
+    const mine = vols.filter(v => v.email.toLowerCase() === email.toLowerCase() && v.status !== 'cancelled');
+    if (!mine.length) {
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found.</div>';
+      return;
+    }
+    mine.forEach(v => { volEditSelections[v.rowIndex] = [...v.times]; });
+
+    el.innerHTML = mine.map(v => {
+      const isPending = v.status === 'pending';
+      const timesText = v.times.length === 4
+        ? 'All 4 times ✓'
+        : v.times.map(t => TIME_LABELS[t] || t).join(' · ');
+
+      if (isPending) {
+        return `
+          <div class="vol-card" id="vol-card-${v.rowIndex}">
+            <div class="vol-header">
+              <div>
+                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+              </div>
+              <span class="badge badge-pending">pending</span>
+            </div>
+            <div class="time-chips" style="margin-top:10px;">
+              ${TIMES.map(t => `
+                <button class="time-chip-btn${v.times.includes(t) ? ' on' : ''}"
+                  id="edit-chip-${v.rowIndex}-${t}"
+                  onclick="toggleEditChip(${v.rowIndex}, '${t}')">${TIME_LABELS[t]}</button>
+              `).join('')}
+            </div>
+            <div class="flex gap8 mt12">
+              <button class="btn btn-clay btn-sm" onclick="saveVolunteerEdit(${v.rowIndex})">Save changes</button>
+              <button class="btn btn-secondary btn-sm" onclick="removeVolunteer(${v.rowIndex})">Remove</button>
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="vol-card">
+            <div class="vol-header">
+              <div>
+                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+              </div>
+              <span class="badge badge-matched">${v.status}</span>
+            </div>
+            <div class="times-list" style="margin-top:8px;">
+              ${v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
+            </div>
+            <div style="font-size:11px; color:var(--ink-light); margin-top:6px;">Already matched — cannot edit</div>
+          </div>`;
+      }
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function toggleEditChip(rowIndex, time) {
+  const arr = volEditSelections[rowIndex];
+  const idx = arr.indexOf(time);
+  if (idx > -1) arr.splice(idx, 1);
+  else arr.push(time);
+  const btn = document.getElementById(`edit-chip-${rowIndex}-${time}`);
+  if (btn) btn.classList.toggle('on', arr.includes(time));
+}
+
+async function saveVolunteerEdit(rowIndex) {
+  const times = volEditSelections[rowIndex] || [];
+  if (!times.length) { alert('Select at least one time before saving.'); return; }
+  try {
+    await apiPost({ action: 'updateVolunteer', rowIndex, times: JSON.stringify(times) });
+    const { email } = getTypeaheadValue('vol');
+    await loadMySubmissions(email);
+  } catch(e) {
+    alert('Failed to save: ' + e.message);
+  }
+}
+
+async function removeVolunteer(rowIndex) {
+  if (!confirm('Remove this submission?')) return;
+  try {
+    await apiPost({ action: 'deleteVolunteer', rowIndex });
+    const { email } = getTypeaheadValue('vol');
+    await loadMySubmissions(email);
+  } catch(e) {
+    alert('Failed to remove: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// BOARD
+// ══════════════════════════════════════════════════
+let allRequests = [];
+let currentFilter = 'all';
+
+async function loadBoard() {
+  document.getElementById('board-loading').classList.remove('hidden');
+  document.getElementById('board-list').innerHTML = '';
+  document.getElementById('board-empty').classList.add('hidden');
+
+  try {
+    allRequests = await getRequests();
+  } catch(e) {
+    document.getElementById('board-loading').classList.add('hidden');
+    document.getElementById('board-list').innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+    return;
+  }
+
+  document.getElementById('board-loading').classList.add('hidden');
+  updateStats();
+  renderBoard(currentFilter);
+}
+
+function updateStats() {
+  const open   = allRequests.filter(r => r.status === 'open').length;
+  const filled = allRequests.filter(r => r.status === 'filled').length;
+  const urgent = allRequests.filter(r => r.status === 'open' && isUrgent(r)).length;
+
+  getVolunteers().then(vols => {
+    document.getElementById('stat-vols').textContent = new Set(vols.map(v => v.email)).size;
+  });
+
+  document.getElementById('stat-open').textContent   = open;
+  document.getElementById('stat-filled').textContent = filled;
+  document.getElementById('stat-urgent').textContent = urgent;
+}
+
+function filterBoard(filter, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = filter;
+  renderBoard(filter);
+}
+
+function renderBoard(filter) {
+  let list = allRequests;
+  if (filter === 'open')   list = list.filter(r => r.status === 'open');
+  if (filter === 'filled') list = list.filter(r => r.status === 'filled');
+  if (filter === 'urgent') list = list.filter(r => r.status === 'open' && isUrgent(r));
+
+  // Sort: urgent first, then by date
+  list = list.sort((a,b) => {
+    if (isUrgent(a) && !isUrgent(b)) return -1;
+    if (!isUrgent(a) && isUrgent(b)) return 1;
+    return a.matchDate.localeCompare(b.matchDate);
+  });
+
+  const el = document.getElementById('board-list');
+  if (!list.length) {
+    el.innerHTML = '';
+    document.getElementById('board-empty').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('board-empty').classList.add('hidden');
+  el.innerHTML = list.map(r => requestCardHTML(r, false)).join('');
+}
+
+function requestCardHTML(r, showMatch) {
+  const urgent = isUrgent(r) && r.status === 'open';
+  const statusBadge = urgent
+    ? `<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>`
+    : `<span class="badge badge-${r.status}">${r.status}</span>`;
+
+  const timeDisplay = r.matchTime
+    ? `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value">${formatTime(r.matchTime)}</div></div>`
+    : `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value"><span class="badge badge-tbd">TBD</span></div></div>`;
+
+  return `
+    <div class="request-card ${r.status}">
+      <div class="request-row">
+        <div class="request-info">
+          <div class="card-header" style="margin-bottom:6px;">
+            <div>
+              <div class="card-title">${r.name}</div>
+              <div class="card-meta">${r.email} · submitted ${formatTS(r.timestamp)}</div>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="match-detail">
+            <div class="match-detail-item">
+              <div class="detail-label">Date</div>
+              <div class="detail-value">${formatDate(r.matchDate)}</div>
+            </div>
+            ${timeDisplay}
+            ${r.assignedSub ? `<div class="match-detail-item"><div class="detail-label">Sub assigned</div><div class="detail-value" style="color:var(--success);">${r.assignedSub}</div></div>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════
+// DISPATCH (matching engine)
+// ══════════════════════════════════════════════════
+async function loadDispatch() {
+  document.getElementById('dispatch-loading').classList.remove('hidden');
+  document.getElementById('dispatch-list').innerHTML = '';
+
+  let requests;
+  try {
+    requests = await getRequests();
+  } catch(e) {
+    document.getElementById('dispatch-loading').classList.add('hidden');
+    document.getElementById('dispatch-list').innerHTML = `<div class="alert alert-error">Failed to load requests: ${e.message}</div>`;
+    return;
+  }
+
+  const open = requests.filter(r => r.status === 'open');
+  document.getElementById('dispatch-loading').classList.add('hidden');
+
+  if (!open.length) {
+    document.getElementById('dispatch-list').innerHTML = '<div class="empty"><span class="empty-icon">✓</span>No open requests. All clear!</div>';
+    return;
+  }
+
+  const el = document.getElementById('dispatch-list');
+  el.innerHTML = open.map(r => `
+    <div class="request-card" id="dr-${r.id}">
+      <div class="request-row">
+        <div class="request-info">
+          <div class="card-header" style="margin-bottom:6px;">
+            <div>
+              <div class="card-title">${r.name}</div>
+              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + formatTime(r.matchTime) : '· <span class="badge badge-tbd">TBD</span>'}</div>
+            </div>
+            ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+          </div>
+        </div>
+        <div class="request-actions">
+          <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
+        </div>
+      </div>
+      <div id="match-result-${r.id}"></div>
+    </div>
+  `).join('');
+}
+
+async function runMatch(requestId) {
+  const container = document.getElementById(`match-result-${requestId}`);
+  container.innerHTML = '<div class="loading"><div class="spinner"></div>Running matching engine…</div>';
+
+  try {
+    const result = await apiPost({ action: 'runMatch', requestId });
+
+    if (!result.candidates || !result.candidates.length) {
+      const phaseDesc = result.phase === 'last-minute'
+        ? 'no skill restriction, exact time required'
+        : `skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}`;
+      container.innerHTML = `
+        <div class="match-panel">
+          <div class="match-panel-title">Matching engine results</div>
+          <div class="alert alert-error">No eligible candidates found. Criteria: ${phaseDesc}.</div>
+        </div>`;
+      return;
+    }
+
+    // We need request details to pass to confirmSub for emails
+    const requests = await getRequests();
+    const req = requests.find(r => r.id === requestId);
+
+    const cHTML = result.candidates.map((c, i) => `
+      <div class="candidate-row">
+        <div class="rank-row">
+          <div class="candidate-rank">${i+1}</div>
+          <div class="candidate-info">
+            <div class="candidate-name">${c.name}</div>
+            <div class="candidate-meta">${c.email} · rating diff: ±${c.ratingDiff.toFixed(1)} · submitted ${formatTS(c.timestamp)}</div>
+          </div>
+        </div>
+        ${i === 0
+          ? `<button class="btn btn-clay btn-sm" onclick="confirmSub('${requestId}','${c.email}','${c.name}','${c.rowIndex}')">Confirm</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="confirmSub('${requestId}','${c.email}','${c.name}','${c.rowIndex}')">Assign</button>`}
+      </div>
+    `).join('');
+
+    const phaseLabel = result.phase === 'last-minute'
+      ? 'Last minute — no skill restriction'
+      : result.phase === 'post-schedule'
+        ? `Skill window ±${result.skillWindow}`
+        : `Skill window ±${result.skillWindow}`;
+
+    const availLabel = result.requireAllTimes ? 'all 4 times required' : result.matchTime + ' required';
+
+    container.innerHTML = `
+      <div class="match-panel">
+        <div class="match-panel-title">
+          Candidates — ${result.candidates.length} found · ${phaseLabel} · ${availLabel}
+        </div>
+        ${cHTML}
+      </div>`;
+  } catch(e) {
+    container.innerHTML = `<div class="alert alert-error">Matching engine error: ${e.message}</div>`;
+  }
+}
+
+async function confirmSub(requestId, subEmail, subName, volunteerRowIndex) {
+  if (!confirm(`Assign ${subName} as substitute? Confirmation emails will be sent to both players.`)) return;
+
+  const requests = await getRequests();
+  const req      = requests.find(r => r.id === requestId);
+  if (!req) return;
+
+  try {
+    await apiPost({
+      action:            'confirmSub',
+      requestId,
+      requestRowIndex:   req.rowIndex,
+      subEmail,
+      subName,
+      requestorName:     req.name,
+      requestorEmail:    req.email,
+      matchDate:         req.matchDate,
+      matchTime:         req.matchTime,
+      volunteerRowIndex: volunteerRowIndex || null
+    });
+
+    document.getElementById(`dr-${requestId}`).innerHTML = `
+      <div style="padding:10px 0;">
+        <div class="alert alert-success">✓ ${subName} confirmed. Confirmation emails sent to ${req.name} and ${subName}.</div>
+      </div>`;
+    clearCache();
+  } catch(e) {
+    alert('Could not confirm sub: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function isUrgent(req) {
+  if (!req.matchDate) return false;
+  const matchDT = new Date(req.matchDate + 'T' + (req.matchTime || '12:00') + ':00');
+  const now     = new Date();
+  const diffHrs = (matchDT - now) / 36e5;
+  return diffHrs <= 48 && diffHrs > 0;
+}
+
+function dateKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDate(str) {
+  if (!str) return '—';
+  // Handle Google Sheets date serial numbers and ISO strings
+  const s = str.toString().trim();
+  if (!s) return '—';
+  // Already a clean YYYY-MM-DD string
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  }
+  // ISO timestamp from Sheets
+  if (s.includes('T')) {
+    const d = new Date(s);
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  }
+  return s;
+}
+
+function formatTime(str) {
+  if (!str) return 'TBD';
+  const s = str.toString().trim();
+  if (!s) return 'TBD';
+  // Clean HH:MM format
+  if (/^\d{2}:\d{2}$/.test(s)) return TIME_LABELS[s] || s;
+  // Sheets time serial (fraction of a day) or full timestamp
+  if (s.includes('T') || s.includes('1899')) {
+    const d = new Date(s);
+    const hh = d.getUTCHours().toString().padStart(2,'0');
+    const mm = d.getUTCMinutes().toString().padStart(2,'0');
+    return TIME_LABELS[`${hh}:${mm}`] || `${hh}:${mm}`;
+  }
+  return s;
+}
+
+function formatTS(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' +
+         d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+
+function showAlert(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type}`;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  if (type === 'success') setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+async function refreshAll() {
+  clearCache();
+  if (document.getElementById('view-board').classList.contains('active')) loadBoard();
+  if (document.getElementById('view-dispatch').classList.contains('active')) loadDispatch();
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  loadBoard();
+  buildCalendar();
+});
+
+
+</script>
+</body>
+</html>
