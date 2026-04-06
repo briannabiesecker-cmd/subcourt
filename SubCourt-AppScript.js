@@ -83,7 +83,11 @@ function setupTriggers() {
     .create();
   // Set up the dispatch time trigger
   updateDispatchTrigger();
-  Logger.log('Triggers set up. onConfigEdit + dispatch schedule active.');
+  var config = getConfig();
+  Logger.log('onConfigEdit watcher installed. Dispatch trigger: ' +
+    (config.autoDispatchEnabled
+      ? 'ACTIVE — runs daily at ' + config.autoDispatchTimeET + ' ET'
+      : 'disabled (Config B13=FALSE) — set B13 to TRUE to activate') + '.');
 }
 
 function onConfigEdit(e) {
