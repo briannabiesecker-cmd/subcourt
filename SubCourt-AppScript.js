@@ -211,6 +211,7 @@ function doGet(e) {
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')     result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')   result = verifyAdminCode(e.parameter);
+    else if (action === 'debugAdmin')        result = debugAdmin(e.parameter);
     else if (action === 'ping')            result = { version: 'V32', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -491,6 +492,24 @@ function deleteVolunteer(params) {
 // ──────────────────────────────────────────────────
 // ADMIN AUTH
 // ──────────────────────────────────────────────────
+
+function debugAdmin(params) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var rows  = sheet.getDataRange().getValues();
+  var email = (params.email || '').toLowerCase().trim();
+  return {
+    rangeAddress: sheet.getDataRange().getA1Notation(),
+    totalRows: rows.length,
+    rows: rows.map(function(r) {
+      return {
+        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3],
+        col_D_type: typeof r[3],
+        emailMatch: (r[1] || '').toLowerCase().trim() === email,
+        flagCheck: r[3] === true || String(r[3]).toUpperCase() === 'TRUE'
+      };
+    })
+  };
+}
 
 function isAdminEmail(email) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
