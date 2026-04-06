@@ -52,15 +52,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 60px;
+    height: 68px;
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: 0 1px 0 var(--line);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   }
 
   .logo {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 800;
     letter-spacing: -0.5px;
     color: var(--ink);
@@ -68,23 +68,23 @@
 
   .logo span { color: var(--clay); }
 
-  nav { display: flex; gap: 4px; }
+  nav { display: flex; gap: 6px; }
 
   nav button {
     background: transparent;
-    border: none;
-    color: var(--ink-light);
-    padding: 7px 16px;
+    border: 2px solid transparent;
+    color: var(--ink-mid);
+    padding: 8px 18px;
     border-radius: 20px;
     cursor: pointer;
     font-family: inherit;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 600;
     transition: all 0.15s;
   }
 
-  nav button:hover { background: var(--chalk); color: var(--ink-mid); }
-  nav button.active { background: var(--clay); color: white; }
+  nav button:hover { background: var(--chalk); color: var(--ink); }
+  nav button.active { background: var(--clay); color: white; border-color: var(--clay); box-shadow: 0 2px 8px rgba(224,122,90,0.35); }
 
   /* ── Main Layout ── */
   main {
