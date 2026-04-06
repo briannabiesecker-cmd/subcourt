@@ -866,7 +866,7 @@
       <div class="form-grid">
         <div class="field">
           <label>Your name</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Start typing your name and select it from the list.</div>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Start typing your name and select it from the list. Already submitted a request? Select your name to see it here.</div>
           <div class="typeahead-wrap">
             <div id="req-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -1457,6 +1457,7 @@ async function loadMyRequests(email) {
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   section.style.display = 'block';
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
     requestCache = null;
