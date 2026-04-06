@@ -920,15 +920,34 @@
   <div id="view-dispatch" class="view">
     <div class="section-header">
       <div class="section-title">Dispatch</div>
-      <span class="section-sub">Run matching engine</span>
+      <span class="section-sub">Auto-dispatch status &amp; manual override</span>
     </div>
 
-    <div class="alert alert-info" style="margin-bottom:1rem;">
-      Select an open request below to run the matching engine. Candidates are ranked by skill proximity, then submission time. Confirm to mark the request as filled.
+    <!-- Status banner -->
+    <div class="card mt8" id="dispatch-status-card">
+      <div id="dispatch-status-content">
+        <div class="loading"><div class="spinner"></div>Loading status…</div>
+      </div>
     </div>
 
-    <div id="dispatch-loading" class="loading"><div class="spinner"></div>Loading…</div>
-    <div id="dispatch-list"></div>
+    <!-- Filled by auto-dispatch -->
+    <div id="dispatch-filled-section" style="display:none; margin-top:1.5rem;">
+      <div class="section-header">
+        <div class="section-title" style="font-size:17px;">Filled by Auto-Dispatch</div>
+      </div>
+      <div id="dispatch-filled-list"></div>
+      <hr class="divider" />
+    </div>
+
+    <!-- Open / needs attention -->
+    <div style="margin-top:1.5rem;">
+      <div class="section-header">
+        <div class="section-title" style="font-size:17px;">Needs Attention</div>
+        <span class="section-sub">Manual override</span>
+      </div>
+      <div id="dispatch-loading" class="loading hidden"><div class="spinner"></div>Loading…</div>
+      <div id="dispatch-list"></div>
+    </div>
   </div>
 
 </main>
@@ -1595,28 +1614,93 @@ function requestCardHTML(r, showMatch) {
 // DISPATCH (matching engine)
 // ══════════════════════════════════════════════════
 async function loadDispatch() {
+  document.getElementById('dispatch-status-content').innerHTML =
+    '<div class="loading"><div class="spinner"></div>Loading status…</div>';
   document.getElementById('dispatch-loading').classList.remove('hidden');
   document.getElementById('dispatch-list').innerHTML = '';
+  document.getElementById('dispatch-filled-section').style.display = 'none';
+  document.getElementById('dispatch-filled-list').innerHTML = '';
 
-  let requests;
+  let config, log, requests;
   try {
-    requests = await getRequests();
+    [config, log, requests] = await Promise.all([
+      getAppConfig(),
+      apiGet('getDispatchLog'),
+      getRequests()
+    ]);
   } catch(e) {
+    document.getElementById('dispatch-status-content').innerHTML =
+      `<div class="alert alert-error">Failed to load dispatch data: ${e.message}</div>`;
     document.getElementById('dispatch-loading').classList.add('hidden');
-    document.getElementById('dispatch-list').innerHTML = `<div class="alert alert-error">Failed to load requests: ${e.message}</div>`;
     return;
   }
 
-  const open = requests.filter(r => r.status === 'open');
   document.getElementById('dispatch-loading').classList.add('hidden');
+  renderDispatchStatus(config, log);
+  renderDispatchFilled(log);
+  renderDispatchOpen(requests, log);
+}
+
+function renderDispatchStatus(config, log) {
+  const enabled = config && config.autoDispatchEnabled;
+  const time = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '—';
+  const lastEntry = log && log.length ? log[0] : null;
+  const lastRun = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
+  const lastResult = lastEntry
+    ? (lastEntry.result === 'matched'
+        ? `<span style="color:#2E7D32;">matched ${lastEntry.subName}</span>`
+        : lastEntry.result === 'no_candidates'
+          ? '<span style="color:#B45309;">no candidates</span>'
+          : `<span style="color:#A32D2D;">${lastEntry.result}</span>`)
+    : '—';
+
+  document.getElementById('dispatch-status-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;"></span>
+        <span style="font-weight:600;font-size:15px;">${enabled ? 'Auto-Dispatch Enabled' : 'Auto-Dispatch Disabled'}</span>
+      </div>
+      ${enabled ? `<span class="badge badge-matched" style="font-size:12px;">Runs daily at ${time} ET</span>` : ''}
+    </div>
+    <div style="margin-top:10px;font-size:13px;color:#666;display:flex;gap:24px;flex-wrap:wrap;">
+      <span>Last run: <strong>${lastRun}</strong></span>
+      <span>Last result: <strong>${lastResult}</strong></span>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:#999;">To change schedule or toggle, edit the Config tab in the Google Sheet, then run <code>setupTriggers()</code> from the Apps Script editor.</div>
+  `;
+}
+
+function renderDispatchFilled(log) {
+  if (!log || !log.length) return;
+  const matched = log.filter(e => e.result === 'matched');
+  if (!matched.length) return;
+
+  document.getElementById('dispatch-filled-section').style.display = '';
+  document.getElementById('dispatch-filled-list').innerHTML = matched.map(e => `
+    <div class="request-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${e.requestorName}</div>
+          <div class="card-meta">${formatDate(e.matchDate)}${e.matchTime ? ' · ' + formatTime(e.matchTime) : ''} · Sub: <strong>${e.subName}</strong> (${e.subEmail})</div>
+        </div>
+        <span class="badge badge-matched">Auto-matched</span>
+      </div>
+      <div style="font-size:12px;color:#999;margin-top:4px;">Dispatched ${formatTS(e.timestamp)}</div>
+    </div>
+  `).join('');
+}
+
+function renderDispatchOpen(requests, log) {
+  const open = requests.filter(r => r.status === 'open');
+  const noCandidate = new Set((log || []).filter(e => e.result === 'no_candidates').map(e => e.requestId));
 
   if (!open.length) {
-    document.getElementById('dispatch-list').innerHTML = '<div class="empty"><span class="empty-icon">✓</span>No open requests. All clear!</div>';
+    document.getElementById('dispatch-list').innerHTML =
+      '<div class="empty"><span class="empty-icon">✓</span>No open requests. All clear!</div>';
     return;
   }
 
-  const el = document.getElementById('dispatch-list');
-  el.innerHTML = open.map(r => `
+  document.getElementById('dispatch-list').innerHTML = open.map(r => `
     <div class="request-card" id="dr-${r.id}">
       <div class="request-row">
         <div class="request-info">
@@ -1625,7 +1709,10 @@ async function loadDispatch() {
               <div class="card-title">${r.name}</div>
               <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + formatTime(r.matchTime) : '· <span class="badge badge-tbd">TBD</span>'}</div>
             </div>
-            ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${noCandidate.has(r.id) ? '<span class="badge" style="background:#FEF3C7;color:#92400E;">No candidates</span>' : ''}
+              ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+            </div>
           </div>
         </div>
         <div class="request-actions">

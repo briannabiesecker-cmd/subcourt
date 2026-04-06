@@ -36,7 +36,7 @@ function getConfig() {
       // Volunteer calendar — row 10
       calendarLookaheadDays:    parseInt(sheet.getRange('B10').getValue())   || 30,
       // Dispatch automation — rows 13–15
-      autoDispatchEnabled:      sheet.getRange('B13').getValue() === true,
+      autoDispatchEnabled:      (function() { var v = sheet.getRange('B13').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B14').getValue()) || '08:00',
     };
   } catch(e) {
@@ -59,6 +59,56 @@ function getConfig() {
 // editor whenever you change the dispatch time in
 // the Config tab.
 // ──────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────
+// ONE-TIME SETUP
+// Run setupTriggers() once from the Apps Script editor
+// to install the auto-dispatch schedule and the
+// config watcher. Re-runs automatically when B13/B14
+// are edited thereafter.
+// ──────────────────────────────────────────────────
+
+function setupTriggers() {
+  // Remove existing managed triggers
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    var fn = t.getHandlerFunction();
+    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  // Install onEdit watcher for Config tab changes
+  ScriptApp.newTrigger('onConfigEdit')
+    .forSpreadsheet(SHEET_ID)
+    .onEdit()
+    .create();
+  // Set up the dispatch time trigger
+  updateDispatchTrigger();
+  Logger.log('Triggers set up. onConfigEdit + dispatch schedule active.');
+}
+
+function onConfigEdit(e) {
+  if (!e || !e.range) return;
+  if (e.range.getSheet().getName() !== TABS.config) return;
+  var col = e.range.getColumn();
+  var row = e.range.getRow();
+  if (col === 2 && (row === 13 || row === 14)) {
+    updateDispatchTrigger();
+    Logger.log('Config changed — dispatch trigger updated.');
+  }
+}
+
+function getOrCreateDispatchLog() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName('DispatchLog');
+  if (!sheet) {
+    sheet = ss.insertSheet('DispatchLog');
+    sheet.getRange(1, 1, 1, 9).setValues([[
+      'Timestamp','RequestID','RequestorName','MatchDate','MatchTime','Result','SubName','SubEmail','Notes'
+    ]]);
+    sheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+  }
+  return sheet;
+}
 
 function updateDispatchTrigger() {
   const config = getConfig();
@@ -95,18 +145,19 @@ function updateDispatchTrigger() {
 }
 
 function runAutoDispatch() {
-  const config   = getConfig();
+  var config = getConfig();
   if (!config.autoDispatchEnabled) return;
 
-  const requests = getRequests();
-  const open     = requests.filter(r => r.status === 'open');
+  var requests  = getRequests();
+  var open      = requests.filter(function(r) { return r.status === 'open'; });
+  var logSheet  = getOrCreateDispatchLog();
+  var timestamp = new Date().toISOString();
 
-  open.forEach(req => {
+  open.forEach(function(req) {
     try {
-      const result = runMatch({ requestId: req.id });
+      var result = runMatch({ requestId: req.id });
       if (result.candidates && result.candidates.length > 0) {
-        const best = result.candidates[0];
-        // Auto-confirm the top candidate
+        var best = result.candidates[0];
         confirmSub({
           requestId:         req.id,
           requestRowIndex:   req.rowIndex,
@@ -116,12 +167,18 @@ function runAutoDispatch() {
           requestorEmail:    req.email,
           matchDate:         req.matchDate,
           matchTime:         req.matchTime,
-          volunteerRowIndex: best.rowIndex || null
+          volunteerRowIndex: best.rowIndex || null,
+          groupPlayers:      JSON.stringify(req.groupPlayers || [])
         });
+        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
+      } else {
+        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
+        Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
       }
     } catch(err) {
-      Logger.log('Auto-dispatch error for request ' + req.id + ': ' + err.message);
+      logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'error', '', '', err.message]);
+      Logger.log('Auto-dispatch error for ' + req.id + ': ' + err.message);
     }
   });
 }
@@ -144,9 +201,10 @@ function doGet(e) {
     else if (action === 'submitVolunteer') result = submitVolunteer(e.parameter);
     else if (action === 'confirmSub')      result = confirmSub(e.parameter);
     else if (action === 'runMatch')        result = runMatch(e.parameter);
-    else if (action === 'updateVolunteer') result = updateVolunteer(e.parameter);
-    else if (action === 'deleteVolunteer') result = deleteVolunteer(e.parameter);
-    else if (action === 'ping')            result = { version: 'V31', ts: new Date().toISOString() };
+    else if (action === 'updateVolunteer')  result = updateVolunteer(e.parameter);
+    else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
+    else if (action === 'getDispatchLog')   result = getDispatchLog();
+    else if (action === 'ping')            result = { version: 'V32', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
       const reqs      = getRequests();
@@ -324,6 +382,26 @@ function getPlayers() {
     email: (r[1] || '').toLowerCase()
     // rating intentionally excluded from public response
   }));
+}
+
+function getDispatchLog() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('DispatchLog');
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  // Return last 30 rows, most recent first
+  return rows.slice(-30).reverse().map(function(r) {
+    return {
+      timestamp:     r[0] ? new Date(r[0]).toISOString() : '',
+      requestId:     r[1] || '',
+      requestorName: r[2] || '',
+      matchDate:     r[3] ? (r[3] instanceof Date ? formatSheetDate(r[3]) : r[3].toString()) : '',
+      matchTime:     r[4] ? (r[4] instanceof Date ? formatSheetTime(r[4]) : r[4].toString()) : '',
+      result:        r[5] || '',
+      subName:       r[6] || '',
+      subEmail:      r[7] || '',
+      notes:         r[8] || ''
+    };
+  });
 }
 
 function getPlayersWithRatings() {
