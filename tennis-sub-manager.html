@@ -1223,6 +1223,22 @@ async function submitVolunteer() {
   }
 
   try {
+    const existing = await getVolunteers();
+    const duplicates = entries
+      .map(([date]) => date)
+      .filter(date => existing.some(v =>
+        v.email.toLowerCase() === email.toLowerCase() &&
+        v.date === date &&
+        v.status !== 'cancelled'
+      ));
+    if (duplicates.length) {
+      showAlert('vol-alert', 'error',
+        'You already have a submission for: ' + duplicates.map(d => formatDate(d)).join(', ') +
+        '. Remove the existing entry first if you want to change it.'
+      );
+      return;
+    }
+
     await apiPost({
       action: 'submitVolunteer',
       name,
@@ -1254,7 +1270,12 @@ async function loadMySubmissions(email) {
   try {
     volunteerCache = null;
     const vols = await getVolunteers();
-    const mine = vols.filter(v => v.email.toLowerCase() === email.toLowerCase() && v.status !== 'cancelled');
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const mine = vols.filter(v =>
+      v.email.toLowerCase() === email.toLowerCase() &&
+      v.status !== 'cancelled' &&
+      new Date(v.date + 'T23:59:59') >= cutoff
+    );
     if (!mine.length) {
       el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found.</div>';
       return;
