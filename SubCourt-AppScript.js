@@ -613,17 +613,19 @@ function getCoordinatorRatings(params) {
     }
   }
 
+  if (coordColIdx === -1) return { players: [], notAssigned: true };
+
   var players = [];
   for (var r = 1; r < allData.length; r++) {
     var row = allData[r];
-    if (!row[0]) continue; // skip empty rows
+    if (!row[0]) continue;
     players.push({
       name:     row[0] || '',
       email:    (row[1] || '').toLowerCase(),
-      myRating: coordColIdx >= 0 ? (row[coordColIdx] !== '' ? row[coordColIdx] : '') : ''
+      myRating: row[coordColIdx] !== '' ? row[coordColIdx] : ''
     });
   }
-  return { players: players };
+  return { players: players, notAssigned: false };
 }
 
 function saveCoordinatorRatings(params) {
@@ -635,22 +637,14 @@ function saveCoordinatorRatings(params) {
   var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers    = allData[0];
 
-  // Find or claim coordinator column
+  // Find coordinator column — must be pre-assigned in sheet header (cols E–I)
   var coordColIdx = -1;
   for (var i = 4; i <= 8; i++) {
-    var h = (headers[i] || '').toString().toLowerCase().trim();
-    if (h === coordEmail) { coordColIdx = i; break; }
-  }
-  if (coordColIdx === -1) {
-    for (var j = 4; j <= 8; j++) {
-      if (!headers[j]) {
-        coordColIdx = j;
-        sheet.getRange(1, j + 1).setValue(coordEmail); // write email as header
-        break;
-      }
+    if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
+      coordColIdx = i; break;
     }
   }
-  if (coordColIdx === -1) return { success: false, error: 'Max 5 coordinators reached.' };
+  if (coordColIdx === -1) return { success: false, error: 'not_assigned' };
 
   // Build player email → row number map
   var emailToRow = {};

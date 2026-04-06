@@ -2181,9 +2181,14 @@ async function loadCoordinatorRatings() {
 
   try {
     const result = await apiPost({ action: 'getCoordinatorRatings', email });
-    playerRatings = result.players || [];
     document.getElementById('players-loading').classList.add('hidden');
 
+    if (result.notAssigned) {
+      showAlert('players-alert', 'error', 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns E–I in the Players sheet.');
+      return;
+    }
+
+    playerRatings = result.players || [];
     if (!playerRatings.length) {
       document.getElementById('players-grid').innerHTML =
         '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
@@ -2226,7 +2231,13 @@ async function saveAllRatings() {
   }
 
   try {
-    await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
+    const result = await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
+    if (!result.success) {
+      showAlert('players-alert', 'error', result.error === 'not_assigned'
+        ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns E–I in the Players sheet.'
+        : (result.error || 'Failed to save.'));
+      return;
+    }
     showAlert('players-alert', 'success', 'Ratings saved successfully.');
     await loadCoordinatorRatings();
   } catch(e) {
