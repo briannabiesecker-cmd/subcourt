@@ -209,6 +209,8 @@ function doGet(e) {
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
+    else if (action === 'sendAdminCode')     result = sendAdminCode(e.parameter);
+    else if (action === 'verifyAdminCode')   result = verifyAdminCode(e.parameter);
     else if (action === 'ping')            result = { version: 'V32', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -483,6 +485,64 @@ function updateVolunteer(params) {
 function deleteVolunteer(params) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
   sheet.getRange(parseInt(params.rowIndex), 7).setValue('cancelled');
+  return { success: true };
+}
+
+// ──────────────────────────────────────────────────
+// ADMIN AUTH
+// ──────────────────────────────────────────────────
+
+function isAdminEmail(email) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  const rows  = sheet.getDataRange().getValues();
+  rows.shift();
+  return rows.some(function(r) {
+    const rowEmail = (r[1] || '').toLowerCase().trim();
+    const flag     = r[3]; // column D = isAdmin
+    return rowEmail === email.toLowerCase().trim() &&
+           (flag === true || String(flag).toUpperCase() === 'TRUE');
+  });
+}
+
+function sendAdminCode(params) {
+  var email = (params.email || '').toLowerCase().trim();
+  if (!email) return { success: false, error: 'Email required.' };
+  if (!isAdminEmail(email)) return { success: false, error: 'Not authorized.' };
+
+  var code   = Math.floor(100000 + Math.random() * 900000).toString();
+  var expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  PropertiesService.getScriptProperties()
+    .setProperty('admin_code_' + email, JSON.stringify({ code: code, expiry: expiry }));
+
+  MailApp.sendEmail({
+    to: email,
+    subject: 'Rally — Your Admin Access Code',
+    body: 'Your Rally admin access code is: ' + code +
+          '\n\nThis code expires in 10 minutes.' +
+          '\n\nIf you did not request this, please ignore this email.'
+  });
+
+  return { success: true };
+}
+
+function verifyAdminCode(params) {
+  var email = (params.email || '').toLowerCase().trim();
+  var code  = (params.code  || '').trim();
+  if (!email || !code) return { success: false, error: 'Email and code required.' };
+
+  var props  = PropertiesService.getScriptProperties();
+  var stored = props.getProperty('admin_code_' + email);
+  if (!stored) return { success: false, error: 'No code found. Please request a new one.' };
+
+  var data = JSON.parse(stored);
+  if (new Date() > new Date(data.expiry)) {
+    props.deleteProperty('admin_code_' + email);
+    return { success: false, error: 'Code expired. Please request a new one.' };
+  }
+  if (code !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
+
+  props.deleteProperty('admin_code_' + email);
   return { success: true };
 }
 

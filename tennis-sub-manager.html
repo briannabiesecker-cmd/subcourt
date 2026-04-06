@@ -764,7 +764,7 @@
     <button class="active" onclick="showView('home', this)">Home</button>
     <button onclick="showView('request', this)">Request Sub</button>
     <button onclick="showView('volunteer', this)">Volunteer</button>
-    <button onclick="showView('dispatch', this)">Dispatch</button>
+    <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
 
@@ -1005,37 +1005,92 @@
     </div>
   </div>
 
-  <!-- ── DISPATCH VIEW ── -->
-  <div id="view-dispatch" class="view">
-    <div class="section-header">
-      <div class="section-title">Dispatch</div>
-      <span class="section-sub">Auto-dispatch status &amp; manual override</span>
-    </div>
+  <!-- ── ADMIN VIEW ── -->
+  <div id="view-admin" class="view">
 
-    <!-- Status banner -->
-    <div class="card mt8" id="dispatch-status-card">
-      <div id="dispatch-status-content">
-        <div class="loading"><div class="spinner"></div>Loading status…</div>
-      </div>
-    </div>
-
-    <!-- Filled by auto-dispatch -->
-    <div id="dispatch-filled-section" style="display:none; margin-top:1.5rem;">
+    <!-- Auth panel -->
+    <div id="admin-auth-panel">
       <div class="section-header">
-        <div class="section-title" style="font-size:17px;">Filled by Auto-Dispatch</div>
+        <div class="section-title">Admin Access</div>
+        <span class="section-sub">Coordinator tools</span>
       </div>
-      <div id="dispatch-filled-list"></div>
-      <hr class="divider" />
+      <div class="card" style="max-width:480px;">
+        <div id="admin-auth-alert" class="hidden"></div>
+        <p style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:1.5rem;">Enter your name to receive a one-time access code by email.</p>
+        <div class="field" style="margin-bottom:1rem;">
+          <label>Your name</label>
+          <div class="typeahead-wrap">
+            <div id="adm-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="adm-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('adm')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="adm-input-state">
+              <input class="typeahead-input" id="adm-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('adm', this.value)"
+                onblur="onTypeaheadBlur('adm')"
+                onfocus="onTypeaheadFocus('adm')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="adm-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <input type="email" id="adm-email" style="display:none;" disabled />
+        <button class="btn btn-primary" id="adm-send-btn" onclick="sendAdminCode()" disabled>Send code</button>
+
+        <div id="adm-code-section" style="display:none;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--line);">
+          <div class="field" style="margin-bottom:1rem;">
+            <label>Enter your 6-digit code</label>
+            <input type="text" id="adm-code-input" placeholder="000000" maxlength="6" inputmode="numeric"
+              style="letter-spacing:0.3em;font-size:22px;font-weight:700;max-width:180px;"
+              oninput="this.value=this.value.replace(/\D/g,'')" />
+          </div>
+          <div class="flex gap8">
+            <button class="btn btn-clay" onclick="verifyAdminCode()">Verify</button>
+            <button class="btn btn-secondary btn-sm" onclick="resendAdminCode()">Resend code</button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Open / needs attention -->
-    <div style="margin-top:1.5rem;">
+    <!-- Admin content (unlocked) -->
+    <div id="admin-content" style="display:none;">
       <div class="section-header">
-        <div class="section-title" style="font-size:17px;">Needs Attention</div>
-        <span class="section-sub">Manual override</span>
+        <div class="section-title">Admin</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="admin-logged-in-as" style="font-size:13px;color:var(--ink-light);"></span>
+          <button class="btn btn-secondary btn-sm" onclick="adminSignOut()">Sign out</button>
+        </div>
       </div>
-      <div id="dispatch-loading" class="loading hidden"><div class="spinner"></div>Loading…</div>
-      <div id="dispatch-list"></div>
+
+      <div class="inner-tabs">
+        <button class="inner-tab active" onclick="showAdminTab('dispatch', this)">Dispatch</button>
+      </div>
+
+      <div id="admin-tab-dispatch">
+        <div class="card mt8" id="dispatch-status-card">
+          <div id="dispatch-status-content">
+            <div class="loading"><div class="spinner"></div>Loading status…</div>
+          </div>
+        </div>
+        <div id="dispatch-filled-section" style="display:none;margin-top:1.5rem;">
+          <div class="section-header">
+            <div class="section-title" style="font-size:17px;">Filled by Auto-Dispatch</div>
+          </div>
+          <div id="dispatch-filled-list"></div>
+          <hr class="divider" />
+        </div>
+        <div style="margin-top:1.5rem;">
+          <div class="section-header">
+            <div class="section-title" style="font-size:17px;">Needs Attention</div>
+            <span class="section-sub">Manual override</span>
+          </div>
+          <div id="dispatch-loading" class="loading hidden"><div class="spinner"></div>Loading…</div>
+          <div id="dispatch-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1058,8 +1113,12 @@ function showView(name, btn) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
-  if (name === 'dispatch') loadDispatch();
   if (name === 'volunteer') buildCalendar();
+  if (name === 'admin') {
+    if (sessionStorage.getItem('adminAuthenticated') === 'true') {
+      unlockAdmin(sessionStorage.getItem('adminName') || '');
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -1182,6 +1241,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
   document.getElementById(prefix + '-dropdown').style.display = 'none';
   if (prefix === 'vol') loadMySubmissions(email);
   if (prefix === 'req') loadMyRequests(email);
+  if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
 }
 
 function clearTypeahead(prefix) {
@@ -1199,6 +1259,12 @@ function clearTypeahead(prefix) {
   if (prefix === 'req') {
     document.getElementById('my-req-section').style.display = 'none';
     document.getElementById('my-req-list').innerHTML = '';
+  }
+  if (prefix === 'adm') {
+    document.getElementById('adm-send-btn').disabled = true;
+    document.getElementById('adm-send-btn').textContent = 'Send code';
+    document.getElementById('adm-code-section').style.display = 'none';
+    document.getElementById('adm-code-input').value = '';
   }
 }
 
@@ -1945,7 +2011,90 @@ function showAlert(id, type, msg) {
 
 async function refreshAll() {
   clearCache();
-  if (document.getElementById('view-dispatch').classList.contains('active')) loadDispatch();
+  if (document.getElementById('view-admin').classList.contains('active') &&
+      document.getElementById('admin-content').style.display !== 'none') loadDispatch();
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN AUTH
+// ══════════════════════════════════════════════════
+async function sendAdminCode() {
+  const { email } = getTypeaheadValue('adm');
+  if (!email) return;
+  const btn = document.getElementById('adm-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  showAlert('admin-auth-alert', 'info', 'Sending code…');
+  try {
+    const result = await apiPost({ action: 'sendAdminCode', email });
+    if (!result.success) {
+      showAlert('admin-auth-alert', 'error', result.error || 'Not authorized.');
+      btn.disabled = false;
+      btn.textContent = 'Send code';
+      return;
+    }
+    document.getElementById('adm-code-section').style.display = 'block';
+    showAlert('admin-auth-alert', 'success', 'Code sent — check your email.');
+    btn.textContent = 'Code sent';
+  } catch(e) {
+    showAlert('admin-auth-alert', 'error', 'Failed to send code: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Send code';
+  }
+}
+
+async function verifyAdminCode() {
+  const { email, name } = getTypeaheadValue('adm');
+  const code = document.getElementById('adm-code-input').value.trim();
+  if (code.length !== 6) {
+    showAlert('admin-auth-alert', 'error', 'Please enter the full 6-digit code.');
+    return;
+  }
+  try {
+    const result = await apiPost({ action: 'verifyAdminCode', email, code });
+    if (!result.success) {
+      showAlert('admin-auth-alert', 'error', result.error || 'Invalid code.');
+      return;
+    }
+    sessionStorage.setItem('adminAuthenticated', 'true');
+    sessionStorage.setItem('adminEmail', email);
+    sessionStorage.setItem('adminName', name);
+    unlockAdmin(name);
+  } catch(e) {
+    showAlert('admin-auth-alert', 'error', 'Verification failed: ' + e.message);
+  }
+}
+
+function unlockAdmin(name) {
+  document.getElementById('admin-auth-panel').style.display = 'none';
+  document.getElementById('admin-content').style.display = 'block';
+  document.getElementById('admin-logged-in-as').textContent = name;
+  loadDispatch();
+}
+
+function adminSignOut() {
+  sessionStorage.removeItem('adminAuthenticated');
+  sessionStorage.removeItem('adminEmail');
+  sessionStorage.removeItem('adminName');
+  document.getElementById('admin-auth-panel').style.display = 'block';
+  document.getElementById('admin-content').style.display = 'none';
+  clearTypeahead('adm');
+  document.getElementById('adm-code-section').style.display = 'none';
+  document.getElementById('adm-code-input').value = '';
+}
+
+async function resendAdminCode() {
+  document.getElementById('adm-send-btn').disabled = false;
+  document.getElementById('adm-send-btn').textContent = 'Send code';
+  document.getElementById('adm-code-section').style.display = 'none';
+  document.getElementById('adm-code-input').value = '';
+  await sendAdminCode();
+}
+
+function showAdminTab(tab, btn) {
+  document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (tab === 'dispatch') loadDispatch();
 }
 
 // ══════════════════════════════════════════════════
