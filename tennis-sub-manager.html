@@ -1230,7 +1230,7 @@ async function submitVolunteer() {
       action: 'submitVolunteer',
       name,
       email,
-      entries: entries.map(([date, times]) => ({ date, times }))
+      entries: entries.map(([date, times]) => ({ date, times: times.map(t => t.replace(':', '_')) }))
     });
     showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
     clearVolForm();
