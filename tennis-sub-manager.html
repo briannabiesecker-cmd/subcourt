@@ -746,6 +746,88 @@
             <option value="12:30">12:30 PM</option>
           </select>
         </div>
+
+        <div class="field span2" style="margin-top:4px;">
+          <label style="font-size:11px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:500;">Group partners — all 3 required</label>
+        </div>
+
+        <!-- Partner 2 -->
+        <div class="field">
+          <label>Partner 2 name</label>
+          <div class="typeahead-wrap">
+            <div id="p2-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="p2-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('p2')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="p2-input-state">
+              <input class="typeahead-input" id="p2-name-input" type="text"
+                placeholder="Start typing…"
+                oninput="onTypeaheadInput('p2', this.value)"
+                onblur="onTypeaheadBlur('p2')"
+                onfocus="onTypeaheadFocus('p2')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="p2-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Partner 2 email</label>
+          <input type="email" id="p2-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+
+        <!-- Partner 3 -->
+        <div class="field">
+          <label>Partner 3 name</label>
+          <div class="typeahead-wrap">
+            <div id="p3-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="p3-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('p3')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="p3-input-state">
+              <input class="typeahead-input" id="p3-name-input" type="text"
+                placeholder="Start typing…"
+                oninput="onTypeaheadInput('p3', this.value)"
+                onblur="onTypeaheadBlur('p3')"
+                onfocus="onTypeaheadFocus('p3')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="p3-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Partner 3 email</label>
+          <input type="email" id="p3-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+
+        <!-- Partner 4 -->
+        <div class="field">
+          <label>Partner 4 name</label>
+          <div class="typeahead-wrap">
+            <div id="p4-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="p4-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('p4')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="p4-input-state">
+              <input class="typeahead-input" id="p4-name-input" type="text"
+                placeholder="Start typing…"
+                oninput="onTypeaheadInput('p4', this.value)"
+                onblur="onTypeaheadBlur('p4')"
+                onfocus="onTypeaheadFocus('p4')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="p4-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Partner 4 email</label>
+          <input type="email" id="p4-email" placeholder="Auto-filled on selection" disabled />
+        </div>
       </div>
 
       <div class="mt12 flex gap8">
@@ -1068,8 +1150,19 @@ async function submitRequest() {
     return;
   }
 
+  const partners = ['p2', 'p3', 'p4'].map(prefix => getTypeaheadValue(prefix));
+  if (partners.some(p => !p.name || !p.email)) {
+    showAlert('req-alert', 'error', 'Please select all 3 group partners from the dropdown.');
+    return;
+  }
+  const allEmails = [email.toLowerCase(), ...partners.map(p => p.email.toLowerCase())];
+  if (new Set(allEmails).size !== allEmails.length) {
+    showAlert('req-alert', 'error', 'Each group member must be a different player.');
+    return;
+  }
+
   try {
-    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime });
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     clearRequestForm();
     clearCache();
@@ -1080,6 +1173,9 @@ async function submitRequest() {
 
 function clearRequestForm() {
   clearTypeahead('req');
+  clearTypeahead('p2');
+  clearTypeahead('p3');
+  clearTypeahead('p4');
   document.getElementById('req-date').value = '';
   document.getElementById('req-time').value = '';
 }
@@ -1570,7 +1666,7 @@ async function runMatch(requestId) {
 }
 
 async function confirmSub(requestId, subEmail, subName, volunteerRowIndex) {
-  if (!confirm(`Assign ${subName} as substitute? Confirmation emails will be sent to both players.`)) return;
+  if (!confirm(`Assign ${subName} as substitute? A confirmation email will be sent to the full group.`)) return;
 
   const requests = await getRequests();
   const req      = requests.find(r => r.id === requestId);
@@ -1587,12 +1683,13 @@ async function confirmSub(requestId, subEmail, subName, volunteerRowIndex) {
       requestorEmail:    req.email,
       matchDate:         req.matchDate,
       matchTime:         req.matchTime,
-      volunteerRowIndex: volunteerRowIndex || null
+      volunteerRowIndex: volunteerRowIndex || null,
+      groupPlayers:      req.groupPlayers || []
     });
 
     document.getElementById(`dr-${requestId}`).innerHTML = `
       <div style="padding:10px 0;">
-        <div class="alert alert-success">✓ ${subName} confirmed. Confirmation emails sent to ${req.name} and ${subName}.</div>
+        <div class="alert alert-success">✓ ${subName} confirmed. Confirmation email sent to ${req.name} and group.</div>
       </div>`;
     clearCache();
   } catch(e) {

@@ -146,7 +146,7 @@ function doGet(e) {
     else if (action === 'runMatch')        result = runMatch(e.parameter);
     else if (action === 'updateVolunteer') result = updateVolunteer(e.parameter);
     else if (action === 'deleteVolunteer') result = deleteVolunteer(e.parameter);
-    else if (action === 'ping')            result = { version: 'V30', ts: new Date().toISOString() };
+    else if (action === 'ping')            result = { version: 'V31', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
       const reqs      = getRequests();
@@ -235,18 +235,19 @@ function getRequests() {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  const rows = sheet.getRange(1, 1, lastRow, 8).getValues();
+  const rows = sheet.getRange(1, 1, lastRow, 9).getValues();
   rows.shift();
   return rows.map((r, i) => ({
-    rowIndex:    i + 2,
-    id:          r[0] || '',
-    timestamp:   r[1] ? new Date(r[1]).toISOString() : '',
-    name:        r[2] || '',
-    email:       r[3] || '',
-    matchDate:   formatSheetDate(r[4]),
-    matchTime:   formatSheetTime(r[5]),
-    status:      r[6] || 'open',
-    assignedSub: r[7] || ''
+    rowIndex:     i + 2,
+    id:           r[0] || '',
+    timestamp:    r[1] ? new Date(r[1]).toISOString() : '',
+    name:         r[2] || '',
+    email:        r[3] || '',
+    matchDate:    formatSheetDate(r[4]),
+    matchTime:    formatSheetTime(r[5]),
+    status:       r[6] || 'open',
+    assignedSub:  r[7] || '',
+    groupPlayers: (function() { try { return JSON.parse(r[8] || '[]'); } catch(e) { return []; } })()
   }));
 }
 
@@ -342,7 +343,10 @@ function getPlayersWithRatings() {
 // ──────────────────────────────────────────────────
 
 function submitRequest(params) {
-  const sheet  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  const groupPlayers = params.groupPlayers
+    ? (typeof params.groupPlayers === 'string' ? params.groupPlayers : JSON.stringify(params.groupPlayers))
+    : '[]';
   const row = [
     uid(),
     new Date().toISOString(),
@@ -351,13 +355,14 @@ function submitRequest(params) {
     params.matchDate ? params.matchDate.toString() : '',
     params.matchTime ? params.matchTime.toString() : '',
     'open',
-    ''
+    '',
+    groupPlayers
   ];
   sheet.appendRow(row);
-  // Force date and time columns to plain text to prevent Sheets auto-conversion
   const lastRow = sheet.getLastRow();
   sheet.getRange(lastRow, 5).setNumberFormat('@');
   sheet.getRange(lastRow, 6).setNumberFormat('@');
+  sheet.getRange(lastRow, 9).setNumberFormat('@');
   return { success: true };
 }
 
@@ -412,8 +417,12 @@ function confirmSub(params) {
     volSheet.getRange(parseInt(params.volunteerRowIndex), 7).setValue('matched');
   }
 
-  // 3. Send emails
-  sendConfirmationEmails(params);
+  // 3. Parse group players
+  var groupPlayers = [];
+  try { groupPlayers = JSON.parse(params.groupPlayers || '[]'); } catch(e) {}
+
+  // 4. Send email
+  sendConfirmationEmails(params, groupPlayers);
 
   return { success: true };
 }
@@ -513,47 +522,37 @@ function runMatch(params) {
 // EMAIL
 // ──────────────────────────────────────────────────
 
-function sendConfirmationEmails(data) {
-  const dateStr = formatDate(data.matchDate);
-  const timeStr = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
+function sendConfirmationEmails(data, groupPlayers) {
+  groupPlayers = groupPlayers || [];
+  const dateStr    = formatDate(data.matchDate);
+  const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
   const senderName = 'MTC Tennis Team';
 
-  // Email to requestor
-  const requestorSubject = 'MTC Tennis — Your substitute has been confirmed';
-  const requestorBody =
-    'Hi ' + data.requestorName + ',\n\n' +
-    'Good news! A substitute has been confirmed for your match.\n\n' +
-    'Date: ' + dateStr + '\n' +
-    'Time: ' + timeStr + '\n' +
-    'Substitute: ' + data.subName + '\n\n' +
-    'No further action needed on your part. Have a great ' + getDayOfWeek(data.matchDate) + '!\n\n' +
-    'MTC Tennis Team';
+  // To: requestor + sub   CC: group partners
+  const toAddresses = [data.requestorEmail, data.subEmail].filter(Boolean).join(', ');
+  const ccList      = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+  const ccAddresses = ccList.join(', ');
 
-  MailApp.sendEmail({
-    to:      data.requestorEmail,
-    subject: requestorSubject,
-    body:    requestorBody,
-    name:    senderName
-  });
+  const subject =
+    'MTC Tennis — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
 
-  // Email to volunteer
-  const volunteerSubject = 'MTC Tennis — You\'ve been confirmed as a substitute';
-  const volunteerBody =
-    'Hi ' + data.subName + ',\n\n' +
-    'You have been confirmed as a substitute for an upcoming match.\n\n' +
-    'Date: ' + dateStr + '\n' +
-    'Time: ' + timeStr + '\n' +
-    'Playing in for: ' + data.requestorName + '\n\n' +
-    'Please make sure you arrive at least 10 minutes before your match time.\n\n' +
+  const body =
+    'Hi team,\n\n' +
+    data.subName + ' will be substituting for ' + data.requestorName +
+    ' on ' + dateStr + ' at ' + timeStr + '.\n\n' +
+    'No further action needed. Please plan to arrive at least 10 minutes early.\n\n' +
     'See you on the court!\n\n' +
     'MTC Tennis Team';
 
-  MailApp.sendEmail({
-    to:      data.subEmail,
-    subject: volunteerSubject,
-    body:    volunteerBody,
+  var emailParams = {
+    to:      toAddresses,
+    subject: subject,
+    body:    body,
     name:    senderName
-  });
+  };
+  if (ccAddresses) emailParams.cc = ccAddresses;
+
+  MailApp.sendEmail(emailParams);
 }
 
 // ──────────────────────────────────────────────────
