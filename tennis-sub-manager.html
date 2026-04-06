@@ -803,6 +803,14 @@
       <span class="section-sub">Submit when you can't play</span>
     </div>
 
+    <div id="my-req-section" style="display:none;">
+      <div class="section-header">
+        <div class="section-title" style="font-size:18px;">Your Requests</div>
+      </div>
+      <div id="my-req-list"></div>
+      <hr class="divider" />
+    </div>
+
     <div class="card">
       <div id="req-alert" class="hidden"></div>
 
@@ -935,23 +943,6 @@
       </div>
     </div>
 
-    <hr class="divider" />
-
-    <div class="section-header">
-      <div class="section-title" style="font-size:17px;">Your Requests</div>
-    </div>
-
-    <div class="form-grid" style="max-width:360px; margin-bottom:1rem;">
-      <div class="field span2">
-        <label>Look up by email</label>
-        <div class="flex gap8">
-          <input type="email" id="lookup-email" placeholder="email@example.com" style="flex:1;" />
-          <button class="btn btn-secondary btn-sm" onclick="lookupMyRequests()">Look up</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="my-requests-list"></div>
   </div>
 
   <!-- ── VOLUNTEER VIEW ── -->
@@ -1190,6 +1181,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
   document.getElementById(prefix + '-email').value = email;
   document.getElementById(prefix + '-dropdown').style.display = 'none';
   if (prefix === 'vol') loadMySubmissions(email);
+  if (prefix === 'req') loadMyRequests(email);
 }
 
 function clearTypeahead(prefix) {
@@ -1203,6 +1195,10 @@ function clearTypeahead(prefix) {
     document.getElementById('my-vol-section').style.display = 'none';
     document.getElementById('my-vol-list').innerHTML = '';
     volEditSelections = {};
+  }
+  if (prefix === 'req') {
+    document.getElementById('my-req-section').style.display = 'none';
+    document.getElementById('my-req-list').innerHTML = '';
   }
 }
 
@@ -1318,17 +1314,85 @@ function clearRequestForm() {
   document.getElementById('req-time').value = '';
 }
 
-async function lookupMyRequests() {
-  const email = document.getElementById('lookup-email').value.trim().toLowerCase();
-  if (!email) return;
-  const requests = await getRequests();
-  const mine = requests.filter(r => r.email.toLowerCase() === email);
-  const el = document.getElementById('my-requests-list');
-  if (!mine.length) {
-    el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No requests found for that email.</div>';
-    return;
+async function loadMyRequests(email) {
+  const el      = document.getElementById('my-req-list');
+  const section = document.getElementById('my-req-section');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  section.style.display = 'block';
+
+  try {
+    requestCache = null;
+    const requests = await getRequests();
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const mine = requests.filter(r =>
+      r.email.toLowerCase() === email.toLowerCase() &&
+      r.status !== 'cancelled' &&
+      new Date(r.matchDate + 'T23:59:59') >= cutoff
+    );
+
+    if (!mine.length) {
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No recent requests found.</div>';
+      return;
+    }
+
+    el.innerHTML = mine.map(r => {
+      const isOpen = r.status === 'open';
+      const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : 'TBD';
+
+      if (isOpen) {
+        return `
+          <div class="request-card" id="req-card-${r.rowIndex}">
+            <div class="card-header" style="margin-bottom:10px;">
+              <div>
+                <div class="card-title">${formatDate(r.matchDate)}</div>
+                <div class="card-meta">Submitted ${formatTS(r.timestamp)}</div>
+              </div>
+              <span class="badge badge-open">open</span>
+            </div>
+            <div class="field" style="max-width:220px;">
+              <label>Match time</label>
+              <select id="req-time-edit-${r.rowIndex}">
+                <option value="" ${!r.matchTime ? 'selected' : ''}>Unknown / TBD</option>
+                <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
+                <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
+                <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
+                <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
+              </select>
+            </div>
+            <div class="flex gap8 mt12">
+              <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save changes</button>
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="request-card filled">
+            <div class="card-header">
+              <div>
+                <div class="card-title">${formatDate(r.matchDate)}</div>
+                <div class="card-meta">${timeDisplay} · Submitted ${formatTS(r.timestamp)}</div>
+              </div>
+              <span class="badge badge-filled">filled</span>
+            </div>
+            ${r.assignedSub ? `<div style="font-size:13px;color:var(--success);margin-top:8px;">Sub assigned: <strong>${r.assignedSub}</strong></div>` : ''}
+            <div style="font-size:12px;color:var(--ink-light);margin-top:4px;">A sub has been found — no changes needed.</div>
+          </div>`;
+      }
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
   }
-  el.innerHTML = mine.map(r => requestCardHTML(r, false)).join('');
+}
+
+async function saveRequestTime(rowIndex) {
+  const sel = document.getElementById(`req-time-edit-${rowIndex}`);
+  const matchTime = sel ? sel.value : '';
+  try {
+    await apiPost({ action: 'updateRequestTime', rowIndex, matchTime });
+    const { email } = getTypeaheadValue('req');
+    await loadMyRequests(email);
+  } catch(e) {
+    alert('Failed to save: ' + e.message);
+  }
 }
 
 // ══════════════════════════════════════════════════

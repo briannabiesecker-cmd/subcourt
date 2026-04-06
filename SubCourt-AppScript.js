@@ -207,7 +207,8 @@ function doGet(e) {
     else if (action === 'runMatch')        result = runMatch(e.parameter);
     else if (action === 'updateVolunteer')  result = updateVolunteer(e.parameter);
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
-    else if (action === 'getDispatchLog')   result = getDispatchLog();
+    else if (action === 'getDispatchLog')    result = getDispatchLog();
+    else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'ping')            result = { version: 'V32', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -482,6 +483,14 @@ function updateVolunteer(params) {
 function deleteVolunteer(params) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
   sheet.getRange(parseInt(params.rowIndex), 7).setValue('cancelled');
+  return { success: true };
+}
+
+function updateRequestTime(params) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  const cell  = sheet.getRange(parseInt(params.rowIndex), 6); // column F = matchTime
+  cell.setNumberFormat('@');
+  cell.setValue(params.matchTime || '');
   return { success: true };
 }
 
