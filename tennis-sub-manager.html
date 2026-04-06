@@ -1477,20 +1477,31 @@ async function loadMyRequests(email) {
     el.innerHTML = mine.map(r => {
       const isOpen = r.status === 'open';
       const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : 'TBD';
+      const subPlayer = r.assignedSub ? playerList.find(p => p.name.toLowerCase() === r.assignedSub.toLowerCase()) : null;
+      const subEmail  = subPlayer ? subPlayer.email : '';
 
       if (isOpen) {
         return `
           <div class="request-card" id="req-card-${r.rowIndex}">
-            <div class="card-header" style="margin-bottom:10px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
               <div>
-                <div class="card-title">${formatDate(r.matchDate)}</div>
-                <div class="card-meta">Submitted ${formatTS(r.timestamp)}</div>
+                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
+                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
               </div>
-              <span class="badge badge-open">open</span>
+              <span class="badge badge-open" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Looking for sub</span>
             </div>
-            <div class="field" style="max-width:220px;">
-              <label>Match time</label>
-              <select id="req-time-edit-${r.rowIndex}">
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
+              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
+              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
+              <span style="color:var(--ink-light);font-weight:500;">Status</span>
+              <span style="color:var(--warn);font-weight:600;">Waiting — sub not yet found</span>
+            </div>
+            <div style="background:var(--warn-bg);border-radius:var(--radius);padding:10px 14px;font-size:14px;color:var(--warn);margin-bottom:14px;">
+              Need to update your match time? Use the dropdown below and tap <strong>Save</strong>.
+            </div>
+            <div class="field" style="max-width:260px;">
+              <label style="font-size:15px;">Update match time</label>
+              <select id="req-time-edit-${r.rowIndex}" style="font-size:16px;">
                 <option value="" ${!r.matchTime ? 'selected' : ''}>Unknown / TBD</option>
                 <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
                 <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
@@ -1499,21 +1510,31 @@ async function loadMyRequests(email) {
               </select>
             </div>
             <div class="flex gap8 mt12">
-              <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save changes</button>
+              <button class="btn btn-clay" onclick="saveRequestTime(${r.rowIndex})">Save</button>
             </div>
           </div>`;
       } else {
         return `
           <div class="request-card filled">
-            <div class="card-header">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
               <div>
-                <div class="card-title">${formatDate(r.matchDate)}</div>
-                <div class="card-meta">${timeDisplay} · Submitted ${formatTS(r.timestamp)}</div>
+                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
+                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
               </div>
-              <span class="badge badge-filled">filled</span>
+              <span class="badge badge-filled" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Sub found!</span>
             </div>
-            ${r.assignedSub ? `<div style="font-size:13px;color:var(--success);margin-top:8px;">Sub assigned: <strong>${r.assignedSub}</strong></div>` : ''}
-            <div style="font-size:12px;color:var(--ink-light);margin-top:4px;">A sub has been found — no changes needed.</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
+              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
+              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
+              <span style="color:var(--ink-light);font-weight:500;">Status</span>
+              <span style="color:var(--success);font-weight:600;">Filled — you are all set!</span>
+            </div>
+            ${r.assignedSub ? `
+            <div style="background:var(--success-bg);border-radius:var(--radius);padding:14px 16px;">
+              <div style="font-size:13px;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Your substitute</div>
+              <div style="font-size:20px;font-weight:700;color:var(--ink);">${r.assignedSub}</div>
+              ${subEmail ? `<div style="font-size:15px;color:var(--ink-mid);margin-top:2px;">${subEmail}</div>` : ''}
+            </div>` : ''}
           </div>`;
       }
     }).join('');
