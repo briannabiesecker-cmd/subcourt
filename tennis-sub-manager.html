@@ -654,6 +654,106 @@
   }
   .time-chip-btn:hover { border-color: var(--clay); color: var(--clay); }
   .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; }
+
+  /* ── Home page ── */
+  .home-hero {
+    text-align: center;
+    padding: 3rem 1rem 2.5rem;
+  }
+
+  .home-title {
+    font-size: 38px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -1px;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .home-subtitle {
+    font-size: 18px;
+    color: var(--ink-mid);
+    line-height: 1.6;
+    font-weight: 400;
+  }
+
+  .home-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+
+  .home-card {
+    background: white;
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    text-align: center;
+    border-top: 5px solid var(--teal);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .home-card-alt {
+    border-top-color: var(--clay);
+  }
+
+  .home-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  .home-card-icon {
+    font-size: 48px;
+    line-height: 1;
+  }
+
+  .home-card-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.3px;
+  }
+
+  .home-card-desc {
+    font-size: 15px;
+    color: var(--ink-mid);
+    line-height: 1.6;
+  }
+
+  .home-card-btn {
+    margin-top: 6px;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 14px 28px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    background: var(--teal);
+    color: white;
+    transition: opacity 0.15s;
+    width: 100%;
+  }
+
+  .home-card-btn-alt {
+    background: var(--clay);
+  }
+
+  .home-card-btn:hover { opacity: 0.88; }
+
+  @media (max-width: 640px) {
+    .home-title { font-size: 28px; }
+    .home-subtitle { font-size: 16px; }
+    .home-actions { grid-template-columns: 1fr; max-width: 100%; }
+    .home-card { padding: 2rem 1.5rem; }
+  }
 </style>
 </head>
 <body>
@@ -661,7 +761,7 @@
 <header>
   <div class="logo">Ral<span>ly</span></div>
   <nav>
-    <button class="active" onclick="showView('board', this)">Board</button>
+    <button class="active" onclick="showView('home', this)">Home</button>
     <button onclick="showView('request', this)">Request Sub</button>
     <button onclick="showView('volunteer', this)">Volunteer</button>
     <button onclick="showView('dispatch', this)">Dispatch</button>
@@ -672,32 +772,27 @@
 
 <main>
 
-  <!-- ── BOARD VIEW ── -->
-  <div id="view-board" class="view active">
-    <div class="section-header">
-      <div class="section-title">Open Requests</div>
-      <span class="section-sub">Live board</span>
+  <!-- ── HOME VIEW ── -->
+  <div id="view-home" class="view active">
+    <div class="home-hero">
+      <div class="home-title">MTC Tennis Subs</div>
+      <div class="home-subtitle">Need someone to cover your match?<br>Want to pick up an extra game?</div>
     </div>
 
-    <div class="stats-row" id="stats-row">
-      <div class="stat-card"><span class="stat-num" id="stat-open">—</span><span class="stat-label">Open</span></div>
-      <div class="stat-card"><span class="stat-num" id="stat-filled">—</span><span class="stat-label">Filled</span></div>
-      <div class="stat-card"><span class="stat-num" id="stat-vols">—</span><span class="stat-label">Volunteers</span></div>
-      <div class="stat-card"><span class="stat-num" id="stat-urgent">—</span><span class="stat-label">Urgent (&lt;48h)</span></div>
-    </div>
+    <div class="home-actions">
+      <div class="home-card" onclick="showView('request', document.querySelector('nav button:nth-child(2)'))">
+        <div class="home-card-icon">🎾</div>
+        <div class="home-card-title">I need a sub</div>
+        <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
+        <button class="home-card-btn">Request a Sub</button>
+      </div>
 
-    <div class="board-filters">
-      <button class="filter-btn active" onclick="filterBoard('all', this)">All</button>
-      <button class="filter-btn" onclick="filterBoard('open', this)">Open</button>
-      <button class="filter-btn" onclick="filterBoard('filled', this)">Filled</button>
-      <button class="filter-btn" onclick="filterBoard('urgent', this)">Urgent</button>
-    </div>
-
-    <div id="board-loading" class="loading"><div class="spinner"></div>Loading requests…</div>
-    <div id="board-list"></div>
-    <div id="board-empty" class="empty hidden">
-      <span class="empty-icon">🎾</span>
-      <div>No requests match this filter.</div>
+      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">
+        <div class="home-card-icon">🙋</div>
+        <div class="home-card-title">I can sub</div>
+        <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
+        <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
+      </div>
     </div>
   </div>
 
@@ -972,7 +1067,6 @@ function showView(name, btn) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
-  if (name === 'board') loadBoard();
   if (name === 'dispatch') loadDispatch();
   if (name === 'volunteer') buildCalendar();
 }
@@ -1516,102 +1610,6 @@ async function removeVolunteer(rowIndex) {
 let allRequests = [];
 let currentFilter = 'all';
 
-async function loadBoard() {
-  document.getElementById('board-loading').classList.remove('hidden');
-  document.getElementById('board-list').innerHTML = '';
-  document.getElementById('board-empty').classList.add('hidden');
-
-  try {
-    allRequests = await getRequests();
-  } catch(e) {
-    document.getElementById('board-loading').classList.add('hidden');
-    document.getElementById('board-list').innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
-    return;
-  }
-
-  document.getElementById('board-loading').classList.add('hidden');
-  updateStats();
-  renderBoard(currentFilter);
-}
-
-function updateStats() {
-  const open   = allRequests.filter(r => r.status === 'open').length;
-  const filled = allRequests.filter(r => r.status === 'filled').length;
-  const urgent = allRequests.filter(r => r.status === 'open' && isUrgent(r)).length;
-
-  getVolunteers().then(vols => {
-    document.getElementById('stat-vols').textContent = new Set(vols.map(v => v.email)).size;
-  });
-
-  document.getElementById('stat-open').textContent   = open;
-  document.getElementById('stat-filled').textContent = filled;
-  document.getElementById('stat-urgent').textContent = urgent;
-}
-
-function filterBoard(filter, btn) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentFilter = filter;
-  renderBoard(filter);
-}
-
-function renderBoard(filter) {
-  let list = allRequests;
-  if (filter === 'open')   list = list.filter(r => r.status === 'open');
-  if (filter === 'filled') list = list.filter(r => r.status === 'filled');
-  if (filter === 'urgent') list = list.filter(r => r.status === 'open' && isUrgent(r));
-
-  // Sort: urgent first, then by date
-  list = list.sort((a,b) => {
-    if (isUrgent(a) && !isUrgent(b)) return -1;
-    if (!isUrgent(a) && isUrgent(b)) return 1;
-    return a.matchDate.localeCompare(b.matchDate);
-  });
-
-  const el = document.getElementById('board-list');
-  if (!list.length) {
-    el.innerHTML = '';
-    document.getElementById('board-empty').classList.remove('hidden');
-    return;
-  }
-  document.getElementById('board-empty').classList.add('hidden');
-  el.innerHTML = list.map(r => requestCardHTML(r, false)).join('');
-}
-
-function requestCardHTML(r, showMatch) {
-  const urgent = isUrgent(r) && r.status === 'open';
-  const statusBadge = urgent
-    ? `<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>`
-    : `<span class="badge badge-${r.status}">${r.status}</span>`;
-
-  const timeDisplay = r.matchTime
-    ? `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value">${formatTime(r.matchTime)}</div></div>`
-    : `<div class="match-detail-item"><div class="detail-label">Time</div><div class="detail-value"><span class="badge badge-tbd">TBD</span></div></div>`;
-
-  return `
-    <div class="request-card ${r.status}">
-      <div class="request-row">
-        <div class="request-info">
-          <div class="card-header" style="margin-bottom:6px;">
-            <div>
-              <div class="card-title">${r.name}</div>
-              <div class="card-meta">${r.email} · submitted ${formatTS(r.timestamp)}</div>
-            </div>
-            ${statusBadge}
-          </div>
-          <div class="match-detail">
-            <div class="match-detail-item">
-              <div class="detail-label">Date</div>
-              <div class="detail-value">${formatDate(r.matchDate)}</div>
-            </div>
-            ${timeDisplay}
-            ${r.assignedSub ? `<div class="match-detail-item"><div class="detail-label">Sub assigned</div><div class="detail-value" style="color:var(--success);">${r.assignedSub}</div></div>` : ''}
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
 
 // ══════════════════════════════════════════════════
 // DISPATCH (matching engine)
@@ -1883,7 +1881,6 @@ function showAlert(id, type, msg) {
 
 async function refreshAll() {
   clearCache();
-  if (document.getElementById('view-board').classList.contains('active')) loadBoard();
   if (document.getElementById('view-dispatch').classList.contains('active')) loadDispatch();
 }
 
@@ -1891,7 +1888,8 @@ async function refreshAll() {
 // INIT
 // ══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  loadBoard();
+  // Pre-warm player cache so typeaheads feel instant
+  getPlayers().catch(() => {});
 });
 
 
