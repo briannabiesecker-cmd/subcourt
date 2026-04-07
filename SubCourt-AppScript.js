@@ -5,8 +5,24 @@
 
 const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
 
-// Set to true to re-enable all outbound emails when done testing
-const EMAIL_ENABLED = false;
+// Email enabled state is stored in Config B20 and toggled from the Admin UI.
+// Do not hardcode this — use isEmailEnabled() instead.
+function isEmailEnabled() {
+  try {
+    var v = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B20').getValue();
+    return v === true || v.toString().toUpperCase() === 'TRUE';
+  } catch(e) { return false; }
+}
+
+function getEmailSettings() {
+  return { emailEnabled: isEmailEnabled() };
+}
+
+function setEmailEnabled(params) {
+  var enabled = params.enabled === 'true' || params.enabled === true;
+  SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B20').setValue(enabled);
+  return { success: true, emailEnabled: enabled };
+}
 
 const TABS = {
   players:      'Players',
@@ -240,6 +256,8 @@ function doGet(e) {
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
+    else if (action === 'getEmailSettings')         result = getEmailSettings();
+    else if (action === 'setEmailEnabled')          result = setEmailEnabled(e.parameter);
     else if (action === 'getAvailabilityConfig')   result = getAvailabilityConfig();
     else if (action === 'openAvailabilityWindow')  result = openAvailabilityWindow(e.parameter);
     else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
@@ -879,7 +897,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
-  if (EMAIL_ENABLED) MailApp.sendEmail(emailParams);
+  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
 }
 
 // ──────────────────────────────────────────────────
@@ -1033,7 +1051,7 @@ function checkAvailabilityWindow() {
 
   var emails = missing.map(function(p) { return p.email; }).filter(Boolean);
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + emails.length + ' player(s): ' + emails.join(', '));
-  if (EMAIL_ENABLED) {
+  if (isEmailEnabled()) {
     MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
   }
 }
@@ -1068,7 +1086,7 @@ function openAvailabilityWindow(params) {
       'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
       'See you on the court!\n' +
       'MTC Tennis Team';
-    if (EMAIL_ENABLED) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
+    if (isEmailEnabled()) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
   }
 
   return { success: true, playerCount: emails.length };
@@ -1168,7 +1186,7 @@ function submitAvailability(params) {
       'See you on the court!\n' +
       'MTC Tennis Team';
 
-    if (EMAIL_ENABLED) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MTC Tennis Team' });
+    if (isEmailEnabled()) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MTC Tennis Team' });
   } catch(err) {
     Logger.log('Confirmation email failed: ' + err.message);
   }

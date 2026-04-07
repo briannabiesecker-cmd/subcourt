@@ -1517,6 +1517,19 @@
           </div>
         </div>
 
+        <!-- Email notifications toggle card -->
+        <div class="card mt8" style="max-width:520px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div>
+              <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:2px;">Email Notifications</div>
+              <div style="font-size:13px;color:var(--ink-light);">Controls all outbound player emails (availability window, reminders, confirmations). Admin OTP always sends.</div>
+            </div>
+            <div id="email-toggle-wrap" style="flex-shrink:0;">
+              <div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Generate Schedule card -->
         <div class="card mt8" style="max-width:520px;">
           <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
@@ -2936,6 +2949,42 @@ function formatDateShort(str) {
 // ══════════════════════════════════════════════════
 let scheduleData = null; // last generated result
 
+async function loadEmailToggle() {
+  const wrap = document.getElementById('email-toggle-wrap');
+  try {
+    const s = await apiGetWithParams({ action: 'getEmailSettings' });
+    renderEmailToggle(s.emailEnabled);
+  } catch(e) {
+    wrap.innerHTML = '<span style="font-size:13px;color:var(--danger);">Could not load</span>';
+  }
+}
+
+function renderEmailToggle(enabled) {
+  const wrap = document.getElementById('email-toggle-wrap');
+  const color  = enabled ? 'var(--success)' : 'var(--ink-light)';
+  const label  = enabled ? 'Enabled' : 'Disabled';
+  const btnTxt = enabled ? 'Disable' : 'Enable';
+  const btnCls = enabled ? 'btn btn-secondary' : 'btn btn-primary';
+  wrap.innerHTML = `
+    <div style="text-align:center;">
+      <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:6px;">${label}</div>
+      <button class="${btnCls}" style="font-size:13px;padding:6px 14px;" onclick="toggleEmail(${!enabled})">${btnTxt}</button>
+    </div>`;
+}
+
+async function toggleEmail(enable) {
+  const wrap = document.getElementById('email-toggle-wrap');
+  wrap.innerHTML = '<div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>';
+  try {
+    const result = await apiPost({ action: 'setEmailEnabled', enabled: enable });
+    if (result.success) renderEmailToggle(result.emailEnabled);
+    else throw new Error(result.error || 'Failed');
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not update email setting. Please try again.');
+    loadEmailToggle();
+  }
+}
+
 async function loadScheduler() {
   try {
     const config = await apiGetWithParams({ action: 'getAvailabilityConfig' });
@@ -2957,6 +3006,7 @@ async function loadScheduler() {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
   }
   loadSchedulerSettings();
+  loadEmailToggle();
 }
 
 async function loadSchedulerSettings() {
