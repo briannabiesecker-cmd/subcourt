@@ -3027,35 +3027,47 @@ function exportScheduleExcel() {
     const [y, m, d] = iso.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
-  const pStr = (p, isCapt) => {
-    if (!p || !p.name) return '';
-    return (isCapt ? '[C] ' : '') + p.name + (p.rating ? ' (' + Number(p.rating).toFixed(1) + ')' : '');
-  };
 
-  const rows = [['Date', 'Group', 'Player 1', 'Player 2', 'Player 3', 'Player 4', 'Sit Out']];
+  // Collect active dates (columns) and all players (rows)
+  const dates = [];
+  const playerMap = {}; // email → name
 
   scheduleData.slots.forEach(slot => {
-    if (slot.skipped) {
-      rows.push([fmt(slot.date), '—', slot.reason || 'Skipped', '', '', '', '']);
-      return;
-    }
-    slot.groups.forEach((group, gi) => {
-      const p            = group.concat([{},{},{},{}]);
-      const captainEmail = (slot.captains || [])[gi] || '';
-      rows.push([
-        gi === 0 ? fmt(slot.date) : '',
-        'Group ' + String.fromCharCode(65 + gi),
-        pStr(p[0], p[0].email === captainEmail),
-        pStr(p[1], p[1].email === captainEmail),
-        pStr(p[2], p[2].email === captainEmail),
-        pStr(p[3], p[3].email === captainEmail),
-        (gi === 0 && slot.sitOut) ? slot.sitOut.name : ''
-      ]);
+    if (slot.skipped) return;
+    dates.push(slot.date);
+    slot.groups.forEach(group => {
+      group.forEach(p => { if (p.email) playerMap[p.email] = p.name; });
     });
   });
 
+  // Build cell lookup: playerMap[email][date] = "A" or "A [C]"
+  const cellData = {};
+  scheduleData.slots.forEach(slot => {
+    if (slot.skipped) return;
+    slot.groups.forEach((group, gi) => {
+      const letter       = String.fromCharCode(65 + gi);
+      const captainEmail = (slot.captains || [])[gi] || '';
+      group.forEach(p => {
+        if (!p.email) return;
+        if (!cellData[p.email]) cellData[p.email] = {};
+        cellData[p.email][slot.date] = letter + (p.email === captainEmail ? ' [C]' : '');
+      });
+    });
+  });
+
+  // Rows sorted alphabetically by player name
+  const players = Object.entries(playerMap).sort((a, b) => a[1].localeCompare(b[1]));
+
+  const header = ['Player'].concat(dates.map(fmt));
+  const rows = [header];
+  players.forEach(([email, name]) => {
+    const row = [name];
+    dates.forEach(date => row.push((cellData[email] || {})[date] || ''));
+    rows.push(row);
+  });
+
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [18, 10, 22, 22, 22, 22, 18].map(w => ({ wch: w }));
+  ws['!cols'] = [{ wch: 22 }].concat(dates.map(() => ({ wch: 13 })));
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, scheduleData.month || 'Schedule');
