@@ -1392,7 +1392,7 @@ function assignCaptains(slotResults) {
 }
 
 // ── Core Optimizer ─────────────────────────────────
-// Runs local search with random restarts for one date+time slot.
+// Runs local search with random restarts for one date slot.
 // Returns { groups: [[player,...], ...], sitOut: player|null }
 function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   var n         = available.length;
@@ -1401,23 +1401,19 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   // Decide group structure
   var groupSizes;
   if (remainder === 0) {
-    groupSizes = fillArray(n / 4, 4);                      // all groups of 4
+    groupSizes = fillArray(n / 4, 4);
   } else if (remainder === 1) {
-    groupSizes = fillArray((n - 1) / 4, 4);                // one player sits out
-    // sitOut chosen later by penalty; temporarily treat as remainder=0 on n-1
+    groupSizes = fillArray((n - 1) / 4, 4);
     groupSizes = fillArray(Math.floor((n - 1) / 4), 4);
   } else if (remainder === 2) {
-    groupSizes = fillArray(Math.floor(n / 4) - 1, 4).concat([3, 3]); // two groups of 3
+    groupSizes = fillArray(Math.floor(n / 4) - 1, 4).concat([3, 3]);
   } else {
-    // remainder === 3
-    groupSizes = fillArray(Math.floor(n / 4), 4).concat([3]);         // one group of 3
+    groupSizes = fillArray(Math.floor(n / 4), 4).concat([3]);
   }
 
   var sitOutPlayer = null;
   var pool = available.slice();
 
-  // For remainder=1 pick the sit-out player with the highest sitOutCounts (least fair)
-  // to minimise repeat sit-outs — swap them out of the pool before optimizing
   if (remainder === 1) {
     var minSitOuts = Infinity;
     var sitOutIdx  = 0;
@@ -1428,19 +1424,75 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
     sitOutPlayer = pool.splice(sitOutIdx, 1)[0];
   }
 
-  var iters   = settings.solverIterations || 200;
-  var restarts = settings.solverRestarts  || 5;
-  var bestGroups = null;
+  var iters    = settings.solverIterations || 200;
+  var restarts = settings.solverRestarts   || 5;
+  var wTV = settings.weightTeamVariance  || 1.0;
+  var wGV = settings.weightGroupVariance || 0.5;
+  var wSV = settings.weightSocialVariety || 2.0;
+
+  var N = pool.length;
+
+  // Tag each pool player with an integer index for O(1) pair-penalty lookup
+  for (var idx = 0; idx < N; idx++) { pool[idx]._idx = idx; }
+
+  // Pre-compute social pair-penalty table (triangular: a < b only)
+  // Avoids string operations (pairKey + hash lookup) inside the hot loop
+  var pairPen = [];
+  for (var a = 0; a < N; a++) {
+    pairPen[a] = [];
+    for (var b = a + 1; b < N; b++) {
+      var hist = pairCounts[pairKey(pool[a].email, pool[b].email)] || 0;
+      pairPen[a][b] = wSV * hist * hist;
+    }
+  }
+
+  // totalGroupVar is constant within a restart (same pool, same ratings) — compute once
+  var allRatings = [];
+  for (var ri = 0; ri < N; ri++) allRatings.push(pool[ri].rating);
+  var totalGroupVarPenalty = variance(allRatings) * wGV;
+
+  // Per-group penalty — inlines variance math to avoid array allocations in the hot loop
+  function groupPenalty(group) {
+    var sz = group.length;
+    var social = 0;
+    for (var i = 0; i < sz; i++) {
+      for (var j = i + 1; j < sz; j++) {
+        var ai = group[i]._idx, bi = group[j]._idx;
+        social += ai < bi ? pairPen[ai][bi] : pairPen[bi][ai];
+      }
+    }
+    var r0 = group[0].rating, r1 = group[1].rating, r2 = group[2].rating;
+    var gv, tv;
+    if (sz === 4) {
+      var r3 = group[3].rating;
+      var m4 = (r0 + r1 + r2 + r3) * 0.25;
+      gv = ((r0-m4)*(r0-m4) + (r1-m4)*(r1-m4) + (r2-m4)*(r2-m4) + (r3-m4)*(r3-m4)) * 0.25;
+      var d01 = r0 - r1, d23 = r2 - r3;
+      tv = (d01*d01 + d23*d23) * 0.25;
+    } else {
+      var m3 = (r0 + r1 + r2) / 3;
+      gv = ((r0-m3)*(r0-m3) + (r1-m3)*(r1-m3) + (r2-m3)*(r2-m3)) / 3;
+      tv = gv;
+    }
+    return tv * wTV + gv * wGV + social;
+  }
+
+  var bestGroups  = null;
   var bestPenalty = Infinity;
 
   for (var r = 0; r < restarts; r++) {
-    // Random initial grouping
     var shuffled = shuffleArray(pool.slice());
     var groups   = buildGroupsFromSizes(shuffled, groupSizes);
-    var penalty  = calcPenalty(groups, settings, pairCounts);
+
+    // Initialize per-group penalty cache
+    var gPen = [];
+    var penalty = totalGroupVarPenalty;
+    for (var g = 0; g < groups.length; g++) {
+      gPen[g] = groupPenalty(groups[g]);
+      penalty += gPen[g];
+    }
 
     for (var iter = 0; iter < iters; iter++) {
-      // Pick two random players from different groups and try swapping them
       var gi = Math.floor(Math.random() * groups.length);
       var gj = Math.floor(Math.random() * groups.length);
       if (gi === gj) continue;
@@ -1453,9 +1505,15 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
       groups[gi][pi] = groups[gj][pj];
       groups[gj][pj] = tmp;
 
-      var newPenalty = calcPenalty(groups, settings, pairCounts);
-      if (newPenalty < penalty) {
-        penalty = newPenalty;          // keep improvement
+      // Incremental delta: recompute only the 2 affected groups (not all groups)
+      var newGiPen = groupPenalty(groups[gi]);
+      var newGjPen = groupPenalty(groups[gj]);
+      var delta = (newGiPen + newGjPen) - (gPen[gi] + gPen[gj]);
+
+      if (delta < 0) {
+        gPen[gi] = newGiPen;
+        gPen[gj] = newGjPen;
+        penalty  += delta;
       } else {
         // Revert swap
         groups[gj][pj] = groups[gi][pi];
@@ -1469,7 +1527,7 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
     }
   }
 
-  // Attach display info to each player in output
+  // Output clean player objects (strip _idx)
   var outputGroups = bestGroups.map(function(group) {
     return group.map(function(p) {
       return { name: p.name, email: p.email, rating: p.rating };
