@@ -1013,6 +1013,7 @@
     <button onclick="showView('request', this)">Request Sub</button>
     <button onclick="showView('volunteer', this)">Volunteer</button>
     <button onclick="showView('availability', this)">Availability</button>
+    <button onclick="showView('schedule', this)">Schedule</button>
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -1367,6 +1368,45 @@
     </div>
   </div>
 
+  <!-- ── SCHEDULE VIEW ── -->
+  <div id="view-schedule" class="view">
+    <div class="section-header">
+      <div class="section-title">Match Schedule</div>
+      <span class="section-sub" id="sch-month-label"></span>
+    </div>
+
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="field" style="margin-bottom:0;">
+        <label style="font-size:17px;">Find my dates</label>
+        <div style="font-size:14px;color:var(--ink-light);margin-bottom:6px;">Enter your name to see only the dates you're scheduled to play.</div>
+        <div class="typeahead-wrap">
+          <div id="sch-selected-state" style="display:none;">
+            <div class="selected-pill">
+              <span id="sch-selected-name"></span>
+              <button class="clear-btn" onclick="clearTypeahead('sch')" title="Clear">×</button>
+            </div>
+          </div>
+          <div id="sch-input-state">
+            <input class="typeahead-input" id="sch-name-input" type="text"
+              placeholder="Start typing your name…"
+              oninput="onTypeaheadInput('sch', this.value)"
+              onblur="onTypeaheadBlur('sch')"
+              onfocus="onTypeaheadFocus('sch')"
+              autocomplete="off" />
+            <div class="typeahead-dropdown" id="sch-dropdown" style="display:none;"></div>
+          </div>
+        </div>
+        <input type="email" id="sch-email" style="display:none;" />
+      </div>
+    </div>
+
+    <div id="sch-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading schedule…</div>
+    <div id="sch-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No schedule has been published yet.</div>
+    <div id="sch-table-wrap" style="display:none;overflow-x:auto;">
+      <table class="sched-table" id="sch-table"></table>
+    </div>
+  </div>
+
   <!-- ── ADMIN VIEW ── -->
   <div id="view-admin" class="view">
 
@@ -1493,7 +1533,7 @@
             <div class="flex gap8">
               <button class="btn btn-secondary" onclick="exportScheduleExcel()">Export to Excel</button>
               <button class="btn btn-secondary" onclick="exportSchedulePDF()">Export to PDF</button>
-              <button class="btn btn-primary" id="sched-save-btn" onclick="saveScheduleToSheet()">Save to Sheet</button>
+              <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
             </div>
           </div>
           <div style="overflow-x:auto;">
@@ -1548,6 +1588,7 @@ function showView(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'volunteer') buildCalendar();
   if (name === 'availability') loadAvailabilityView();
+  if (name === 'schedule') loadScheduleView();
   if (name === 'admin') {
     if (sessionStorage.getItem('adminAuthenticated') === 'true') {
       unlockAdmin(sessionStorage.getItem('adminName') || '');
@@ -1677,6 +1718,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
   if (prefix === 'req') loadMyRequests(email);
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
+  if (prefix === 'sch') renderPublishedSchedule(email);
 }
 
 function clearTypeahead(prefix) {
@@ -1707,6 +1749,7 @@ function clearTypeahead(prefix) {
     document.getElementById('adm-code-section').style.display = 'none';
     document.getElementById('adm-code-input').value = '';
   }
+  if (prefix === 'sch') renderPublishedSchedule(null);
 }
 
 function getTypeaheadValue(prefix) {
@@ -3137,27 +3180,119 @@ function exportSchedulePDF() {
   win.document.close();
 }
 
-async function saveScheduleToSheet() {
+async function publishScheduleToSheet() {
   if (!scheduleData || !scheduleData.slots) return;
   const btn = document.getElementById('sched-save-btn');
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  btn.textContent = 'Publishing…';
   try {
     const result = await apiPost({
-      action:      'saveSchedule',
+      action:      'publishSchedule',
       month:       scheduleData.month,
       slots:       JSON.stringify(scheduleData.slots.filter(s => !s.skipped)),
       pairCounts:  JSON.stringify(scheduleData.pairCounts   || {}),
       sitOutCounts:JSON.stringify(scheduleData.sitOutCounts || {})
     });
-    if (!result.success) { showAlert('scheduler-alert', 'error', result.error || 'Save failed.'); return; }
-    showAlert('scheduler-alert', 'success', result.slotsSaved + ' date(s) saved to the MatchGroups sheet.');
-    btn.textContent = 'Saved ✓';
+    if (!result.success) { showAlert('scheduler-alert', 'error', result.error || 'Publish failed.'); return; }
+    showAlert('scheduler-alert', 'success', 'Schedule published — ' + result.groupsPublished + ' group(s) visible on the Schedule tab.');
+    btn.textContent = 'Published ✓';
   } catch(e) {
-    showAlert('scheduler-alert', 'error', 'Could not save. Please try again.');
+    showAlert('scheduler-alert', 'error', 'Could not publish. Please try again.');
     btn.disabled = false;
-    btn.textContent = 'Save to Sheet';
+    btn.textContent = 'Publish';
   }
+}
+
+// ── Schedule tab ─────────────────────────────────────
+
+let publishedSchedule = null;
+
+async function loadScheduleView() {
+  const loading = document.getElementById('sch-loading');
+  const empty   = document.getElementById('sch-empty');
+  const wrap    = document.getElementById('sch-table-wrap');
+  const label   = document.getElementById('sch-month-label');
+
+  loading.style.display = '';
+  empty.style.display   = 'none';
+  wrap.style.display    = 'none';
+
+  try {
+    const result = await apiGetWithParams({ action: 'getPublishedSchedule' });
+    publishedSchedule = result;
+    loading.style.display = 'none';
+    if (!result.month || !result.dates || !result.dates.length) {
+      empty.style.display = '';
+      label.textContent = '';
+      return;
+    }
+    const [yr, mo] = result.month.split('-');
+    label.textContent = new Date(parseInt(yr), parseInt(mo) - 1, 1)
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    renderPublishedSchedule(null);
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display = '';
+    empty.textContent = 'Could not load schedule. Please try again.';
+  }
+}
+
+function renderPublishedSchedule(filterEmail) {
+  const wrap  = document.getElementById('sch-table-wrap');
+  const empty = document.getElementById('sch-empty');
+  const tbl   = document.getElementById('sch-table');
+
+  if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) return;
+
+  const filterLower = filterEmail ? filterEmail.toLowerCase().trim() : null;
+
+  let dates = publishedSchedule.dates;
+  if (filterLower) {
+    dates = dates.map(d => {
+      const filteredGroups = d.groups.filter(g =>
+        g.players.some(p => p.email && p.email.toLowerCase() === filterLower)
+      );
+      return filteredGroups.length ? { ...d, groups: filteredGroups } : null;
+    }).filter(Boolean);
+  }
+
+  if (!dates.length) {
+    wrap.style.display  = 'none';
+    empty.style.display = '';
+    empty.textContent   = 'No scheduled dates found for that name.';
+    return;
+  }
+
+  empty.style.display = 'none';
+  wrap.style.display  = '';
+
+  let html = '<thead><tr><th>Date</th><th>Group</th><th>Captain</th><th>Players</th><th>Sit Out</th></tr></thead><tbody>';
+  dates.forEach(d => {
+    const dateStr = formatDateShort(d.date);
+    d.groups.forEach((g, gi) => {
+      const captain = g.players.find(p => p.isCaptain);
+      const others  = g.players.filter(p => !p.isCaptain);
+      const playerNames = others.map(p => {
+        const isMe = filterLower && p.email && p.email.toLowerCase() === filterLower;
+        return isMe ? `<strong>${p.name}</strong>` : p.name;
+      }).filter(Boolean).join(', ');
+      const captainName = captain
+        ? (filterLower && captain.email && captain.email.toLowerCase() === filterLower
+            ? `<strong>${captain.name}</strong>` : captain.name)
+        : '';
+      const sitOutName = g.sitOut ? g.sitOut.name : '';
+      const rowClass = gi === 0 ? 'date-first' : '';
+      html += `<tr class="${rowClass}">`;
+      if (gi === 0) html += `<td rowspan="${d.groups.length}" class="date-cell">${dateStr}</td>`;
+      html += `<td style="font-weight:600;color:var(--court);">Group ${g.letter}</td>`;
+      html += `<td><span class="captain-badge">C</span>${captainName}</td>`;
+      html += `<td>${playerNames}</td>`;
+      html += `<td style="color:var(--ink-light);font-size:14px;">${sitOutName}</td>`;
+      html += '</tr>';
+    });
+  });
+  html += '</tbody>';
+  tbl.innerHTML = html;
 }
 
 async function openAvailWindow() {

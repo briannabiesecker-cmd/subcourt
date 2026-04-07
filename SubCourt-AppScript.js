@@ -249,7 +249,9 @@ function doGet(e) {
     else if (action === 'getSchedulerSettings')     result = getSchedulerSettings();
     else if (action === 'generateSchedule')         result = generateSchedule(e.parameter);
     else if (action === 'saveSchedule')             result = saveSchedule(e.parameter);
-    else if (action === 'ping')            result = { version: 'V33', ts: new Date().toISOString() };
+    else if (action === 'publishSchedule')          result = publishSchedule(e.parameter);
+    else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
+    else if (action === 'ping')            result = { version: 'V34', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
       const reqs      = getRequests();
@@ -1614,6 +1616,122 @@ function saveSchedule(params) {
 
   Logger.log('saveSchedule: saved ' + slots.length + ' slot(s) for ' + month);
   return { success: true, slotsSaved: slots.filter(function(s) { return !s.skipped; }).length };
+}
+
+// ── Publish ─────────────────────────────────────────
+// Clears existing rows for the month, writes new rows with captain as P1.
+// params.slots — JSON string of slot results
+// params.month — "YYYY-MM"
+function publishSchedule(params) {
+  var slots = safeParseJSON(params.slots, []);
+  var month = params.month || '';
+  if (!slots.length) return { error: 'No slots to publish.' };
+
+  var sheet = getOrCreateMatchGroupsSheet();
+
+  // Delete existing rows for this month (iterate backwards to preserve indices)
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var monthVals = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+    for (var i = monthVals.length - 1; i >= 0; i--) {
+      if (normalizeMonth(monthVals[i][0]) === month) {
+        sheet.deleteRow(i + 2);
+      }
+    }
+  }
+
+  var saved = 0;
+  slots.forEach(function(slot) {
+    if (slot.skipped) return;
+    var dateLabel   = slot.date;
+    var sitOutName  = slot.sitOut ? slot.sitOut.name  : '';
+    var sitOutEmail = slot.sitOut ? slot.sitOut.email : '';
+
+    (slot.groups || []).forEach(function(group, gi) {
+      var captainEmail = (slot.captains || [])[gi] || '';
+      // Put captain first
+      var ordered = group.slice().sort(function(a, b) {
+        return a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0;
+      });
+      var p = ordered.concat([{name:'',email:''},{name:'',email:''},{name:'',email:''},{name:'',email:''}]);
+      sheet.appendRow([
+        new Date().toISOString(),
+        month,
+        dateLabel,
+        String.fromCharCode(65 + gi), // just letter: A, B, C…
+        p[0].name, p[0].email,
+        p[1].name, p[1].email,
+        p[2].name, p[2].email,
+        p[3].name, p[3].email,
+        sitOutName,
+        sitOutEmail
+      ]);
+      saved++;
+    });
+  });
+
+  Logger.log('publishSchedule: published ' + saved + ' group row(s) for ' + month);
+  return { success: true, groupsPublished: saved };
+}
+
+// ── Get Published Schedule ──────────────────────────
+// Returns the most recently published month's schedule
+// grouped by date → groups.
+function getPublishedSchedule() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return { month: null, dates: [] };
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 14).getValues();
+
+  // Find the most recent month
+  var latestMonth = '';
+  rows.forEach(function(r) {
+    var m = normalizeMonth(r[1]);
+    if (m && m > latestMonth) latestMonth = m;
+  });
+  if (!latestMonth) return { month: null, dates: [] };
+
+  // Group rows by date then group letter
+  var dateMap = {}; // date → { letter → {players, sitOut} }
+  rows.forEach(function(r) {
+    if (normalizeMonth(r[1]) !== latestMonth) return;
+    var date   = r[2]  ? r[2].toString()  : '';
+    var letter = r[3]  ? r[3].toString()  : '';
+    var sitOutName  = r[12] ? r[12].toString() : '';
+    var sitOutEmail = r[13] ? r[13].toString() : '';
+
+    if (!date) return;
+    if (!dateMap[date]) dateMap[date] = {};
+    // P1 is captain
+    var players = [];
+    for (var pi = 0; pi < 4; pi++) {
+      var nm = r[4 + pi*2]     ? r[4 + pi*2].toString()     : '';
+      var em = r[4 + pi*2 + 1] ? r[4 + pi*2 + 1].toString() : '';
+      if (nm) players.push({ name: nm, email: em, isCaptain: pi === 0 });
+    }
+    dateMap[date][letter] = {
+      players: players,
+      sitOut: sitOutName ? { name: sitOutName, email: sitOutEmail } : null
+    };
+  });
+
+  // Sort dates, build output array
+  var sortedDates = Object.keys(dateMap).sort();
+  var dates = sortedDates.map(function(date) {
+    var groupLetters = Object.keys(dateMap[date]).sort();
+    return {
+      date: date,
+      groups: groupLetters.map(function(letter) {
+        return {
+          letter: letter,
+          players: dateMap[date][letter].players,
+          sitOut:  dateMap[date][letter].sitOut
+        };
+      })
+    };
+  });
+
+  return { month: latestMonth, dates: dates };
 }
 
 // ── Sheet helper ────────────────────────────────────
