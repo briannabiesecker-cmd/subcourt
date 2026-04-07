@@ -2398,7 +2398,8 @@ function showAlert(id, type, msg) {
 async function refreshAll() {
   clearCache();
   if (document.getElementById('view-admin').classList.contains('active') &&
-      document.getElementById('admin-content').style.display !== 'none') loadDispatch();
+      document.getElementById('admin-content').style.display !== 'none' &&
+      document.getElementById('admin-tab-dispatch').style.display !== 'none') loadDispatch();
 }
 
 // ══════════════════════════════════════════════════
@@ -2455,9 +2456,13 @@ function unlockAdmin(name) {
   document.getElementById('admin-auth-panel').style.display = 'none';
   document.getElementById('admin-content').style.display = 'block';
   document.getElementById('admin-logged-in-as').textContent = name;
-  document.getElementById('admin-tab-players').style.display = 'none';
-  document.getElementById('admin-tab-dispatch').style.display = '';
-  loadDispatch();
+  // Reset inner tabs to default (Dispatch highlighted, no data loaded yet)
+  document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector('#admin-content .inner-tab').classList.add('active');
+  document.getElementById('admin-tab-dispatch').style.display  = '';
+  document.getElementById('admin-tab-players').style.display   = 'none';
+  document.getElementById('admin-tab-scheduler').style.display = 'none';
+  // Do not auto-load — user clicks the tab they want
 }
 
 function adminSignOut() {
