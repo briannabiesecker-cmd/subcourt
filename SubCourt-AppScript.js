@@ -974,11 +974,68 @@ function getAvailabilityConfig() {
   };
 }
 
-// Runs daily at 1 AM to enforce the close date without relying on app traffic
+// Returns players from the Players sheet who have NOT submitted availability
+// for the given month (e.g. "2026-05").
+function getPlayersWithoutSubmission(month) {
+  var players = getPlayers(); // [{name, email, ...}]
+  if (!players.length) return [];
+
+  var avSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.availability);
+  var submitted = {};
+  if (avSheet && avSheet.getLastRow() >= 2) {
+    var rows = avSheet.getRange(2, 1, avSheet.getLastRow() - 1, 6).getValues();
+    rows.forEach(function(r) {
+      if (normalizeMonth(r[3]) === month) {
+        var em = (r[2] || '').toLowerCase();
+        if (em) submitted[em] = true;
+      }
+    });
+  }
+
+  return players.filter(function(p) {
+    return p.email && !submitted[p.email.toLowerCase()];
+  });
+}
+
+// Runs daily at 1 AM to enforce the close date and send T-2 / T-1 reminders.
 function checkAvailabilityWindow() {
   var config = getAvailabilityConfig();
-  // getAvailabilityConfig already writes B18=false when past close date — just calling it is enough
+  // getAvailabilityConfig already writes B18=false when past close date
   Logger.log('checkAvailabilityWindow: isOpen=' + config.isOpen + ' closeDate=' + config.closeDate);
+
+  // Only send reminders while the window is open and a close date is set
+  if (!config.isOpen || !config.closeDate) return;
+
+  var today     = new Date();
+  today.setHours(0, 0, 0, 0);
+  var closeDate = new Date(config.closeDate + 'T00:00:00');
+  var daysUntilClose = Math.round((closeDate - today) / 864e5);
+
+  if (daysUntilClose !== 2 && daysUntilClose !== 1) return;
+
+  var missing = getPlayersWithoutSubmission(config.targetMonth);
+  if (!missing.length) {
+    Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder — all players already submitted');
+    return;
+  }
+
+  var closeDateLabel = closeDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  var urgency        = daysUntilClose === 1 ? 'tomorrow' : 'in 2 days';
+  var subject        = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes ' + urgency;
+  var body =
+    'Hi,\n\n' +
+    'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes ' + urgency + ' (' + closeDateLabel + ').\n\n' +
+    'We haven\'t received your availability yet. Please submit before the window closes so we can include you in the schedule.\n\n' +
+    'Open the Rally app to submit:\n' +
+    'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
+    'See you on the court!\n' +
+    'MTC Tennis Team';
+
+  var emails = missing.map(function(p) { return p.email; }).filter(Boolean);
+  Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + emails.length + ' player(s): ' + emails.join(', '));
+  if (EMAIL_ENABLED) {
+    MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
+  }
 }
 
 function openAvailabilityWindow(params) {
