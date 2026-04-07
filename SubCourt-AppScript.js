@@ -1124,18 +1124,22 @@ function cleanupOldAvailability() {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
 
-  const today        = new Date();
-  const currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
-  const rows         = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const now       = new Date();
+  const cutoff    = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
+  const rows      = sheet.getRange(2, 1, lastRow - 1, 1).getValues();   // timestamp column only
+  var   deleted   = 0;
 
   // Delete bottom-up to avoid row index shifting
   for (var i = rows.length - 1; i >= 0; i--) {
-    const rowMonth = rows[i][3] || '';
-    if (rowMonth && rowMonth < currentMonth) {
+    var ts = rows[i][0];
+    if (!ts) continue;
+    var submitted = (ts instanceof Date) ? ts : new Date(ts);
+    if (submitted < cutoff) {
       sheet.deleteRow(i + 2);
+      deleted++;
     }
   }
-  Logger.log('cleanupOldAvailability completed.');
+  Logger.log('cleanupOldAvailability: deleted ' + deleted + ' row(s) older than 60 days.');
 }
 
 // ══════════════════════════════════════════════════
