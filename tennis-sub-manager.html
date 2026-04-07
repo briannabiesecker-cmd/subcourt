@@ -242,7 +242,7 @@
   }
 
   .btn-primary {
-    background: var(--court);
+    background: var(--clay);
     color: white;
   }
 
@@ -861,13 +861,13 @@
     user-select: none;
   }
   .time-chip.selected {
-    background: var(--court);
-    border-color: var(--court);
+    background: var(--clay);
+    border-color: var(--clay);
     color: white;
   }
   .time-chip:hover:not(.selected) {
-    border-color: var(--court);
-    color: var(--court);
+    border-color: var(--clay);
+    color: var(--clay);
     background: white;
   }
   .avail-row-actions {
@@ -881,7 +881,7 @@
   .avail-util-btn {
     background: none;
     border: none;
-    color: var(--court);
+    color: var(--clay);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
@@ -889,7 +889,7 @@
     text-decoration: underline;
     font-family: inherit;
   }
-  .avail-util-btn:hover { color: var(--court-light); }
+  .avail-util-btn:hover { color: var(--clay-light); }
 
   .avail-readonly-date {
     display: flex;
@@ -1235,7 +1235,7 @@
         <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
           <div style="font-size:16px;font-weight:700;color:var(--court);margin-bottom:6px;">Available to play right now?</div>
           <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:12px;">If you're free to cover for someone, sign up as a volunteer. You'll be contacted when there's a match that fits your schedule.</div>
-          <button class="btn btn-primary" style="background:var(--court);" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">Go to Volunteer to Sub</button>
+          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">Go to Volunteer to Sub</button>
         </div>
       </div>
     </div>
