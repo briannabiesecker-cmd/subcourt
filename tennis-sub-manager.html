@@ -1278,25 +1278,21 @@
 
       <div id="avail-calendar-wrap" style="display:none;">
         <div class="card" style="padding:1.25rem 1.5rem;">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.5rem;">
             <div style="font-size:18px;font-weight:700;color:var(--ink);" id="avail-month-label">Dates</div>
             <div style="display:flex;gap:12px;">
-              <button class="avail-util-btn" onclick="availSelectAll()">Select all</button>
+              <button class="avail-util-btn" onclick="availSelectAll()">Select all dates</button>
               <button class="avail-util-btn" onclick="availClearAll()">Clear all</button>
             </div>
           </div>
-          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap a time to mark yourself available. Tap again to remove it.</div>
-          <div id="avail-grid-wrap" style="overflow-x:auto;">
-            <table class="avail-grid" id="avail-grid"></table>
+          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap <strong>Y</strong> to mark yourself available for that time. Tap again to change it to <strong>N</strong>.</div>
+
+          <div class="mt12 flex gap8" style="margin-bottom:1rem;">
+            <button class="btn btn-primary" id="avail-submit-btn-top" onclick="submitAvailability()">Submit availability</button>
           </div>
 
-          <div style="margin-top:1.25rem;border-top:1px solid var(--line);padding-top:1rem;">
-            <button class="avail-util-btn" style="font-size:14px;text-decoration:none;color:var(--ink-mid);" onclick="toggleAvailNotes()" id="avail-notes-toggle">+ Add a note (optional)</button>
-            <div id="avail-notes-wrap" style="display:none;margin-top:0.75rem;">
-              <label style="font-size:15px;font-weight:600;">Notes</label>
-              <textarea id="avail-notes" rows="3" placeholder="Anything the coordinator should know…"
-                style="width:100%;margin-top:6px;padding:10px;font-family:inherit;font-size:16px;border:1px solid var(--line);border-radius:var(--radius);resize:vertical;"></textarea>
-            </div>
+          <div id="avail-grid-wrap" style="overflow-x:auto;">
+            <table class="avail-grid" id="avail-grid"></table>
           </div>
         </div>
 
@@ -1621,9 +1617,6 @@ function clearTypeahead(prefix) {
   if (prefix === 'av') {
     availSelections = {};
     document.getElementById('avail-calendar-wrap').style.display = 'none';
-    document.getElementById('avail-notes').value = '';
-    document.getElementById('avail-notes-wrap').style.display = 'none';
-    document.getElementById('avail-notes-toggle').textContent = '+ Add a note (optional)';
     if (availConfig && availConfig.targetMonth) buildAvailabilityGrid();
   }
   if (prefix === 'adm') {
@@ -2650,21 +2643,24 @@ function buildAvailabilityGrid() {
     }
   }
 
-  const timeKeys   = ['08:00','09:30','11:00','12:30'];
-  const timeShort  = ['8am','9:30','11am','12:30'];
+  const timeKeys  = ['08:00','09:30','11:00','12:30'];
+  const timeShort = ['8am','9:30','11am','12:30'];
 
   let html = '<thead><tr><th></th>';
   timeKeys.forEach((_, i) => { html += '<th>' + timeShort[i] + '</th>'; });
+  html += '<th style="font-size:11px;color:var(--ink-light);">All</th>';
   html += '</tr></thead><tbody>';
 
   mwfDates.forEach(({ iso, label }) => {
+    const allOn = timeKeys.every(t => availSelections[iso] && availSelections[iso][t]);
     html += '<tr><td>' + label + '</td>';
     timeKeys.forEach(t => {
-      const on      = !!(availSelections[iso] && availSelections[iso][t]);
-      const cls     = on ? 'selected' : '';
-      const txt     = on ? 'Y' : 'N';
+      const on  = !!(availSelections[iso] && availSelections[iso][t]);
+      const cls = on ? 'selected' : '';
+      const txt = on ? 'Y' : 'N';
       html += '<td><button class="time-chip ' + cls + '" onclick="toggleChip(\'' + iso + '\',\'' + t + '\',this)">' + txt + '</button></td>';
     });
+    html += '<td><button class="avail-util-btn" style="font-size:13px;padding:2px 6px;" onclick="toggleRowAll(\'' + iso + '\',this)">' + (allOn ? 'Clear' : 'All') + '</button></td>';
     html += '</tr>';
   });
   html += '</tbody>';
@@ -2679,6 +2675,30 @@ function toggleChip(date, time, el) {
   availSelections[date][time] = on;
   el.classList.toggle('selected', on);
   el.textContent = on ? 'Y' : 'N';
+  // Update the row's All/Clear button label
+  const timeKeys = ['08:00','09:30','11:00','12:30'];
+  const allOn = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
+  const row = el.closest('tr');
+  if (row) {
+    const rowBtn = row.querySelector('.avail-util-btn');
+    if (rowBtn) rowBtn.textContent = allOn ? 'Clear' : 'All';
+  }
+}
+
+function toggleRowAll(date, btn) {
+  const timeKeys = ['08:00','09:30','11:00','12:30'];
+  const allOn    = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
+  const setTo    = !allOn; // if all on, clear; otherwise select all
+  if (!availSelections[date]) availSelections[date] = {};
+  timeKeys.forEach(t => { availSelections[date][t] = setTo; });
+  btn.textContent = setTo ? 'Clear' : 'All';
+  // Update the chips in this row
+  const row   = btn.closest('tr');
+  const chips = row ? row.querySelectorAll('.time-chip') : [];
+  chips.forEach(chip => {
+    chip.classList.toggle('selected', setTo);
+    chip.textContent = setTo ? 'Y' : 'N';
+  });
 }
 
 function availSelectAll() {
@@ -2702,13 +2722,6 @@ function availClearAll() {
   availSelections = {};
 }
 
-function toggleAvailNotes() {
-  const wrap = document.getElementById('avail-notes-wrap');
-  const btn  = document.getElementById('avail-notes-toggle');
-  const visible = wrap.style.display !== 'none';
-  wrap.style.display = visible ? 'none' : 'block';
-  btn.textContent = visible ? '+ Add a note (optional)' : '− Hide note';
-}
 
 async function loadMyAvailability(email) {
   const { targetMonth } = availConfig || {};
@@ -2716,9 +2729,6 @@ async function loadMyAvailability(email) {
 
   // Reset state immediately — no stale chips visible while the API call is in flight
   availSelections = {};
-  document.getElementById('avail-notes').value = '';
-  document.getElementById('avail-notes-wrap').style.display = 'none';
-  document.getElementById('avail-notes-toggle').textContent = '+ Add a note (optional)';
   buildAvailabilityGrid();
   document.getElementById('avail-calendar-wrap').style.display = 'block';
 
@@ -2732,11 +2742,6 @@ async function loadMyAvailability(email) {
       });
       buildAvailabilityGrid();
       // buildAvailabilityGrid no longer touches display — keep it visible
-      if (existing.notes) {
-        document.getElementById('avail-notes').value = existing.notes;
-        document.getElementById('avail-notes-wrap').style.display = 'block';
-        document.getElementById('avail-notes-toggle').textContent = '− Hide note';
-      }
     }
   } catch(e) {
     showAlert('avail-alert', 'error', 'Could not load your previous submission. You can still select dates and submit.');
@@ -2762,11 +2767,8 @@ async function submitAvailability() {
     .filter(d => d.times.length > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const notes = document.getElementById('avail-notes').value.trim();
-
-  const btn = document.getElementById('avail-submit-btn');
-  btn.disabled = true;
-  btn.textContent = 'Submitting…';
+  const allBtns = ['avail-submit-btn', 'avail-submit-btn-top'];
+  allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Submitting…'; } });
 
   try {
     const result = await apiPost({
@@ -2774,19 +2776,18 @@ async function submitAvailability() {
       name, email,
       month: targetMonth,
       availableDates: JSON.stringify(availableDates),
-      notes
+      notes: ''
     });
     if (!result.success) {
       showAlert('avail-alert', 'error', result.error || 'Could not submit. Please try again.');
       return;
     }
     showAlert('avail-alert', 'success', 'Your availability has been submitted. A confirmation email is on its way!');
-    document.getElementById('avail-calendar-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('avail-alert').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(e) {
     showAlert('avail-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Submit availability';
+    allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Submit availability'; } });
   }
 }
 
