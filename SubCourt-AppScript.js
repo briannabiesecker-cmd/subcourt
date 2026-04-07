@@ -594,7 +594,8 @@ function sendAdminCode(params) {
   PropertiesService.getScriptProperties()
     .setProperty('admin_code_' + email, JSON.stringify({ code: code, expiry: expiry }));
 
-  if (EMAIL_ENABLED) MailApp.sendEmail({
+  // Admin OTP always sends regardless of EMAIL_ENABLED (testing flag)
+  MailApp.sendEmail({
     to: email,
     subject: 'Rally — Your Admin Access Code',
     body: 'Your Rally admin access code is: ' + code +
