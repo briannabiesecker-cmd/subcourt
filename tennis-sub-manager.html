@@ -1293,7 +1293,7 @@
               <button class="avail-util-btn" onclick="availClearAll()">Clear all</button>
             </div>
           </div>
-          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap <strong>Y</strong> to mark yourself available for that time. Tap again to change it to <strong>N</strong>.</div>
+          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap <strong>Y</strong> to mark yourself available on that date. Tap again to change it to <strong>N</strong>.</div>
 
           <div class="mt12 flex gap8" style="margin-bottom:1rem;">
             <button class="btn btn-primary" id="avail-submit-btn-top" onclick="submitAvailability()">Submit availability</button>
@@ -2655,24 +2655,14 @@ function buildAvailabilityGrid() {
     }
   }
 
-  const timeKeys  = ['08:00','09:30','11:00','12:30'];
-  const timeShort = ['8am','9:30','11am','12:30'];
-
-  let html = '<thead><tr><th></th>';
-  timeKeys.forEach((_, i) => { html += '<th>' + timeShort[i] + '</th>'; });
-  html += '<th style="font-size:11px;color:var(--ink-light);">All</th>';
-  html += '</tr></thead><tbody>';
+  let html = '<thead><tr><th></th><th>Available?</th></tr></thead><tbody>';
 
   mwfDates.forEach(({ iso, label }) => {
-    const allOn = timeKeys.every(t => availSelections[iso] && availSelections[iso][t]);
+    const on  = !!availSelections[iso];
+    const cls = on ? 'selected' : '';
+    const txt = on ? 'Y' : 'N';
     html += '<tr><td>' + label + '</td>';
-    timeKeys.forEach(t => {
-      const on  = !!(availSelections[iso] && availSelections[iso][t]);
-      const cls = on ? 'selected' : '';
-      const txt = on ? 'Y' : 'N';
-      html += '<td><button class="time-chip ' + cls + '" onclick="toggleChip(\'' + iso + '\',\'' + t + '\',this)">' + txt + '</button></td>';
-    });
-    html += '<td><button class="avail-util-btn" style="font-size:13px;padding:2px 6px;" onclick="toggleRowAll(\'' + iso + '\')">' + (allOn ? 'Clear' : 'All') + '</button></td>';
+    html += '<td><button class="time-chip ' + cls + '" onclick="toggleDateChip(\'' + iso + '\',this)">' + txt + '</button></td>';
     html += '</tr>';
   });
   html += '</tbody>';
@@ -2681,59 +2671,31 @@ function buildAvailabilityGrid() {
   // Visibility is controlled by the caller — do not touch display here
 }
 
-function toggleChip(date, time, el) {
-  if (!availSelections[date]) availSelections[date] = {};
-  const on = !availSelections[date][time];
-  availSelections[date][time] = on;
+function toggleDateChip(date, el) {
+  const on = !availSelections[date];
+  availSelections[date] = on;
   el.classList.toggle('selected', on);
   el.textContent = on ? 'Y' : 'N';
-  // Keep the row's All/Clear button in sync without a full rebuild
-  const timeKeys = ['08:00','09:30','11:00','12:30'];
-  const allOn    = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
-  const rowBtn   = el.closest('tr')?.querySelector('.avail-util-btn');
-  if (rowBtn) rowBtn.textContent = allOn ? 'Clear' : 'All';
-}
-
-function toggleRowAll(date) {
-  const timeKeys = ['08:00','09:30','11:00','12:30'];
-  const allOn    = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
-  const setTo    = !allOn;
-  if (!availSelections[date]) availSelections[date] = {};
-  timeKeys.forEach(t => { availSelections[date][t] = setTo; });
-
-  // Patch only the affected row — avoids full grid rebuild
-  for (const row of document.querySelectorAll('#avail-grid tbody tr')) {
-    const firstChip = row.querySelector('.time-chip');
-    if (!firstChip) continue;
-    const m = firstChip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})'/);
-    if (!m || m[1] !== date) continue;
-    row.querySelectorAll('.time-chip').forEach((chip, i) => {
-      chip.classList.toggle('selected', setTo);
-      chip.textContent = setTo ? 'Y' : 'N';
-    });
-    const rowBtn = row.querySelector('.avail-util-btn');
-    if (rowBtn) rowBtn.textContent = setTo ? 'Clear' : 'All';
-    break;
-  }
 }
 
 function availSelectAll() {
-  const timeKeys = ['08:00','09:30','11:00','12:30'];
   document.querySelectorAll('#avail-grid tbody tr').forEach(row => {
     const chip = row.querySelector('.time-chip');
     if (!chip) return;
     const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})'/);
     if (!match) return;
-    const iso = match[1];
-    availSelections[iso] = {};
-    timeKeys.forEach(t => { availSelections[iso][t] = true; });
+    availSelections[match[1]] = true;
+    chip.classList.add('selected');
+    chip.textContent = 'Y';
   });
-  buildAvailabilityGrid();
 }
 
 function availClearAll() {
   availSelections = {};
-  buildAvailabilityGrid();
+  document.querySelectorAll('#avail-grid tbody tr').forEach(row => {
+    const chip = row.querySelector('.time-chip');
+    if (chip) { chip.classList.remove('selected'); chip.textContent = 'N'; }
+  });
 }
 
 
@@ -2769,10 +2731,7 @@ async function loadMyAvailability(email) {
 
     const existing = data && data.submission;
     if (existing && existing.availableDates && existing.availableDates.length) {
-      existing.availableDates.forEach(entry => {
-        availSelections[entry.date] = {};
-        (entry.times || []).forEach(t => { availSelections[entry.date][t] = true; });
-      });
+      existing.availableDates.forEach(date => { availSelections[date] = true; });
       buildAvailabilityGrid();
       setStatus('Your previous submission loaded — ' + existing.availableDates.length + ' date(s) selected.', 'var(--success)');
     } else {
@@ -2793,14 +2752,11 @@ async function submitAvailability() {
   const { targetMonth } = availConfig || {};
   if (!targetMonth) return;
 
-  // Build availableDates array from selections
+  // Build availableDates array from selections — simple list of date strings
   const availableDates = Object.entries(availSelections)
-    .map(([date, times]) => ({
-      date,
-      times: Object.entries(times).filter(([, v]) => v).map(([t]) => t).sort()
-    }))
-    .filter(d => d.times.length > 0)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter(([, v]) => v)
+    .map(([date]) => date)
+    .sort();
 
   const payload = {
     action: 'submitAvailability',
