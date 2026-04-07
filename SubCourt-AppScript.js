@@ -10,7 +10,8 @@ const TABS = {
   requests:     'SubRequests',
   volunteers:   'Volunteers',
   config:       'Config',
-  availability: 'Availability'
+  availability: 'Availability',
+  matchGroups:  'MatchGroups'
 };
 
 const TIMES = ['08:00','09:30','11:00','12:30'];
@@ -234,6 +235,9 @@ function doGet(e) {
     else if (action === 'submitAvailability')       result = submitAvailability(e.parameter);
     else if (action === 'getMyAvailability')        result = getMyAvailability(e.parameter);
     else if (action === 'getAvailabilityData')      result = getAvailabilityData(e.parameter);
+    else if (action === 'getSchedulerSettings')     result = getSchedulerSettings();
+    else if (action === 'generateSchedule')         result = generateSchedule(e.parameter);
+    else if (action === 'saveSchedule')             result = saveSchedule(e.parameter);
     else if (action === 'ping')            result = { version: 'V33', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -1132,4 +1136,402 @@ function cleanupOldAvailability() {
     }
   }
   Logger.log('cleanupOldAvailability completed.');
+}
+
+// ══════════════════════════════════════════════════
+// SCHEDULER
+// ══════════════════════════════════════════════════
+
+// ── Settings ──────────────────────────────────────
+// Reads scheduler weight rows from Config tab (B20–B25).
+// Coordinators can tune these directly in the sheet.
+function getSchedulerSettings() {
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+    var raw   = sheet.getRange('B20:B25').getValues();
+    var wTV   = parseFloat(raw[0][0]);
+    var wGV   = parseFloat(raw[1][0]);
+    var wSV   = parseFloat(raw[2][0]);
+    var wRec  = parseFloat(raw[3][0]);
+    var iters = parseInt(raw[4][0]);
+    var rests = parseInt(raw[5][0]);
+    var settings = {
+      weightTeamVariance:  isNaN(wTV)   ? 1.0 : wTV,
+      weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
+      weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,
+      weightRecency:       isNaN(wRec)  ? 1.5 : wRec,
+      solverIterations:    isNaN(iters) ? 200  : iters,
+      solverRestarts:      isNaN(rests) ? 5    : rests
+    };
+
+    // Also return a summary of how many players have submitted for the target month
+    var availConfig = getAvailabilityConfig();
+    var targetMonth = availConfig.targetMonth;
+    var submissionCount = 0;
+    if (targetMonth) {
+      var avSheet  = getOrCreateAvailabilitySheet();
+      var lastRow  = avSheet.getLastRow();
+      if (lastRow >= 2) {
+        var avRows = avSheet.getRange(2, 4, lastRow - 1, 1).getValues();
+        avRows.forEach(function(r) {
+          if (normalizeMonth(r[0]) === targetMonth) submissionCount++;
+        });
+      }
+    }
+    settings.targetMonth      = targetMonth;
+    settings.targetMonthLabel = availConfig.targetMonthLabel;
+    settings.submissionCount  = submissionCount;
+    return settings;
+  } catch(e) {
+    return {
+      weightTeamVariance:  1.0,
+      weightGroupVariance: 0.5,
+      weightSocialVariety: 2.0,
+      weightRecency:       1.5,
+      solverIterations:    200,
+      solverRestarts:      5,
+      targetMonth:         '',
+      targetMonthLabel:    '',
+      submissionCount:     0
+    };
+  }
+}
+
+// ── Generate ───────────────────────────────────────
+// Reads availability submissions for targetMonth, joins player ratings,
+// and runs the local-search optimizer for each date+time slot that has
+// enough available players (≥3). Returns an array of slot results.
+//
+// params.month     — "YYYY-MM" to schedule (defaults to next month)
+// params.pairCounts — JSON string of { "email|email": N } from prior sessions (optional)
+// params.sitOutCounts — JSON string of { "email": N } (optional)
+function generateSchedule(params) {
+  var month = params.month || '';
+  var pairCounts   = safeParseJSON(params.pairCounts,   {});
+  var sitOutCounts = safeParseJSON(params.sitOutCounts, {});
+
+  // Fall back to target month from availability config
+  if (!month) {
+    month = getAvailabilityConfig().targetMonth;
+  }
+  if (!month) return { error: 'No target month available.' };
+
+  // Load players with ratings (internal)
+  var players = getPlayersWithRatings(); // [{ name, email, rating }]
+  var playerMap = {};
+  players.forEach(function(p) { playerMap[p.email.toLowerCase()] = p; });
+
+  // Load availability submissions for this month
+  var avSheet  = getOrCreateAvailabilitySheet();
+  var lastRow  = avSheet.getLastRow();
+  if (lastRow < 2) return { error: 'No availability submissions found for ' + month + '.' };
+
+  var avRows = avSheet.getRange(2, 1, lastRow - 1, 6).getValues();
+
+  // Group submissions by month, keyed by email
+  // Each row: [timestamp, name, email, month, availableDatesJSON, notes]
+  var submissionsByEmail = {};
+  avRows.forEach(function(r) {
+    var rowMonth = normalizeMonth(r[3]);
+    if (rowMonth !== month) return;
+    var email = (r[2] || '').toLowerCase();
+    if (!email) return;
+    var dates = [];
+    try { dates = JSON.parse(r[4] || '[]'); } catch(e) {}
+    submissionsByEmail[email] = {
+      name:   r[1] || '',
+      email:  email,
+      rating: playerMap[email] ? playerMap[email].rating : 0,
+      dates:  dates  // [{ date: "YYYY-MM-DD", times: ["08:00",...] }]
+    };
+  });
+
+  var emailList = Object.keys(submissionsByEmail);
+  if (!emailList.length) return { error: 'No submissions found for ' + month + '.' };
+
+  // Build a map of { "YYYY-MM-DD|HH:MM": [player, ...] } for each available slot
+  var slotMap = {};
+  emailList.forEach(function(email) {
+    var sub = submissionsByEmail[email];
+    sub.dates.forEach(function(d) {
+      (d.times || []).forEach(function(t) {
+        var key = d.date + '|' + t;
+        if (!slotMap[key]) slotMap[key] = [];
+        slotMap[key].push(sub);
+      });
+    });
+  });
+
+  // Sort slots chronologically
+  var slotKeys = Object.keys(slotMap).sort();
+
+  var settings = getSchedulerSettings();
+
+  var slotResults = [];
+  slotKeys.forEach(function(slotKey) {
+    var parts     = slotKey.split('|');
+    var date      = parts[0];
+    var time      = parts[1];
+    var available = slotMap[slotKey];
+
+    if (available.length < 3) {
+      // Not enough for even one group of 3 — skip
+      slotResults.push({
+        date: date, time: time,
+        skipped: true,
+        reason: 'Only ' + available.length + ' player(s) available — need at least 3.'
+      });
+      return;
+    }
+
+    var result = optimizeSlot(available, settings, pairCounts, sitOutCounts);
+    slotResults.push({ date: date, time: time, skipped: false, groups: result.groups, sitOut: result.sitOut });
+
+    // Update running pairCounts and sitOutCounts for subsequent slots in the same run
+    result.groups.forEach(function(group) {
+      for (var i = 0; i < group.length; i++) {
+        for (var j = i + 1; j < group.length; j++) {
+          var key = pairKey(group[i].email, group[j].email);
+          pairCounts[key] = (pairCounts[key] || 0) + 1;
+        }
+      }
+    });
+    if (result.sitOut) {
+      sitOutCounts[result.sitOut.email] = (sitOutCounts[result.sitOut.email] || 0) + 1;
+    }
+  });
+
+  return {
+    month:          month,
+    submissionCount: emailList.length,
+    slots:          slotResults,
+    pairCounts:     pairCounts,   // return updated state for client to persist
+    sitOutCounts:   sitOutCounts
+  };
+}
+
+// ── Core Optimizer ─────────────────────────────────
+// Runs local search with random restarts for one date+time slot.
+// Returns { groups: [[player,...], ...], sitOut: player|null }
+function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
+  var n         = available.length;
+  var remainder = n % 4;
+
+  // Decide group structure
+  var groupSizes;
+  if (remainder === 0) {
+    groupSizes = fillArray(n / 4, 4);                      // all groups of 4
+  } else if (remainder === 1) {
+    groupSizes = fillArray((n - 1) / 4, 4);                // one player sits out
+    // sitOut chosen later by penalty; temporarily treat as remainder=0 on n-1
+    groupSizes = fillArray(Math.floor((n - 1) / 4), 4);
+  } else if (remainder === 2) {
+    groupSizes = fillArray(Math.floor(n / 4) - 1, 4).concat([3, 3]); // two groups of 3
+  } else {
+    // remainder === 3
+    groupSizes = fillArray(Math.floor(n / 4), 4).concat([3]);         // one group of 3
+  }
+
+  var sitOutPlayer = null;
+  var pool = available.slice();
+
+  // For remainder=1 pick the sit-out player with the highest sitOutCounts (least fair)
+  // to minimise repeat sit-outs — swap them out of the pool before optimizing
+  if (remainder === 1) {
+    var minSitOuts = Infinity;
+    var sitOutIdx  = 0;
+    pool.forEach(function(p, i) {
+      var count = sitOutCounts[p.email] || 0;
+      if (count < minSitOuts) { minSitOuts = count; sitOutIdx = i; }
+    });
+    sitOutPlayer = pool.splice(sitOutIdx, 1)[0];
+  }
+
+  var iters   = settings.solverIterations || 200;
+  var restarts = settings.solverRestarts  || 5;
+  var bestGroups = null;
+  var bestPenalty = Infinity;
+
+  for (var r = 0; r < restarts; r++) {
+    // Random initial grouping
+    var shuffled = shuffleArray(pool.slice());
+    var groups   = buildGroupsFromSizes(shuffled, groupSizes);
+    var penalty  = calcPenalty(groups, settings, pairCounts);
+
+    for (var iter = 0; iter < iters; iter++) {
+      // Pick two random players from different groups and try swapping them
+      var gi = Math.floor(Math.random() * groups.length);
+      var gj = Math.floor(Math.random() * groups.length);
+      if (gi === gj) continue;
+
+      var pi = Math.floor(Math.random() * groups[gi].length);
+      var pj = Math.floor(Math.random() * groups[gj].length);
+
+      // Perform swap
+      var tmp = groups[gi][pi];
+      groups[gi][pi] = groups[gj][pj];
+      groups[gj][pj] = tmp;
+
+      var newPenalty = calcPenalty(groups, settings, pairCounts);
+      if (newPenalty < penalty) {
+        penalty = newPenalty;          // keep improvement
+      } else {
+        // Revert swap
+        groups[gj][pj] = groups[gi][pi];
+        groups[gi][pi] = tmp;
+      }
+    }
+
+    if (penalty < bestPenalty) {
+      bestPenalty = penalty;
+      bestGroups  = groups.map(function(g) { return g.slice(); });
+    }
+  }
+
+  // Attach display info to each player in output
+  var outputGroups = bestGroups.map(function(group) {
+    return group.map(function(p) {
+      return { name: p.name, email: p.email, rating: p.rating };
+    });
+  });
+
+  return { groups: outputGroups, sitOut: sitOutPlayer };
+}
+
+// ── Penalty Function ────────────────────────────────
+// Skill component: sum over each group of within-group rating variance.
+// Social component: penalises repeat pairings (squared to punish heavy repeats).
+// Recency is handled by caller passing updated pairCounts between consecutive slots.
+function calcPenalty(groups, settings, pairCounts) {
+  var wTV  = settings.weightTeamVariance  || 1.0;
+  var wGV  = settings.weightGroupVariance || 0.5;
+  var wSV  = settings.weightSocialVariety || 2.0;
+
+  var skillPenalty  = 0;
+  var socialPenalty = 0;
+
+  // Flatten all ratings to get overall group variance
+  var allRatings = [];
+  groups.forEach(function(group) { group.forEach(function(p) { allRatings.push(p.rating); }); });
+  var totalGroupVar = variance(allRatings);
+
+  groups.forEach(function(group) {
+    var ratings    = group.map(function(p) { return p.rating; });
+    var groupVar   = variance(ratings);
+    // Split variance equally across two "teams" within a 4-player group (or use full group for 3)
+    var teamVar    = group.length === 4 ? variance(ratings.slice(0,2)) + variance(ratings.slice(2,4)) : groupVar;
+    skillPenalty  += teamVar * wTV + groupVar * wGV;
+
+    // Social: penalise pairs that have played together before
+    for (var i = 0; i < group.length; i++) {
+      for (var j = i + 1; j < group.length; j++) {
+        var key    = pairKey(group[i].email, group[j].email);
+        var hist   = pairCounts[key] || 0;
+        socialPenalty += wSV * hist * hist;
+      }
+    }
+  });
+
+  skillPenalty += totalGroupVar * wGV;
+
+  return skillPenalty + socialPenalty;
+}
+
+// ── Save ───────────────────────────────────────────
+// Writes the confirmed schedule to the MatchGroups sheet.
+// params.slots — JSON string of slot results from generateSchedule
+// params.month — "YYYY-MM"
+function saveSchedule(params) {
+  var slots = safeParseJSON(params.slots, []);
+  var month = params.month || '';
+  if (!slots.length) return { error: 'No slots to save.' };
+
+  var sheet = getOrCreateMatchGroupsSheet();
+
+  slots.forEach(function(slot) {
+    if (slot.skipped) return;
+    var dateLabel = slot.date;
+    var timeLabel = TIME_LABELS[slot.time] || slot.time;
+    var sitOutName  = slot.sitOut  ? slot.sitOut.name  : '';
+    var sitOutEmail = slot.sitOut  ? slot.sitOut.email : '';
+
+    (slot.groups || []).forEach(function(group, gi) {
+      var groupLabel = 'Group ' + String.fromCharCode(65 + gi); // A, B, C...
+      var p = group.concat([{name:'',email:''},{name:'',email:''},{name:'',email:''},{name:'',email:''}]);
+      sheet.appendRow([
+        new Date().toISOString(),
+        month,
+        dateLabel,
+        timeLabel,
+        groupLabel,
+        p[0].name, p[0].email,
+        p[1].name, p[1].email,
+        p[2].name, p[2].email,
+        p[3].name, p[3].email,
+        sitOutName,
+        sitOutEmail
+      ]);
+    });
+  });
+
+  Logger.log('saveSchedule: saved ' + slots.length + ' slot(s) for ' + month);
+  return { success: true, slotsSaved: slots.filter(function(s) { return !s.skipped; }).length };
+}
+
+// ── Sheet helper ────────────────────────────────────
+function getOrCreateMatchGroupsSheet() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet) {
+    sheet = ss.insertSheet(TABS.matchGroups);
+    sheet.getRange(1, 1, 1, 15).setValues([[
+      'Timestamp','Month','Date','Time','Group',
+      'P1 Name','P1 Email','P2 Name','P2 Email',
+      'P3 Name','P3 Email','P4 Name','P4 Email',
+      'SitOut Name','SitOut Email'
+    ]]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// ── Scheduler Utilities ─────────────────────────────
+function pairKey(emailA, emailB) {
+  return emailA < emailB ? emailA + '|' + emailB : emailB + '|' + emailA;
+}
+
+function variance(arr) {
+  if (!arr || arr.length < 2) return 0;
+  var mean = arr.reduce(function(s, v) { return s + v; }, 0) / arr.length;
+  return arr.reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / arr.length;
+}
+
+function shuffleArray(arr) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr;
+}
+
+function fillArray(len, val) {
+  var out = [];
+  for (var i = 0; i < len; i++) out.push(val);
+  return out;
+}
+
+function buildGroupsFromSizes(players, sizes) {
+  var groups = [];
+  var idx    = 0;
+  sizes.forEach(function(sz) {
+    groups.push(players.slice(idx, idx + sz));
+    idx += sz;
+  });
+  return groups;
+}
+
+function safeParseJSON(str, fallback) {
+  if (!str) return fallback;
+  if (typeof str === 'object') return str;
+  try { return JSON.parse(str); } catch(e) { return fallback; }
 }
