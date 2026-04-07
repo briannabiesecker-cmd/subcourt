@@ -946,6 +946,155 @@
     .avail-grid thead th { font-size: 11px; }
     .avail-grid tbody td:first-child { min-width: 90px; font-size: 14px; }
   }
+
+  /* ── Chat Widget ── */
+  #chat-bubble {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--clay);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 26px;
+    box-shadow: 0 4px 16px rgba(224,122,90,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  #chat-bubble:hover { transform: scale(1.07); box-shadow: 0 6px 20px rgba(224,122,90,0.55); }
+
+  #chat-panel {
+    position: fixed;
+    bottom: 100px;
+    right: 28px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    height: 520px;
+    max-height: calc(100vh - 120px);
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    z-index: 200;
+    overflow: hidden;
+    transform: translateY(12px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  #chat-panel.open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .chat-header {
+    background: var(--clay);
+    color: white;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .chat-header-title {
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .chat-close-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+    opacity: 0.85;
+    padding: 0 2px;
+  }
+  .chat-close-btn:hover { opacity: 1; }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chat-msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 16px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .chat-msg.assistant {
+    background: var(--chalk);
+    color: var(--ink);
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+  }
+  .chat-msg.user {
+    background: var(--clay);
+    color: white;
+    border-bottom-right-radius: 4px;
+    align-self: flex-end;
+  }
+  .chat-msg.thinking {
+    background: var(--chalk);
+    color: var(--ink-light);
+    align-self: flex-start;
+    font-style: italic;
+  }
+
+  .chat-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1;
+    border: 1.5px solid var(--line);
+    border-radius: 20px;
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 16px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .chat-input:focus { border-color: var(--clay); }
+  .chat-send-btn {
+    background: var(--clay);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    cursor: pointer;
+    font-size: 18px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s;
+  }
+  .chat-send-btn:hover { opacity: 0.88; }
+  .chat-send-btn:disabled { opacity: 0.45; cursor: default; }
 </style>
 </head>
 <body>
@@ -1463,7 +1612,8 @@ const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:
 // ══════════════════════════════════════════════════
 // CONFIG — paste your Apps Script URL here after deploying
 // ══════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby6CoAz-3PE5p5r1Rhi3P9eva8cHu5IzpEe-WqepPJLVN9WMNtBWmDp1Aya_MkFwQO8/exec';
+const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycby6CoAz-3PE5p5r1Rhi3P9eva8cHu5IzpEe-WqepPJLVN9WMNtBWmDp1Aya_MkFwQO8/exec';
+const GEMINI_API_KEY = 'YOUR_KEY_HERE'; // Replace with your Google AI Studio API key
 
 // ══════════════════════════════════════════════════
 // NAVIGATION
@@ -2951,6 +3101,211 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+</script>
+
+<!-- ── CHAT WIDGET ── -->
+<button id="chat-bubble" onclick="toggleChat()" title="Need help? Chat with Rally Assistant">💬</button>
+
+<div id="chat-panel">
+  <div class="chat-header">
+    <div class="chat-header-title">🎾 Rally Assistant</div>
+    <button class="chat-close-btn" onclick="toggleChat()" title="Close">×</button>
+  </div>
+  <div class="chat-messages" id="chat-messages"></div>
+  <div class="chat-input-row">
+    <input class="chat-input" id="chat-input" type="text"
+      placeholder="Type a message…"
+      onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendChat(); }"
+      autocomplete="off" />
+    <button class="chat-send-btn" id="chat-send-btn" onclick="sendChat()" title="Send">➤</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+// CHAT ASSISTANT
+// ══════════════════════════════════════════════════
+
+const CHAT_SYSTEM_PROMPT = `You are Rally Assistant, a friendly helper for the MTC MWF Tennis League app.
+You help players — mostly 60 years and older — complete one of three tasks:
+  1. Request a Sub: They need someone to cover their match.
+  2. Volunteer to Sub: They want to sign up to cover someone else's match.
+  3. Submit Availability: They want to share which days and times they can play next month.
+
+Rules:
+- Ask only ONE question at a time. Keep messages short and friendly.
+- Use plain language. Avoid technical terms.
+- When you know which task the player wants, collect the required fields one at a time.
+- For Request a Sub you need: their name, match date (must be a Monday, Wednesday, or Friday), match time (8:00 AM / 9:30 AM / 11:00 AM / 12:30 PM).
+- For Volunteer to Sub you need: their name, and which upcoming dates and times they are free (Mon/Wed/Fri only).
+- For Submit Availability you need: their name, and which dates and times they can play next month (Mon/Wed/Fri only, times are 8:00 AM / 9:30 AM / 11:00 AM / 12:30 PM).
+- Always confirm all collected details with the player before submitting.
+- When you are ready to submit, output a JSON block on its own line wrapped in triple backticks like this:
+  \`\`\`json
+  { "action": "...", ... }
+  \`\`\`
+  Use action "requestSub" with fields: name, date (YYYY-MM-DD), time (HH:MM 24h).
+  Use action "volunteerSub" with fields: name, entries (array of { date: "YYYY-MM-DD", times: ["HH:MM",...] }).
+  Use action "submitAvailability" with fields: name, entries (array of { date: "YYYY-MM-DD", times: ["HH:MM",...] }).
+- After outputting JSON, also write a friendly confirmation message for the player.
+- If the player's name does not closely match a name in the player list, apologize and ask them to go to the form directly and pick their name from the dropdown.`;
+
+let chatHistory = [];
+let chatOpen = false;
+let chatStarted = false;
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById('chat-panel');
+  panel.classList.toggle('open', chatOpen);
+  if (chatOpen && !chatStarted) {
+    chatStarted = true;
+    appendChatMsg('assistant', "Hi! I'm the Rally Assistant. I can help you request a sub, sign up to volunteer, or submit your monthly availability. What would you like to do?");
+    document.getElementById('chat-input').focus();
+  } else if (chatOpen) {
+    document.getElementById('chat-input').focus();
+  }
+}
+
+function appendChatMsg(role, text) {
+  const el = document.createElement('div');
+  el.className = 'chat-msg ' + role;
+  el.textContent = text;
+  const container = document.getElementById('chat-messages');
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+  return el;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send-btn');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  appendChatMsg('user', text);
+  chatHistory.push({ role: 'user', parts: [{ text }] });
+
+  sendBtn.disabled = true;
+  const thinkingEl = appendChatMsg('thinking', 'Thinking…');
+
+  try {
+    const reply = await callGemini(chatHistory);
+    thinkingEl.remove();
+    chatHistory.push({ role: 'model', parts: [{ text: reply }] });
+
+    // Check for JSON action block
+    const jsonMatch = reply.match(/```json\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      const displayText = reply.replace(/```json[\s\S]*?```/, '').trim();
+      if (displayText) appendChatMsg('assistant', displayText);
+      try {
+        const action = JSON.parse(jsonMatch[1].trim());
+        await executeChatAction(action);
+      } catch(e) {
+        appendChatMsg('assistant', "Sorry, I had trouble understanding that. Let me try again — or you can fill in the form directly.");
+      }
+    } else {
+      appendChatMsg('assistant', reply);
+    }
+  } catch(e) {
+    thinkingEl.remove();
+    appendChatMsg('assistant', "Sorry, I couldn't connect right now. Please try again or fill in the form directly.");
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+async function callGemini(history) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY;
+  const body = {
+    system_instruction: { parts: [{ text: CHAT_SYSTEM_PROMPT }] },
+    contents: history
+  };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) throw new Error('Gemini API error ' + resp.status);
+  const data = await resp.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+function findPlayer(name) {
+  if (!name || !playerList.length) return null;
+  const q = name.toLowerCase().trim();
+  // Exact match first
+  let match = playerList.find(p => p.name.toLowerCase() === q);
+  if (match) return match;
+  // Partial match
+  match = playerList.find(p => p.name.toLowerCase().includes(q) || q.includes(p.name.toLowerCase().split(' ')[0].toLowerCase()));
+  return match || null;
+}
+
+async function executeChatAction(action) {
+  await loadPlayerList();
+  const player = findPlayer(action.name);
+
+  if (!player) {
+    appendChatMsg('assistant', "I couldn't find \"" + action.name + "\" in the player list. Please go to the form and pick your name from the dropdown — it only takes a moment!");
+    return;
+  }
+
+  if (action.action === 'requestSub') {
+    // Navigate to request tab and fill form
+    showView('request', document.querySelector('nav button:nth-child(2)'));
+    toggleChat();
+    await new Promise(r => setTimeout(r, 300));
+    selectTypeaheadPlayer('req', player.name, player.email);
+    if (action.date) document.getElementById('req-date').value = action.date;
+    if (action.time) document.getElementById('req-time').value = action.time;
+    showAlert('req-alert', 'info', "I've filled in your details. Please check them and tap Submit request when you're ready.");
+
+  } else if (action.action === 'volunteerSub') {
+    showView('volunteer', document.querySelector('nav button:nth-child(3)'));
+    toggleChat();
+    await buildCalendar();
+    await new Promise(r => setTimeout(r, 300));
+    selectTypeaheadPlayer('vol', player.name, player.email);
+    // Set selections from chat
+    if (action.entries && action.entries.length) {
+      action.entries.forEach(({ date, times }) => {
+        if (volSelections.hasOwnProperty(date)) {
+          volSelections[date] = (times || []);
+          refreshDateRow(date);
+        }
+      });
+      updateVolSummary();
+    }
+    showAlert('vol-alert', 'info', "I've filled in your details. Check your dates and tap Submit availability when ready.");
+
+  } else if (action.action === 'submitAvailability') {
+    showView('availability', document.querySelector('nav button:nth-child(4)'));
+    toggleChat();
+    await loadAvailabilityView();
+    await new Promise(r => setTimeout(r, 300));
+    if (availConfig && availConfig.isOpen) {
+      selectTypeaheadPlayer('av', player.name, player.email);
+      // Wait for loadMyAvailability to finish, then override with chat selections
+      await new Promise(r => setTimeout(r, 800));
+      if (action.entries && action.entries.length) {
+        availSelections = {};
+        action.entries.forEach(({ date, times }) => {
+          availSelections[date] = {};
+          (times || []).forEach(t => { availSelections[date][t] = true; });
+        });
+        buildAvailabilityGrid();
+        document.getElementById('avail-calendar-wrap').style.display = 'block';
+      }
+      showAlert('avail-alert', 'info', "I've filled in your dates. Review them and tap Submit availability when ready.");
+    } else {
+      showAlert('avail-alert', 'warn', "The availability window is currently closed. Check back when the coordinator opens it!");
+    }
+  }
+}
 </script>
 </body>
 </html>
