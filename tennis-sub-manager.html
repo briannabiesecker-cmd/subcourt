@@ -6,7 +6,7 @@
 <title>Rally — Tennis League</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎾</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -3000,17 +3000,20 @@ function renderScheduleTable(slots) {
     }
 
     slot.groups.forEach((group, gi) => {
-      const firstRow    = gi === 0;
-      const p           = group.concat([{},{},{},{}]);
+      const firstRow     = gi === 0;
       const captainEmail = (slot.captains || [])[gi] || '';
-      const sitOut      = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
+      // Captain always in Player 1 column
+      const ordered = [...group].sort((a, b) =>
+        a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0
+      ).concat([{},{},{},{}]);
+      const sitOut = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
       html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
         '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
         '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
-        '<td>' + playerCell(p[0], p[0].email === captainEmail) + '</td>' +
-        '<td>' + playerCell(p[1], p[1].email === captainEmail) + '</td>' +
-        '<td>' + playerCell(p[2], p[2].email === captainEmail) + '</td>' +
-        '<td>' + playerCell(p[3], p[3].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[0], ordered[0].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[1], ordered[1].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[2], ordered[2].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[3], ordered[3].email === captainEmail) + '</td>' +
         '<td class="sit-out-cell">' + sitOut + '</td>' +
         '</tr>';
     });
@@ -3020,7 +3023,7 @@ function renderScheduleTable(slots) {
   document.getElementById('sched-table').innerHTML = html;
 }
 
-function exportScheduleExcel() {
+async function exportScheduleExcel() {
   if (!scheduleData || !scheduleData.slots) return;
 
   const fmt = iso => {
@@ -3030,17 +3033,14 @@ function exportScheduleExcel() {
 
   // Collect active dates (columns) and all players (rows)
   const dates = [];
-  const playerMap = {}; // email → name
-
+  const playerMap = {};
   scheduleData.slots.forEach(slot => {
     if (slot.skipped) return;
     dates.push(slot.date);
-    slot.groups.forEach(group => {
-      group.forEach(p => { if (p.email) playerMap[p.email] = p.name; });
-    });
+    slot.groups.forEach(group => group.forEach(p => { if (p.email) playerMap[p.email] = p.name; }));
   });
 
-  // Build cell lookup: playerMap[email][date] = "A" or "A [C]"
+  // Build cell lookup: cellData[email][date] = "A" or "A [C]"
   const cellData = {};
   scheduleData.slots.forEach(slot => {
     if (slot.skipped) return;
@@ -3055,23 +3055,58 @@ function exportScheduleExcel() {
     });
   });
 
-  // Rows sorted alphabetically by player name
   const players = Object.entries(playerMap).sort((a, b) => a[1].localeCompare(b[1]));
 
-  const header = ['Player'].concat(dates.map(fmt));
-  const rows = [header];
-  players.forEach(([email, name]) => {
-    const row = [name];
-    dates.forEach(date => row.push((cellData[email] || {})[date] || ''));
-    rows.push(row);
+  // Build workbook with ExcelJS for full formatting support
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(scheduleData.month || 'Schedule');
+
+  // Column widths
+  ws.columns = [{ width: 24 }].concat(dates.map(() => ({ width: 13 })));
+
+  // Header row
+  const headerRow = ws.addRow(['Player'].concat(dates.map(fmt)));
+  headerRow.height = 22;
+  headerRow.eachCell((cell, col) => {
+    cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A5C3A' } };
+    cell.font   = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF0F3D25' } } };
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 22 }].concat(dates.map(() => ({ wch: 13 })));
+  // Data rows with alternating shading
+  players.forEach(([email, name], i) => {
+    const values = [name].concat(dates.map(d => (cellData[email] || {})[d] || ''));
+    const row = ws.addRow(values);
+    row.height = 18;
+    const bg = i % 2 === 0 ? 'FFFFFFFF' : 'FFF0F5F2';
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+      cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+      cell.border    = {
+        top:    { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        bottom: { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        left:   { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        right:  { style: 'hair', color: { argb: 'FFD0D8D4' } }
+      };
+      // Bold the [C] entries
+      if (typeof cell.value === 'string' && cell.value.includes('[C]')) {
+        cell.font = { bold: true };
+      }
+    });
+  });
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, scheduleData.month || 'Schedule');
-  XLSX.writeFile(wb, 'schedule-' + (scheduleData.month || 'export') + '.xlsx');
+  // Freeze the header row and player name column
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement('a');
+  a.href       = url;
+  a.download   = 'schedule-' + (scheduleData.month || 'export') + '.xlsx';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function exportSchedulePDF() {
