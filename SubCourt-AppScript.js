@@ -9,7 +9,7 @@ const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
 // Do not hardcode this — use isEmailEnabled() instead.
 function isEmailEnabled() {
   try {
-    var v = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B20').getValue();
+    var v = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B27').getValue();
     return v === true || v.toString().toUpperCase() === 'TRUE';
   } catch(e) { return false; }
 }
@@ -20,7 +20,9 @@ function getEmailSettings() {
 
 function setEmailEnabled(params) {
   var enabled = params.enabled === 'true' || params.enabled === true;
-  SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B20').setValue(enabled);
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  sheet.getRange('A27').setValue('Email Notifications Enabled');
+  sheet.getRange('B27').setValue(enabled);
   return { success: true, emailEnabled: enabled };
 }
 
