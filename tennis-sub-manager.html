@@ -852,22 +852,23 @@
     height: 40px;
     border-radius: 8px;
     border: 2px solid var(--line);
-    background: white;
+    background: var(--chalk-dark);
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 700;
     color: var(--ink-light);
     transition: background 0.12s, border-color 0.12s, color 0.12s;
     user-select: none;
   }
   .time-chip.selected {
-    background: var(--teal);
-    border-color: var(--teal);
+    background: var(--court);
+    border-color: var(--court);
     color: white;
   }
   .time-chip:hover:not(.selected) {
-    border-color: var(--teal);
+    border-color: var(--court);
     color: var(--court);
+    background: white;
   }
   .avail-row-actions {
     display: flex;
@@ -2659,15 +2660,17 @@ function buildAvailabilityGrid() {
   mwfDates.forEach(({ iso, label }) => {
     html += '<tr><td>' + label + '</td>';
     timeKeys.forEach(t => {
-      const selected = availSelections[iso] && availSelections[iso][t] ? 'selected' : '';
-      html += '<td><button class="time-chip ' + selected + '" onclick="toggleChip(\'' + iso + '\',\'' + t + '\',this)">✓</button></td>';
+      const on      = !!(availSelections[iso] && availSelections[iso][t]);
+      const cls     = on ? 'selected' : '';
+      const txt     = on ? 'Y' : 'N';
+      html += '<td><button class="time-chip ' + cls + '" onclick="toggleChip(\'' + iso + '\',\'' + t + '\',this)">' + txt + '</button></td>';
     });
     html += '</tr>';
   });
   html += '</tbody>';
 
   document.getElementById('avail-grid').innerHTML = html;
-  document.getElementById('avail-calendar-wrap').style.display = 'none'; // shown only after name selected
+  // Visibility is controlled by the caller — do not touch display here
 }
 
 function toggleChip(date, time, el) {
@@ -2675,31 +2678,27 @@ function toggleChip(date, time, el) {
   const on = !availSelections[date][time];
   availSelections[date][time] = on;
   el.classList.toggle('selected', on);
+  el.textContent = on ? 'Y' : 'N';
 }
 
 function availSelectAll() {
-  document.querySelectorAll('.time-chip').forEach(chip => {
+  document.querySelectorAll('#avail-grid .time-chip').forEach(chip => {
     chip.classList.add('selected');
-  });
-  // Rebuild selections from DOM
-  const rows = document.querySelectorAll('#avail-grid tbody tr');
-  rows.forEach(row => {
-    const dateLabel = row.querySelector('td')?.textContent;
-    // Find the iso date from the chip onclick
-    const chips = row.querySelectorAll('.time-chip');
-    chips.forEach(chip => {
-      const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})','([^']+)'/);
-      if (match) {
-        const iso = match[1], time = match[2];
-        if (!availSelections[iso]) availSelections[iso] = {};
-        availSelections[iso][time] = true;
-      }
-    });
+    chip.textContent = 'Y';
+    const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})','([^']+)'/);
+    if (match) {
+      const iso = match[1], time = match[2];
+      if (!availSelections[iso]) availSelections[iso] = {};
+      availSelections[iso][time] = true;
+    }
   });
 }
 
 function availClearAll() {
-  document.querySelectorAll('.time-chip').forEach(chip => chip.classList.remove('selected'));
+  document.querySelectorAll('#avail-grid .time-chip').forEach(chip => {
+    chip.classList.remove('selected');
+    chip.textContent = 'N';
+  });
   availSelections = {};
 }
 
@@ -2715,7 +2714,7 @@ async function loadMyAvailability(email) {
   const { targetMonth } = availConfig || {};
   if (!targetMonth) return;
 
-  // Reset immediately so no stale chips are shown while the API call is in flight
+  // Reset state immediately — no stale chips visible while the API call is in flight
   availSelections = {};
   document.getElementById('avail-notes').value = '';
   document.getElementById('avail-notes-wrap').style.display = 'none';
@@ -2726,21 +2725,21 @@ async function loadMyAvailability(email) {
   try {
     const existing = await apiGetWithParams({ action: 'getMyAvailability', email, month: targetMonth });
     if (existing && existing.availableDates && existing.availableDates.length) {
+      // Pre-fill selections from prior submission
       existing.availableDates.forEach(entry => {
         availSelections[entry.date] = {};
         (entry.times || []).forEach(t => { availSelections[entry.date][t] = true; });
       });
       buildAvailabilityGrid();
-      document.getElementById('avail-calendar-wrap').style.display = 'block';
+      // buildAvailabilityGrid no longer touches display — keep it visible
       if (existing.notes) {
         document.getElementById('avail-notes').value = existing.notes;
         document.getElementById('avail-notes-wrap').style.display = 'block';
         document.getElementById('avail-notes-toggle').textContent = '− Hide note';
       }
     }
-    // No else needed — grid is already rendered clean with empty selections
   } catch(e) {
-    // Grid is already rendered clean; silently fail the pre-fill
+    showAlert('avail-alert', 'error', 'Could not load your previous submission. You can still select dates and submit.');
   }
 }
 
