@@ -5,6 +5,9 @@
 
 const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
 
+// Set to true to re-enable all outbound emails when done testing
+const EMAIL_ENABLED = false;
+
 const TABS = {
   players:      'Players',
   requests:     'SubRequests',
@@ -583,7 +586,7 @@ function sendAdminCode(params) {
   PropertiesService.getScriptProperties()
     .setProperty('admin_code_' + email, JSON.stringify({ code: code, expiry: expiry }));
 
-  MailApp.sendEmail({
+  if (EMAIL_ENABLED) MailApp.sendEmail({
     to: email,
     subject: 'Rally — Your Admin Access Code',
     body: 'Your Rally admin access code is: ' + code +
@@ -865,7 +868,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
-  MailApp.sendEmail(emailParams);
+  if (EMAIL_ENABLED) MailApp.sendEmail(emailParams);
 }
 
 // ──────────────────────────────────────────────────
@@ -985,7 +988,7 @@ function openAvailabilityWindow(params) {
       'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
       'See you on the court!\n' +
       'MTC Tennis Team';
-    MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
+    if (EMAIL_ENABLED) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
   }
 
   return { success: true, playerCount: emails.length };
@@ -1073,7 +1076,7 @@ function submitAvailability(params) {
       'See you on the court!\n' +
       'MTC Tennis Team';
 
-    MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MTC Tennis Team' });
+    if (EMAIL_ENABLED) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MTC Tennis Team' });
   } catch(err) {
     Logger.log('Confirmation email failed: ' + err.message);
   }
