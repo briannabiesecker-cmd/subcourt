@@ -114,14 +114,14 @@ If the GitHub account changes:
 |---|---|
 | Google Sheet ID | `1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw` |
 | Web App URL | `https://script.google.com/macros/s/AKfycby6CoAz-3PE5p5r1Rhi3P9eva8cHu5IzpEe-WqepPJLVN9WMNtBWmDp1Aya_MkFwQO8/exec` |
-| GitHub Pages URL | `https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html` |
+| GitHub Pages URL | `https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-test.html` |
 
 ### PROD
 | Item | Value |
 |---|---|
 | Google Sheet ID | `1hA-ZPhV62pp376qtWRDfQQkFv6y9U5Wkm0nUyKCHC6o` |
 | Web App URL | `https://script.google.com/macros/s/AKfycbyMaR0EQGmjTrVvjwSqYseZVGPZIaXI0-axH_miCCDgZaQKc4vOVkf4sjD9IDA4Q0Yxnw/exec` |
-| GitHub Pages URL | `https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager-prod.html` |
+| GitHub Pages URL | `https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html` |
 
 ### Shared
 | Item | Value |
