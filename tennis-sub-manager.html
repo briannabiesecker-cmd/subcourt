@@ -6,6 +6,7 @@
 <title>Rally — Tennis League</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎾</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -909,6 +910,46 @@
     font-size: 15px;
   }
 
+  /* ── Schedule results table ── */
+  .sched-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .sched-table th {
+    background: var(--chalk-dark);
+    font-weight: 600;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 12px;
+    color: var(--ink-mid);
+    white-space: nowrap;
+    border-bottom: 2px solid var(--line);
+  }
+  .sched-table td { padding: 7px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+  .sched-table tr.date-first td { border-top: 2px solid var(--clay); }
+  .sched-table .date-cell { font-weight: 600; white-space: nowrap; }
+  .sched-table .group-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--court);
+    background: var(--teal-light);
+    border-radius: 4px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .sched-table .sit-out-cell { color: var(--ink-light); font-style: italic; }
+  .sched-table tr.skipped-row td {
+    color: var(--ink-light);
+    font-style: italic;
+    background: var(--chalk);
+    font-size: 13px;
+  }
+  .sched-gen-summary {
+    font-size: 14px;
+    color: var(--ink-mid);
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+  }
+  .sched-gen-summary strong { color: var(--ink); }
+
   /* ── Scheduler (admin) ── */
   .scheduler-status {
     display: flex;
@@ -1425,6 +1466,29 @@
           <div class="flex gap8">
             <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()">Open Window &amp; Notify Players</button>
             <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()">Close Window</button>
+          </div>
+        </div>
+
+        <!-- Generate Schedule card -->
+        <div class="card mt8" style="max-width:520px;">
+          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
+          <div id="sched-gen-summary" class="sched-gen-summary">
+            <div class="loading"><div class="spinner"></div>Loading…</div>
+          </div>
+          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled>Generate</button>
+        </div>
+
+        <!-- Results -->
+        <div id="sched-results" style="display:none;margin-top:1.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
+            <div style="font-size:17px;font-weight:700;color:var(--ink);" id="sched-results-title">Schedule Preview</div>
+            <div class="flex gap8">
+              <button class="btn btn-secondary" onclick="exportScheduleExcel()">Export to Excel</button>
+              <button class="btn btn-primary" id="sched-save-btn" onclick="saveScheduleToSheet()">Save to Sheet</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="sched-table" id="sched-table"></table>
           </div>
         </div>
       </div>
@@ -2818,6 +2882,8 @@ function formatDateShort(str) {
 // ══════════════════════════════════════════════════
 // SCHEDULER (ADMIN)
 // ══════════════════════════════════════════════════
+let scheduleData = null; // last generated result
+
 async function loadScheduler() {
   try {
     const config = await apiGetWithParams({ action: 'getAvailabilityConfig' });
@@ -2838,6 +2904,160 @@ async function loadScheduler() {
     if (config.closeDate) document.getElementById('sched-close-date').value = config.closeDate;
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
+  }
+  loadSchedulerSettings();
+}
+
+async function loadSchedulerSettings() {
+  const summaryEl = document.getElementById('sched-gen-summary');
+  const genBtn    = document.getElementById('sched-gen-btn');
+  try {
+    const s = await apiGetWithParams({ action: 'getSchedulerSettings' });
+    const month = s.targetMonth || '—';
+    const count = s.submissionCount || 0;
+    summaryEl.innerHTML =
+      'Target month: <strong>' + (s.targetMonthLabel || month) + '</strong><br>' +
+      'Submissions received: <strong>' + count + ' player' + (count !== 1 ? 's' : '') + '</strong>';
+    genBtn.disabled = count < 3;
+    if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 submissions to generate.</span>';
+  } catch(e) {
+    summaryEl.innerHTML = '<span style="color:var(--warn);">Could not load settings.</span>';
+  }
+}
+
+async function runGenerateSchedule() {
+  const btn = document.getElementById('sched-gen-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  document.getElementById('sched-results').style.display = 'none';
+  showAlert('scheduler-alert', 'info', 'Running optimizer…');
+
+  try {
+    const result = await apiGetWithParams({
+      action: 'generateSchedule',
+      pairCounts:   JSON.stringify(scheduleData ? scheduleData.pairCounts   : {}),
+      sitOutCounts: JSON.stringify(scheduleData ? scheduleData.sitOutCounts : {})
+    });
+
+    if (result.error) { showAlert('scheduler-alert', 'error', result.error); return; }
+
+    scheduleData = result;
+    renderScheduleTable(result.slots, result.month);
+    document.getElementById('sched-results').style.display = '';
+    document.getElementById('sched-results-title').textContent =
+      'Schedule Preview — ' + (result.month || '');
+    const active = result.slots.filter(s => !s.skipped).length;
+    const skipped = result.slots.filter(s => s.skipped).length;
+    showAlert('scheduler-alert', 'success',
+      active + ' date' + (active !== 1 ? 's' : '') + ' scheduled' +
+      (skipped ? ', ' + skipped + ' skipped (too few players).' : '.'));
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Generation failed. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate';
+  }
+}
+
+function renderScheduleTable(slots, month) {
+  const fmt = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  let html = '<thead><tr>' +
+    '<th>Date</th><th>Group</th>' +
+    '<th>Player 1</th><th>Player 2</th><th>Player 3</th><th>Player 4</th>' +
+    '<th>Sit Out</th>' +
+    '</tr></thead><tbody>';
+
+  slots.forEach((slot, si) => {
+    const dateLabel = fmt(slot.date);
+    const isFirst   = si === 0 || slots[si - 1].date !== slot.date;
+
+    if (slot.skipped) {
+      html += '<tr class="skipped-row' + (isFirst ? ' date-first' : '') + '">' +
+        '<td class="date-cell">' + dateLabel + '</td>' +
+        '<td colspan="6">' + (slot.reason || 'Skipped') + '</td>' +
+        '</tr>';
+      return;
+    }
+
+    slot.groups.forEach((group, gi) => {
+      const firstRow  = gi === 0;
+      const p = group.concat([{name:''},{name:''},{name:''},{name:''}]);
+      const sitOut    = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
+      html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
+        '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
+        '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
+        '<td>' + (p[0].name || '') + '</td>' +
+        '<td>' + (p[1].name || '') + '</td>' +
+        '<td>' + (p[2].name || '') + '</td>' +
+        '<td>' + (p[3].name || '') + '</td>' +
+        '<td class="sit-out-cell">' + (sitOut || '') + '</td>' +
+        '</tr>';
+    });
+  });
+
+  html += '</tbody>';
+  document.getElementById('sched-table').innerHTML = html;
+}
+
+function exportScheduleExcel() {
+  if (!scheduleData || !scheduleData.slots) return;
+
+  const fmt = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  const rows = [['Date', 'Group', 'Player 1', 'Player 2', 'Player 3', 'Player 4', 'Sit Out']];
+
+  scheduleData.slots.forEach(slot => {
+    if (slot.skipped) {
+      rows.push([fmt(slot.date), '—', slot.reason || 'Skipped', '', '', '', '']);
+      return;
+    }
+    slot.groups.forEach((group, gi) => {
+      const p = group.concat([{name:''},{name:''},{name:''},{name:''}]);
+      rows.push([
+        gi === 0 ? fmt(slot.date) : '',
+        'Group ' + String.fromCharCode(65 + gi),
+        p[0].name || '', p[1].name || '', p[2].name || '', p[3].name || '',
+        (gi === 0 && slot.sitOut) ? slot.sitOut.name : ''
+      ]);
+    });
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // Column widths
+  ws['!cols'] = [18, 10, 18, 18, 18, 18, 18].map(w => ({ wch: w }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, scheduleData.month || 'Schedule');
+  XLSX.writeFile(wb, 'schedule-' + (scheduleData.month || 'export') + '.xlsx');
+}
+
+async function saveScheduleToSheet() {
+  if (!scheduleData || !scheduleData.slots) return;
+  const btn = document.getElementById('sched-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const result = await apiPost({
+      action:      'saveSchedule',
+      month:       scheduleData.month,
+      slots:       JSON.stringify(scheduleData.slots.filter(s => !s.skipped)),
+      pairCounts:  JSON.stringify(scheduleData.pairCounts   || {}),
+      sitOutCounts:JSON.stringify(scheduleData.sitOutCounts || {})
+    });
+    if (!result.success) { showAlert('scheduler-alert', 'error', result.error || 'Save failed.'); return; }
+    showAlert('scheduler-alert', 'success', result.slotsSaved + ' date(s) saved to the MatchGroups sheet.');
+    btn.textContent = 'Saved ✓';
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not save. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Save to Sheet';
   }
 }
 
