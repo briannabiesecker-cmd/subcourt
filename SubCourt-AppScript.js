@@ -233,6 +233,7 @@ function doGet(e) {
     else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
     else if (action === 'submitAvailability')       result = submitAvailability(e.parameter);
     else if (action === 'getMyAvailability')        result = getMyAvailability(e.parameter);
+    else if (action === 'getAvailabilityData')      result = getAvailabilityData(e.parameter);
     else if (action === 'ping')            result = { version: 'V33', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -1100,6 +1101,18 @@ function getMyAvailability(params) {
     availableDates: (function() { try { return JSON.parse(row[4] || '[]'); } catch(e) { return []; } })(),
     notes:          row[5] || ''
   };
+}
+
+// Combined fetch: returns availability config + optional existing submission in one call.
+// Pass email= to also get the player's submission for the target month.
+function getAvailabilityData(params) {
+  const config = getAvailabilityConfig();
+  const result = { config: config };
+  const email  = (params.email || '').toLowerCase();
+  if (email && config.targetMonth) {
+    result.submission = getMyAvailability({ email: email, month: config.targetMonth });
+  }
+  return result;
 }
 
 function cleanupOldAvailability() {

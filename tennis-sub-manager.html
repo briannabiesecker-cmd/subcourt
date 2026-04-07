@@ -1219,6 +1219,13 @@
       <div class="section-title">Submit Your Availability</div>
     </div>
 
+    <!-- Loading state (shown while fetching config on first visit) -->
+    <div id="avail-loading-panel" style="display:none;">
+      <div class="card" style="text-align:center;padding:2.5rem 2rem;">
+        <div style="font-size:17px;color:var(--ink-light);">Loading…</div>
+      </div>
+    </div>
+
     <!-- Window closed, no submission -->
     <div id="avail-closed-panel" style="display:none;">
       <div class="card" style="text-align:center;padding:2.5rem 2rem;">
@@ -2577,20 +2584,23 @@ let availConfig    = null;
 let availSelections = {}; // { 'YYYY-MM-DD': { '08:00': true, '09:30': false, ... } }
 
 async function loadAvailabilityView() {
-  // Use cached config if already loaded (e.g. from DOMContentLoaded pre-warm)
-  // so the view renders instantly on first click without waiting for a network round-trip
-  if (!availConfig) {
-    try {
-      availConfig = await apiGetWithParams({ action: 'getAvailabilityConfig' });
-    } catch(e) {
-      availConfig = { isOpen: false, openDate: '', closeDate: '', targetMonth: '', targetMonthLabel: '' };
-    }
+  if (availConfig) {
+    renderAvailabilityView();
+    return;
+  }
+  // Config not cached yet — show loading state immediately, then render when ready
+  document.getElementById('avail-loading-panel').style.display = 'block';
+  try {
+    availConfig = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+  } catch(e) {
+    availConfig = { isOpen: false, openDate: '', closeDate: '', targetMonth: '', targetMonthLabel: '' };
   }
   renderAvailabilityView();
 }
 
 function renderAvailabilityView() {
   const { isOpen, closeDate, targetMonthLabel } = availConfig;
+  document.getElementById('avail-loading-panel').style.display  = 'none';
   document.getElementById('avail-closed-panel').style.display   = 'none';
   document.getElementById('avail-readonly-panel').style.display = 'none';
   document.getElementById('avail-open-panel').style.display     = 'none';
@@ -2690,7 +2700,21 @@ function toggleRowAll(date) {
   const setTo    = !allOn;
   if (!availSelections[date]) availSelections[date] = {};
   timeKeys.forEach(t => { availSelections[date][t] = setTo; });
-  buildAvailabilityGrid(); // re-render entire grid from availSelections — no DOM state drift
+
+  // Patch only the affected row — avoids full grid rebuild
+  for (const row of document.querySelectorAll('#avail-grid tbody tr')) {
+    const firstChip = row.querySelector('.time-chip');
+    if (!firstChip) continue;
+    const m = firstChip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})'/);
+    if (!m || m[1] !== date) continue;
+    row.querySelectorAll('.time-chip').forEach((chip, i) => {
+      chip.classList.toggle('selected', setTo);
+      chip.textContent = setTo ? 'Y' : 'N';
+    });
+    const rowBtn = row.querySelector('.avail-util-btn');
+    if (rowBtn) rowBtn.textContent = setTo ? 'Clear' : 'All';
+    break;
+  }
 }
 
 function availSelectAll() {
@@ -2714,9 +2738,6 @@ function availClearAll() {
 
 
 async function loadMyAvailability(email) {
-  const { targetMonth, targetMonthLabel } = availConfig || {};
-  if (!targetMonth) return;
-
   const statusEl = document.getElementById('avail-load-status');
   const setStatus = (msg, color) => {
     statusEl.style.display = msg ? 'block' : 'none';
@@ -2724,33 +2745,41 @@ async function loadMyAvailability(email) {
     statusEl.textContent   = msg;
   };
 
-  // Reset state immediately — no stale chips visible while the API call is in flight
+  // Reset state immediately so no stale chips show while loading
   availSelections = {};
   buildAvailabilityGrid();
   document.getElementById('avail-calendar-wrap').style.display = 'block';
-  setStatus('Loading your ' + (targetMonthLabel || targetMonth) + ' availability…');
+  setStatus('Loading your availability…');
 
   try {
-    const existing = await apiGetWithParams({ action: 'getMyAvailability', email, month: targetMonth });
-    console.log('[Availability] getMyAvailability response:', existing, '| queried month:', targetMonth, '| email:', email);
+    // Single call: returns config + submission together, eliminating a round-trip
+    // and fixing the race condition where config wasn't cached yet
+    const data = await apiGetWithParams({ action: 'getAvailabilityData', email });
 
+    if (data && data.config) availConfig = data.config;
+
+    const { targetMonth, targetMonthLabel } = availConfig || {};
+
+    // If window state changed while loading, re-render the correct panel
+    if (!availConfig || !availConfig.isOpen) {
+      renderAvailabilityView();
+      return;
+    }
+    if (!targetMonth) { setStatus(''); return; }
+
+    const existing = data && data.submission;
     if (existing && existing.availableDates && existing.availableDates.length) {
-      // Pre-fill selections from prior submission
       existing.availableDates.forEach(entry => {
         availSelections[entry.date] = {};
         (entry.times || []).forEach(t => { availSelections[entry.date][t] = true; });
       });
       buildAvailabilityGrid();
-      const totalSelected = Object.values(availSelections).reduce((sum, times) =>
-        sum + Object.values(times).filter(Boolean).length, 0);
       setStatus('Your previous submission loaded — ' + existing.availableDates.length + ' date(s) selected.', 'var(--success)');
     } else {
-      console.log('[Availability] No submission found. Response was:', existing);
-      setStatus('No previous submission found for ' + (targetMonthLabel || targetMonth) + '. Select your available dates below.', 'var(--ink-light)');
+      setStatus('No previous submission found for ' + (targetMonthLabel || targetMonth) + '. Select your available dates below.');
     }
   } catch(e) {
-    console.error('[Availability] Load error:', e);
-    setStatus('Could not check for previous submission. You can still select dates and submit.', 'var(--warn)');
+    setStatus('Could not load availability. You can still select dates and submit.', 'var(--warn)');
   }
 }
 
@@ -2780,14 +2809,11 @@ async function submitAvailability() {
     availableDates: JSON.stringify(availableDates),
     notes: ''
   };
-  console.log('[Availability] Submitting:', payload);
-
   const allBtns = ['avail-submit-btn', 'avail-submit-btn-top'];
   allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Submitting…'; } });
 
   try {
     const result = await apiPost(payload);
-    console.log('[Availability] Submit result:', result);
     if (!result || !result.success) {
       showAlert('avail-alert', 'error', (result && result.error) || 'Could not submit. Please try again.');
       return;
@@ -2795,7 +2821,6 @@ async function submitAvailability() {
     showAlert('avail-alert', 'success', 'Your availability has been submitted. A confirmation email is on its way!');
     document.getElementById('avail-alert').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(e) {
-    console.error('[Availability] Submit error:', e);
     showAlert('avail-alert', 'error', 'Could not submit: ' + e.message);
   } finally {
     allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Submit availability'; } });
