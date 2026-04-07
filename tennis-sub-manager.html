@@ -2662,7 +2662,7 @@ function buildAvailabilityGrid() {
       const txt = on ? 'Y' : 'N';
       html += '<td><button class="time-chip ' + cls + '" onclick="toggleChip(\'' + iso + '\',\'' + t + '\',this)">' + txt + '</button></td>';
     });
-    html += '<td><button class="avail-util-btn" style="font-size:13px;padding:2px 6px;" onclick="toggleRowAll(\'' + iso + '\',this)">' + (allOn ? 'Clear' : 'All') + '</button></td>';
+    html += '<td><button class="avail-util-btn" style="font-size:13px;padding:2px 6px;" onclick="toggleRowAll(\'' + iso + '\')">' + (allOn ? 'Clear' : 'All') + '</button></td>';
     html += '</tr>';
   });
   html += '</tbody>';
@@ -2677,51 +2677,39 @@ function toggleChip(date, time, el) {
   availSelections[date][time] = on;
   el.classList.toggle('selected', on);
   el.textContent = on ? 'Y' : 'N';
-  // Update the row's All/Clear button label
-  const timeKeys = ['08:00','09:30','11:00','12:30'];
-  const allOn = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
-  const row = el.closest('tr');
-  if (row) {
-    const rowBtn = row.querySelector('.avail-util-btn');
-    if (rowBtn) rowBtn.textContent = allOn ? 'Clear' : 'All';
-  }
-}
-
-function toggleRowAll(date, btn) {
+  // Keep the row's All/Clear button in sync without a full rebuild
   const timeKeys = ['08:00','09:30','11:00','12:30'];
   const allOn    = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
-  const setTo    = !allOn; // if all on, clear; otherwise select all
+  const rowBtn   = el.closest('tr')?.querySelector('.avail-util-btn');
+  if (rowBtn) rowBtn.textContent = allOn ? 'Clear' : 'All';
+}
+
+function toggleRowAll(date) {
+  const timeKeys = ['08:00','09:30','11:00','12:30'];
+  const allOn    = timeKeys.every(t => availSelections[date] && availSelections[date][t]);
+  const setTo    = !allOn;
   if (!availSelections[date]) availSelections[date] = {};
   timeKeys.forEach(t => { availSelections[date][t] = setTo; });
-  btn.textContent = setTo ? 'Clear' : 'All';
-  // Update the chips in this row
-  const row   = btn.closest('tr');
-  const chips = row ? row.querySelectorAll('.time-chip') : [];
-  chips.forEach(chip => {
-    chip.classList.toggle('selected', setTo);
-    chip.textContent = setTo ? 'Y' : 'N';
-  });
+  buildAvailabilityGrid(); // re-render entire grid from availSelections — no DOM state drift
 }
 
 function availSelectAll() {
-  document.querySelectorAll('#avail-grid .time-chip').forEach(chip => {
-    chip.classList.add('selected');
-    chip.textContent = 'Y';
-    const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})','([^']+)'/);
-    if (match) {
-      const iso = match[1], time = match[2];
-      if (!availSelections[iso]) availSelections[iso] = {};
-      availSelections[iso][time] = true;
-    }
+  const timeKeys = ['08:00','09:30','11:00','12:30'];
+  document.querySelectorAll('#avail-grid tbody tr').forEach(row => {
+    const chip = row.querySelector('.time-chip');
+    if (!chip) return;
+    const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})'/);
+    if (!match) return;
+    const iso = match[1];
+    availSelections[iso] = {};
+    timeKeys.forEach(t => { availSelections[iso][t] = true; });
   });
+  buildAvailabilityGrid();
 }
 
 function availClearAll() {
-  document.querySelectorAll('#avail-grid .time-chip').forEach(chip => {
-    chip.classList.remove('selected');
-    chip.textContent = 'N';
-  });
   availSelections = {};
+  buildAvailabilityGrid();
 }
 
 
