@@ -1506,7 +1506,7 @@ async function apiGetWithParams(params) {
       clearTimeout(timeout);
       delete window[callbackName];
       if (document.body.contains(script)) document.body.removeChild(script);
-      if (data.error) reject(new Error(data.error));
+      if (data && data.error) reject(new Error(data.error));
       else resolve(data);
     };
 
@@ -2924,7 +2924,7 @@ async function closeAvailWindow() {
 // ══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   // Pre-warm player cache so typeaheads feel instant
-  getPlayers().catch(() => {});
+  loadPlayerList().catch(() => {});
   // Load availability config for home card state
   apiGetWithParams({ action: 'getAvailabilityConfig' }).then(config => {
     availConfig = config;
