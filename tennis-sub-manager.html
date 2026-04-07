@@ -1273,6 +1273,7 @@
             </div>
           </div>
           <input type="email" id="av-email" style="display:none;" />
+          <div id="avail-load-status" style="display:none;margin-top:8px;font-size:14px;color:var(--ink-light);"></div>
         </div>
       </div>
 
@@ -1617,6 +1618,7 @@ function clearTypeahead(prefix) {
   if (prefix === 'av') {
     availSelections = {};
     document.getElementById('avail-calendar-wrap').style.display = 'none';
+    document.getElementById('avail-load-status').style.display = 'none';
     if (availConfig && availConfig.targetMonth) buildAvailabilityGrid();
   }
   if (prefix === 'adm') {
@@ -2724,16 +2726,26 @@ function availClearAll() {
 
 
 async function loadMyAvailability(email) {
-  const { targetMonth } = availConfig || {};
+  const { targetMonth, targetMonthLabel } = availConfig || {};
   if (!targetMonth) return;
+
+  const statusEl = document.getElementById('avail-load-status');
+  const setStatus = (msg, color) => {
+    statusEl.style.display = msg ? 'block' : 'none';
+    statusEl.style.color   = color || 'var(--ink-light)';
+    statusEl.textContent   = msg;
+  };
 
   // Reset state immediately — no stale chips visible while the API call is in flight
   availSelections = {};
   buildAvailabilityGrid();
   document.getElementById('avail-calendar-wrap').style.display = 'block';
+  setStatus('Loading your ' + (targetMonthLabel || targetMonth) + ' availability…');
 
   try {
     const existing = await apiGetWithParams({ action: 'getMyAvailability', email, month: targetMonth });
+    console.log('[Availability] getMyAvailability response:', existing, '| queried month:', targetMonth, '| email:', email);
+
     if (existing && existing.availableDates && existing.availableDates.length) {
       // Pre-fill selections from prior submission
       existing.availableDates.forEach(entry => {
@@ -2741,10 +2753,16 @@ async function loadMyAvailability(email) {
         (entry.times || []).forEach(t => { availSelections[entry.date][t] = true; });
       });
       buildAvailabilityGrid();
-      // buildAvailabilityGrid no longer touches display — keep it visible
+      const totalSelected = Object.values(availSelections).reduce((sum, times) =>
+        sum + Object.values(times).filter(Boolean).length, 0);
+      setStatus('Your previous submission loaded — ' + existing.availableDates.length + ' date(s) selected.', 'var(--success)');
+    } else {
+      console.log('[Availability] No submission found. Response was:', existing);
+      setStatus('No previous submission found for ' + (targetMonthLabel || targetMonth) + '. Select your available dates below.', 'var(--ink-light)');
     }
   } catch(e) {
-    showAlert('avail-alert', 'error', 'Could not load your previous submission. You can still select dates and submit.');
+    console.error('[Availability] Load error:', e);
+    setStatus('Could not check for previous submission. You can still select dates and submit.', 'var(--warn)');
   }
 }
 
