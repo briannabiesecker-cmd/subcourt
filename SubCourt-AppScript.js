@@ -1167,14 +1167,22 @@ function getSchedulerSettings() {
     // Also return a summary of how many players have submitted for the target month
     var availConfig = getAvailabilityConfig();
     var targetMonth = availConfig.targetMonth;
+    // Count unique emails that have submitted for the target month
+    // (deduplicates rows from before the normalizeMonth fix)
     var submissionCount = 0;
     if (targetMonth) {
       var avSheet  = getOrCreateAvailabilitySheet();
       var lastRow  = avSheet.getLastRow();
       if (lastRow >= 2) {
-        var avRows = avSheet.getRange(2, 4, lastRow - 1, 1).getValues();
+        var avRows  = avSheet.getRange(2, 3, lastRow - 1, 2).getValues(); // cols: email, month
+        var seen    = {};
         avRows.forEach(function(r) {
-          if (normalizeMonth(r[0]) === targetMonth) submissionCount++;
+          var email = (r[0] || '').toLowerCase();
+          var mon   = normalizeMonth(r[1]);
+          if (email && mon === targetMonth && !seen[email]) {
+            seen[email] = true;
+            submissionCount++;
+          }
         });
       }
     }
