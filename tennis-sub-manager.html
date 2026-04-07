@@ -704,46 +704,46 @@
   /* ── Home page ── */
   .home-hero {
     text-align: center;
-    padding: 3rem 1rem 2.5rem;
+    padding: 1.25rem 1rem 1rem;
   }
 
   .home-title {
-    font-size: 38px;
+    font-size: 28px;
     font-weight: 800;
     color: var(--ink);
-    letter-spacing: -1px;
-    line-height: 1.1;
-    margin-bottom: 1rem;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+    margin-bottom: 0.3rem;
   }
 
   .home-subtitle {
-    font-size: 18px;
-    color: var(--ink-mid);
-    line-height: 1.6;
+    font-size: 15px;
+    color: var(--ink-light);
+    line-height: 1.5;
     font-weight: 400;
   }
 
   .home-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    max-width: 700px;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    max-width: 860px;
     margin: 0 auto;
   }
 
   .home-card {
     background: white;
-    border-radius: 20px;
-    padding: 2.5rem 2rem;
+    border-radius: 16px;
+    padding: 1.5rem 1.25rem;
     box-shadow: var(--shadow);
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
     text-align: center;
-    border-top: 5px solid var(--teal);
+    border-top: 4px solid var(--teal);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
   }
 
   .home-card-alt {
@@ -751,35 +751,36 @@
   }
 
   .home-card:hover {
-    transform: translateY(-3px);
+    transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
   }
 
   .home-card-icon {
-    font-size: 48px;
+    font-size: 36px;
     line-height: 1;
   }
 
   .home-card-title {
-    font-size: 24px;
+    font-size: 19px;
     font-weight: 800;
     color: var(--ink);
-    letter-spacing: -0.3px;
+    letter-spacing: -0.2px;
   }
 
   .home-card-desc {
-    font-size: 15px;
+    font-size: 14px;
     color: var(--ink-mid);
-    line-height: 1.6;
+    line-height: 1.5;
+    flex: 1;
   }
 
   .home-card-btn {
-    margin-top: 6px;
+    margin-top: 4px;
     font-family: inherit;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
-    padding: 14px 28px;
-    border-radius: 12px;
+    padding: 11px 20px;
+    border-radius: 10px;
     border: none;
     cursor: pointer;
     background: var(--teal);
@@ -935,11 +936,11 @@
   .scheduler-status.open  .scheduler-dot { background: var(--success); }
   .scheduler-status.closed .scheduler-dot { background: var(--ink-light); }
 
-  @media (max-width: 640px) {
-    .home-title { font-size: 28px; }
-    .home-subtitle { font-size: 16px; }
+  @media (max-width: 700px) {
+    .home-title { font-size: 22px; }
+    .home-subtitle { font-size: 14px; }
     .home-actions { grid-template-columns: 1fr; max-width: 100%; }
-    .home-card { padding: 2rem 1.5rem; }
+    .home-card { padding: 1.25rem 1rem; }
     .time-chip { width: 38px; height: 36px; font-size: 12px; }
     .avail-grid thead th { font-size: 11px; }
     .avail-grid tbody td:first-child { min-width: 90px; font-size: 14px; }
@@ -966,8 +967,8 @@
   <!-- ── HOME VIEW ── -->
   <div id="view-home" class="view active">
     <div class="home-hero">
-      <div class="home-title">Tennis League Manager</div>
-      <div class="home-subtitle">Need someone to cover your match?<br>Want to pick up an extra game?</div>
+      <div class="home-title">MTC MWF Tennis League</div>
+      <div class="home-subtitle">Manage subs, volunteer to play, and submit your monthly availability.</div>
     </div>
 
     <div class="home-actions">
@@ -984,17 +985,13 @@
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
         <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
       </div>
-    </div>
 
-    <div style="max-width:700px;margin:20px auto 0;" id="home-avail-card-wrap">
-      <div id="home-avail-card" class="home-card home-card-avail" style="flex-direction:row;text-align:left;gap:20px;padding:1.75rem 2rem;align-items:center;"
+      <div id="home-avail-card" class="home-card home-card-avail"
         onclick="showView('availability', document.querySelector('nav button:nth-child(4)'))">
-        <div style="font-size:40px;line-height:1;flex-shrink:0;">📅</div>
-        <div style="flex:1;">
-          <div class="home-card-title" style="font-size:20px;">Submit my availability</div>
-          <div class="home-card-desc" id="home-avail-desc" style="margin-top:4px;">Tell us which days you can play next month.</div>
-        </div>
-        <button class="home-card-btn home-card-btn-avail" style="width:auto;white-space:nowrap;flex-shrink:0;">Open</button>
+        <div class="home-card-icon">📅</div>
+        <div class="home-card-title">My availability</div>
+        <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
+        <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
     </div>
   </div>
@@ -1621,8 +1618,12 @@ function clearTypeahead(prefix) {
     document.getElementById('my-req-list').innerHTML = '';
   }
   if (prefix === 'av') {
-    document.getElementById('avail-calendar-wrap').style.display = 'none';
     availSelections = {};
+    document.getElementById('avail-calendar-wrap').style.display = 'none';
+    document.getElementById('avail-notes').value = '';
+    document.getElementById('avail-notes-wrap').style.display = 'none';
+    document.getElementById('avail-notes-toggle').textContent = '+ Add a note (optional)';
+    if (availConfig && availConfig.targetMonth) buildAvailabilityGrid();
   }
   if (prefix === 'adm') {
     document.getElementById('adm-send-btn').disabled = true;
@@ -2714,8 +2715,13 @@ async function loadMyAvailability(email) {
   const { targetMonth } = availConfig || {};
   if (!targetMonth) return;
 
-  document.getElementById('avail-calendar-wrap').style.display = 'block';
+  // Reset immediately so no stale chips are shown while the API call is in flight
   availSelections = {};
+  document.getElementById('avail-notes').value = '';
+  document.getElementById('avail-notes-wrap').style.display = 'none';
+  document.getElementById('avail-notes-toggle').textContent = '+ Add a note (optional)';
+  buildAvailabilityGrid();
+  document.getElementById('avail-calendar-wrap').style.display = 'block';
 
   try {
     const existing = await apiGetWithParams({ action: 'getMyAvailability', email, month: targetMonth });
@@ -2724,7 +2730,6 @@ async function loadMyAvailability(email) {
         availSelections[entry.date] = {};
         (entry.times || []).forEach(t => { availSelections[entry.date][t] = true; });
       });
-      // Re-render grid with pre-filled selections
       buildAvailabilityGrid();
       document.getElementById('avail-calendar-wrap').style.display = 'block';
       if (existing.notes) {
@@ -2732,13 +2737,10 @@ async function loadMyAvailability(email) {
         document.getElementById('avail-notes-wrap').style.display = 'block';
         document.getElementById('avail-notes-toggle').textContent = '− Hide note';
       }
-    } else {
-      buildAvailabilityGrid();
-      document.getElementById('avail-calendar-wrap').style.display = 'block';
     }
+    // No else needed — grid is already rendered clean with empty selections
   } catch(e) {
-    buildAvailabilityGrid();
-    document.getElementById('avail-calendar-wrap').style.display = 'block';
+    // Grid is already rendered clean; silently fail the pre-fill
   }
 }
 
