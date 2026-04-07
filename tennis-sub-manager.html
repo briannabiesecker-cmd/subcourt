@@ -2773,25 +2773,30 @@ async function submitAvailability() {
     .filter(d => d.times.length > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  const payload = {
+    action: 'submitAvailability',
+    name, email,
+    month: targetMonth,
+    availableDates: JSON.stringify(availableDates),
+    notes: ''
+  };
+  console.log('[Availability] Submitting:', payload);
+
   const allBtns = ['avail-submit-btn', 'avail-submit-btn-top'];
   allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Submitting…'; } });
 
   try {
-    const result = await apiPost({
-      action: 'submitAvailability',
-      name, email,
-      month: targetMonth,
-      availableDates: JSON.stringify(availableDates),
-      notes: ''
-    });
-    if (!result.success) {
-      showAlert('avail-alert', 'error', result.error || 'Could not submit. Please try again.');
+    const result = await apiPost(payload);
+    console.log('[Availability] Submit result:', result);
+    if (!result || !result.success) {
+      showAlert('avail-alert', 'error', (result && result.error) || 'Could not submit. Please try again.');
       return;
     }
     showAlert('avail-alert', 'success', 'Your availability has been submitted. A confirmation email is on its way!');
     document.getElementById('avail-alert').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(e) {
-    showAlert('avail-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+    console.error('[Availability] Submit error:', e);
+    showAlert('avail-alert', 'error', 'Could not submit: ' + e.message);
   } finally {
     allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Submit availability'; } });
   }

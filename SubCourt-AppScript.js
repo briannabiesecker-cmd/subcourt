@@ -1002,12 +1002,23 @@ function getOrCreateAvailabilitySheet() {
   return sheet;
 }
 
+// Normalize a Sheets cell value to "YYYY-MM" string regardless of how Sheets stored it
+function normalizeMonth(val) {
+  if (!val && val !== 0) return '';
+  if (val instanceof Date) {
+    return val.getFullYear() + '-' + String(val.getMonth() + 1).padStart(2, '0');
+  }
+  return String(val).trim().slice(0, 7); // take first 7 chars of "YYYY-MM..." just in case
+}
+
 function submitAvailability(params) {
   const name           = params.name           || '';
   const email          = (params.email         || '').toLowerCase();
   const month          = params.month          || '';
   const availableDates = params.availableDates || '[]';
   const notes          = params.notes          || '';
+
+  Logger.log('submitAvailability called: name=%s email=%s month=%s dates=%s', name, email, month, availableDates);
 
   if (!name || !email || !month) return { success: false, error: 'Missing required fields.' };
 
@@ -1023,7 +1034,7 @@ function submitAvailability(params) {
   if (lastRow >= 2) {
     const rows = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
     rows.forEach(function(r, i) {
-      if ((r[2] || '').toLowerCase() === email && r[3] === month) {
+      if ((r[2] || '').toLowerCase() === email && normalizeMonth(r[3]) === month) {
         targetRow = i + 2;
       }
     });
@@ -1076,7 +1087,7 @@ function getMyAvailability(params) {
 
   const rows = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   const row  = rows.find(function(r) {
-    return (r[2] || '').toLowerCase() === email && r[3] === month;
+    return (r[2] || '').toLowerCase() === email && normalizeMonth(r[3]) === month;
   });
 
   if (!row) return null;
