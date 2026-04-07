@@ -1031,6 +1031,20 @@ function getOrCreateAvailabilitySheet() {
 }
 
 // Normalize a Sheets cell value to "YYYY-MM" string regardless of how Sheets stored it
+// Parses the AvailableDates cell and always returns ["YYYY-MM-DD", ...].
+// Handles both the legacy [{date, times}] object format and the current string-array format.
+function parseDatesField(jsonStr) {
+  var parsed = [];
+  try { parsed = JSON.parse(jsonStr || '[]'); } catch(e) { return []; }
+  if (!Array.isArray(parsed) || !parsed.length) return [];
+  if (typeof parsed[0] === 'object' && parsed[0] !== null) {
+    // Legacy format: [{date: "YYYY-MM-DD", times: [...]}]
+    return parsed.map(function(d) { return d.date || ''; }).filter(Boolean);
+  }
+  // Current format: ["YYYY-MM-DD", ...]
+  return parsed.filter(function(d) { return typeof d === 'string' && d.length === 10; });
+}
+
 function normalizeMonth(val) {
   if (!val && val !== 0) return '';
   if (val instanceof Date) {
@@ -1079,11 +1093,9 @@ function submitAvailability(params) {
 
   // Confirmation email to the player
   try {
-    const dates   = JSON.parse(availableDates);
+    const dates     = parseDatesField(availableDates);
     const dateLines = dates.map(function(d) {
-      const label  = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const times  = (d.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ');
-      return '  ' + label + (times ? ': ' + times : '');
+      return '  ' + new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     }).join('\n');
 
     const subject = 'MWF League - Your availability for ' + avConfig.targetMonthLabel + ' is confirmed';
@@ -1125,7 +1137,7 @@ function getMyAvailability(params) {
     name:           row[1] || '',
     email:          row[2] || '',
     month:          row[3] || '',
-    availableDates: (function() { try { return JSON.parse(row[4] || '[]'); } catch(e) { return []; } })(),
+    availableDates: parseDatesField(row[4]),
     notes:          row[5] || ''
   };
 }
@@ -1271,13 +1283,11 @@ function generateSchedule(params) {
     if (rowMonth !== month) return;
     var email = (r[2] || '').toLowerCase();
     if (!email) return;
-    var dates = [];
-    try { dates = JSON.parse(r[4] || '[]'); } catch(e) {}
     submissionsByEmail[email] = {
       name:   r[1] || '',
       email:  email,
       rating: playerMap[email] ? playerMap[email].rating : 0,
-      dates:  dates  // ["YYYY-MM-DD", ...]
+      dates:  parseDatesField(r[4])  // ["YYYY-MM-DD", ...]
     };
   });
 
