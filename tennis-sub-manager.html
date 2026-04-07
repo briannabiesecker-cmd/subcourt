@@ -935,7 +935,10 @@
     padding: 2px 7px;
     white-space: nowrap;
   }
-  .sched-table .sit-out-cell { color: var(--ink-light); font-style: italic; }
+  .sched-table .team-header-a { text-align: center; color: var(--court); border-bottom: 2px solid var(--court); }
+  .sched-table .team-header-b { text-align: center; color: var(--clay);  border-bottom: 2px solid var(--clay);  }
+  .sched-table .player-rating { font-size: 11px; color: var(--ink-light); margin-left: 4px; }
+  .sched-table .sit-out-cell  { color: var(--ink-light); font-style: italic; }
   .sched-table tr.skipped-row td {
     color: var(--ink-light);
     font-style: italic;
@@ -2951,7 +2954,14 @@ async function runGenerateSchedule() {
   }
 }
 
-function renderScheduleTable(slots, month) {
+function playerCell(p) {
+  if (!p || !p.name) return '';
+  const r = (p.rating != null && p.rating !== 0)
+    ? '<span class="player-rating">(' + Number(p.rating).toFixed(1) + ')</span>' : '';
+  return p.name + r;
+}
+
+function renderScheduleTable(slots) {
   const fmt = iso => {
     const [y, m, d] = iso.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -2976,17 +2986,17 @@ function renderScheduleTable(slots, month) {
     }
 
     slot.groups.forEach((group, gi) => {
-      const firstRow  = gi === 0;
-      const p = group.concat([{name:''},{name:''},{name:''},{name:''}]);
-      const sitOut    = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
+      const firstRow = gi === 0;
+      const p = group.concat([{},{},{},{}]);
+      const sitOut   = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
       html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
         '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
         '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
-        '<td>' + (p[0].name || '') + '</td>' +
-        '<td>' + (p[1].name || '') + '</td>' +
-        '<td>' + (p[2].name || '') + '</td>' +
-        '<td>' + (p[3].name || '') + '</td>' +
-        '<td class="sit-out-cell">' + (sitOut || '') + '</td>' +
+        '<td>' + playerCell(p[0]) + '</td>' +
+        '<td>' + playerCell(p[1]) + '</td>' +
+        '<td>' + playerCell(p[2]) + '</td>' +
+        '<td>' + playerCell(p[3]) + '</td>' +
+        '<td class="sit-out-cell">' + sitOut + '</td>' +
         '</tr>';
     });
   });
@@ -3002,6 +3012,7 @@ function exportScheduleExcel() {
     const [y, m, d] = iso.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
+  const pStr = p => p && p.name ? p.name + (p.rating ? ' (' + Number(p.rating).toFixed(1) + ')' : '') : '';
 
   const rows = [['Date', 'Group', 'Player 1', 'Player 2', 'Player 3', 'Player 4', 'Sit Out']];
 
@@ -3011,19 +3022,18 @@ function exportScheduleExcel() {
       return;
     }
     slot.groups.forEach((group, gi) => {
-      const p = group.concat([{name:''},{name:''},{name:''},{name:''}]);
+      const p = group.concat([{},{},{},{}]);
       rows.push([
         gi === 0 ? fmt(slot.date) : '',
         'Group ' + String.fromCharCode(65 + gi),
-        p[0].name || '', p[1].name || '', p[2].name || '', p[3].name || '',
+        pStr(p[0]), pStr(p[1]), pStr(p[2]), pStr(p[3]),
         (gi === 0 && slot.sitOut) ? slot.sitOut.name : ''
       ]);
     });
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  // Column widths
-  ws['!cols'] = [18, 10, 18, 18, 18, 18, 18].map(w => ({ wch: w }));
+  ws['!cols'] = [18, 10, 22, 22, 22, 22, 18].map(w => ({ wch: w }));
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, scheduleData.month || 'Schedule');
