@@ -1257,23 +1257,20 @@ function generateSchedule(params) {
       name:   r[1] || '',
       email:  email,
       rating: playerMap[email] ? playerMap[email].rating : 0,
-      dates:  dates  // [{ date: "YYYY-MM-DD", times: ["08:00",...] }]
+      dates:  dates  // ["YYYY-MM-DD", ...]
     };
   });
 
   var emailList = Object.keys(submissionsByEmail);
   if (!emailList.length) return { error: 'No submissions found for ' + month + '.' };
 
-  // Build a map of { "YYYY-MM-DD|HH:MM": [player, ...] } for each available slot
+  // Build a map of { "YYYY-MM-DD": [player, ...] } for each available date
   var slotMap = {};
   emailList.forEach(function(email) {
     var sub = submissionsByEmail[email];
-    sub.dates.forEach(function(d) {
-      (d.times || []).forEach(function(t) {
-        var key = d.date + '|' + t;
-        if (!slotMap[key]) slotMap[key] = [];
-        slotMap[key].push(sub);
-      });
+    (sub.dates || []).forEach(function(date) {
+      if (!slotMap[date]) slotMap[date] = [];
+      slotMap[date].push(sub);
     });
   });
 
@@ -1284,15 +1281,13 @@ function generateSchedule(params) {
 
   var slotResults = [];
   slotKeys.forEach(function(slotKey) {
-    var parts     = slotKey.split('|');
-    var date      = parts[0];
-    var time      = parts[1];
+    var date      = slotKey;
     var available = slotMap[slotKey];
 
     if (available.length < 3) {
       // Not enough for even one group of 3 — skip
       slotResults.push({
-        date: date, time: time,
+        date: date,
         skipped: true,
         reason: 'Only ' + available.length + ' player(s) available — need at least 3.'
       });
@@ -1300,7 +1295,7 @@ function generateSchedule(params) {
     }
 
     var result = optimizeSlot(available, settings, pairCounts, sitOutCounts);
-    slotResults.push({ date: date, time: time, skipped: false, groups: result.groups, sitOut: result.sitOut });
+    slotResults.push({ date: date, skipped: false, groups: result.groups, sitOut: result.sitOut });
 
     // Update running pairCounts and sitOutCounts for subsequent slots in the same run
     result.groups.forEach(function(group) {
@@ -1465,8 +1460,7 @@ function saveSchedule(params) {
 
   slots.forEach(function(slot) {
     if (slot.skipped) return;
-    var dateLabel = slot.date;
-    var timeLabel = TIME_LABELS[slot.time] || slot.time;
+    var dateLabel   = slot.date;
     var sitOutName  = slot.sitOut  ? slot.sitOut.name  : '';
     var sitOutEmail = slot.sitOut  ? slot.sitOut.email : '';
 
@@ -1477,7 +1471,6 @@ function saveSchedule(params) {
         new Date().toISOString(),
         month,
         dateLabel,
-        timeLabel,
         groupLabel,
         p[0].name, p[0].email,
         p[1].name, p[1].email,
@@ -1499,8 +1492,8 @@ function getOrCreateMatchGroupsSheet() {
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet) {
     sheet = ss.insertSheet(TABS.matchGroups);
-    sheet.getRange(1, 1, 1, 15).setValues([[
-      'Timestamp','Month','Date','Time','Group',
+    sheet.getRange(1, 1, 1, 14).setValues([[
+      'Timestamp','Month','Date','Group',
       'P1 Name','P1 Email','P2 Name','P2 Email',
       'P3 Name','P3 Email','P4 Name','P4 Email',
       'SitOut Name','SitOut Email'
