@@ -6,10 +6,11 @@
 const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
 
 const TABS = {
-  players:    'Players',
-  requests:   'SubRequests',
-  volunteers: 'Volunteers',
-  config:     'Config'
+  players:      'Players',
+  requests:     'SubRequests',
+  volunteers:   'Volunteers',
+  config:       'Config',
+  availability: 'Availability'
 };
 
 const TIMES = ['08:00','09:30','11:00','12:30'];
@@ -38,6 +39,10 @@ function getConfig() {
       // Dispatch automation — rows 13–15
       autoDispatchEnabled:      (function() { var v = sheet.getRange('B13').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B14').getValue()) || '08:00',
+      // Availability window — rows 16–18
+      availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
+      availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
+      availWindowActive:        (function() { var v = sheet.getRange('B18').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
     };
   } catch(e) {
     // If Config tab is missing or unreadable, return safe defaults
@@ -49,6 +54,9 @@ function getConfig() {
       calendarLookaheadDays:   30,
       autoDispatchEnabled:     false,
       autoDispatchTimeET:      '08:00',
+      availWindowOpenDate:     '',
+      availWindowCloseDate:    '',
+      availWindowActive:       false,
     };
   }
 }
@@ -72,7 +80,7 @@ function setupTriggers() {
   // Remove existing managed triggers
   ScriptApp.getProjectTriggers().forEach(function(t) {
     var fn = t.getHandlerFunction();
-    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit') {
+    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit' || fn === 'cleanupOldAvailability') {
       ScriptApp.deleteTrigger(t);
     }
   });
@@ -80,6 +88,12 @@ function setupTriggers() {
   ScriptApp.newTrigger('onConfigEdit')
     .forSpreadsheet(SHEET_ID)
     .onEdit()
+    .create();
+  // Monthly cleanup of old availability records (runs on the 1st of each month)
+  ScriptApp.newTrigger('cleanupOldAvailability')
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(2)
     .create();
   // Set up the dispatch time trigger
   updateDispatchTrigger();
@@ -214,7 +228,12 @@ function doGet(e) {
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
-    else if (action === 'ping')            result = { version: 'V32', ts: new Date().toISOString() };
+    else if (action === 'getAvailabilityConfig')   result = getAvailabilityConfig();
+    else if (action === 'openAvailabilityWindow')  result = openAvailabilityWindow(e.parameter);
+    else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
+    else if (action === 'submitAvailability')       result = submitAvailability(e.parameter);
+    else if (action === 'getMyAvailability')        result = getMyAvailability(e.parameter);
+    else if (action === 'ping')            result = { version: 'V33', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
       const reqs      = getRequests();
@@ -890,4 +909,203 @@ function getDayOfWeek(str) {
 
 function uid() {
   return Utilities.getUuid().replace(/-/g, '').slice(0, 12);
+}
+
+// ──────────────────────────────────────────────────
+// AVAILABILITY
+// ──────────────────────────────────────────────────
+
+function getAvailabilityConfig() {
+  const config   = getConfig();
+  const today    = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const openDate  = config.availWindowOpenDate  ? new Date(config.availWindowOpenDate  + 'T00:00:00') : null;
+  const closeDate = config.availWindowCloseDate ? new Date(config.availWindowCloseDate + 'T00:00:00') : null;
+
+  // Auto-close if close date has passed
+  let isOpen = config.availWindowActive;
+  if (isOpen && closeDate && today > closeDate) {
+    isOpen = false;
+    // Write FALSE back to sheet to keep it in sync
+    try {
+      SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B18').setValue(false);
+    } catch(e) {}
+  }
+
+  // Derive target month from the open date (or next month if no date set)
+  let targetMonth, targetMonthLabel;
+  if (openDate) {
+    // Target month = month after the open date's month (the month players are scheduling for)
+    const t = new Date(openDate.getFullYear(), openDate.getMonth() + 1, 1);
+    targetMonth      = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0');
+    targetMonthLabel = t.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  } else {
+    const t = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    targetMonth      = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0');
+    targetMonthLabel = t.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+
+  return {
+    isOpen:           isOpen,
+    openDate:         config.availWindowOpenDate  || '',
+    closeDate:        config.availWindowCloseDate || '',
+    targetMonth:      targetMonth,
+    targetMonthLabel: targetMonthLabel
+  };
+}
+
+function openAvailabilityWindow(params) {
+  const openDate  = params.openDate;
+  const closeDate = params.closeDate;
+  if (!openDate || !closeDate) return { success: false, error: 'Both open and close dates are required.' };
+
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  sheet.getRange('B16').setValue(openDate);
+  sheet.getRange('B17').setValue(closeDate);
+  sheet.getRange('B18').setValue(true);
+
+  // Send email blast to all players
+  const players = getPlayers();
+  const emails  = players.map(function(p) { return p.email; }).filter(Boolean);
+  if (emails.length) {
+    const config          = getAvailabilityConfig();
+    const closeDateLabel  = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const subject         = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
+    const body =
+      'Hi,\n\n' +
+      'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
+      'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
+      'Open the Rally app to get started:\n' +
+      'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
+      'See you on the court!\n' +
+      'MTC Tennis Team';
+    MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
+  }
+
+  return { success: true, playerCount: emails.length };
+}
+
+function closeAvailabilityWindow() {
+  SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config).getRange('B18').setValue(false);
+  return { success: true };
+}
+
+function getOrCreateAvailabilitySheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.availability);
+  if (!sheet) {
+    sheet = ss.insertSheet(TABS.availability);
+    sheet.getRange(1, 1, 1, 6).setValues([['Timestamp', 'Name', 'Email', 'Month', 'AvailableDates', 'Notes']]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function submitAvailability(params) {
+  const name           = params.name           || '';
+  const email          = (params.email         || '').toLowerCase();
+  const month          = params.month          || '';
+  const availableDates = params.availableDates || '[]';
+  const notes          = params.notes          || '';
+
+  if (!name || !email || !month) return { success: false, error: 'Missing required fields.' };
+
+  // Validate window is still open
+  const avConfig = getAvailabilityConfig();
+  if (!avConfig.isOpen) return { success: false, error: 'The availability window is currently closed.' };
+
+  const sheet   = getOrCreateAvailabilitySheet();
+  const lastRow = sheet.getLastRow();
+
+  // Upsert: find existing row for this email + month
+  let targetRow = -1;
+  if (lastRow >= 2) {
+    const rows = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    rows.forEach(function(r, i) {
+      if ((r[2] || '').toLowerCase() === email && r[3] === month) {
+        targetRow = i + 2;
+      }
+    });
+  }
+
+  const timestamp = new Date().toISOString();
+  const rowData   = [timestamp, name, email, month, availableDates, notes];
+
+  if (targetRow > 0) {
+    sheet.getRange(targetRow, 1, 1, 6).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+
+  // Confirmation email to the player
+  try {
+    const dates   = JSON.parse(availableDates);
+    const dateLines = dates.map(function(d) {
+      const label  = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const times  = (d.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ');
+      return '  ' + label + (times ? ': ' + times : '');
+    }).join('\n');
+
+    const subject = 'MWF League - Your availability for ' + avConfig.targetMonthLabel + ' is confirmed';
+    const body =
+      'Hi ' + name + ',\n\n' +
+      'We received your availability for ' + avConfig.targetMonthLabel + '.\n\n' +
+      'Your selected dates:\n' + (dateLines || '  (none selected)') + '\n\n' +
+      (notes ? 'Notes: ' + notes + '\n\n' : '') +
+      'If you need to make changes, you can re-submit before the window closes.\n\n' +
+      'See you on the court!\n' +
+      'MTC Tennis Team';
+
+    MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MTC Tennis Team' });
+  } catch(err) {
+    Logger.log('Confirmation email failed: ' + err.message);
+  }
+
+  return { success: true };
+}
+
+function getMyAvailability(params) {
+  const email = (params.email || '').toLowerCase();
+  const month = params.month  || '';
+  if (!email || !month) return null;
+
+  const sheet   = getOrCreateAvailabilitySheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  const row  = rows.find(function(r) {
+    return (r[2] || '').toLowerCase() === email && r[3] === month;
+  });
+
+  if (!row) return null;
+
+  return {
+    timestamp:      row[0] ? new Date(row[0]).toISOString() : '',
+    name:           row[1] || '',
+    email:          row[2] || '',
+    month:          row[3] || '',
+    availableDates: (function() { try { return JSON.parse(row[4] || '[]'); } catch(e) { return []; } })(),
+    notes:          row[5] || ''
+  };
+}
+
+function cleanupOldAvailability() {
+  const sheet   = getOrCreateAvailabilitySheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const today        = new Date();
+  const currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+  const rows         = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+
+  // Delete bottom-up to avoid row index shifting
+  for (var i = rows.length - 1; i >= 0; i--) {
+    const rowMonth = rows[i][3] || '';
+    if (rowMonth && rowMonth < currentMonth) {
+      sheet.deleteRow(i + 2);
+    }
+  }
+  Logger.log('cleanupOldAvailability completed.');
 }

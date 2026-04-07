@@ -794,11 +794,155 @@
 
   .home-card-btn:hover { opacity: 0.88; }
 
+  .home-card-avail {
+    border-top-color: #7C6FCD;
+  }
+  .home-card-btn-avail {
+    background: #7C6FCD;
+  }
+  .home-card-avail-closed {
+    opacity: 0.6;
+    cursor: default;
+    pointer-events: none;
+  }
+  .home-card-avail-closed .home-card-btn-avail {
+    background: var(--ink-light);
+  }
+
+  /* ── Availability grid ── */
+  .avail-grid {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .avail-grid thead th {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 6px 10px;
+    text-align: center;
+  }
+  .avail-grid thead th:first-child {
+    text-align: left;
+    padding-left: 0;
+    min-width: 110px;
+  }
+  .avail-grid tbody tr {
+    border-top: 1px solid var(--line);
+  }
+  .avail-grid tbody td {
+    padding: 6px 6px;
+    text-align: center;
+  }
+  .avail-grid tbody td:first-child {
+    text-align: left;
+    padding-left: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .time-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 40px;
+    border-radius: 8px;
+    border: 2px solid var(--line);
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-light);
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    user-select: none;
+  }
+  .time-chip.selected {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: white;
+  }
+  .time-chip:hover:not(.selected) {
+    border-color: var(--teal);
+    color: var(--court);
+  }
+  .avail-row-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 0 8px;
+    font-size: 12px;
+  }
+  .avail-util-btn {
+    background: none;
+    border: none;
+    color: var(--court);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 4px;
+    text-decoration: underline;
+    font-family: inherit;
+  }
+  .avail-util-btn:hover { color: var(--court-light); }
+
+  .avail-readonly-date {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: 16px;
+  }
+  .avail-readonly-date-label {
+    font-weight: 700;
+    color: var(--ink);
+    min-width: 110px;
+  }
+  .avail-readonly-times {
+    color: var(--ink-mid);
+    font-size: 15px;
+  }
+
+  /* ── Scheduler (admin) ── */
+  .scheduler-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+  }
+  .scheduler-status.open {
+    background: var(--success-bg);
+    color: var(--success);
+  }
+  .scheduler-status.closed {
+    background: var(--chalk-dark);
+    color: var(--ink-mid);
+  }
+  .scheduler-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .scheduler-status.open  .scheduler-dot { background: var(--success); }
+  .scheduler-status.closed .scheduler-dot { background: var(--ink-light); }
+
   @media (max-width: 640px) {
     .home-title { font-size: 28px; }
     .home-subtitle { font-size: 16px; }
     .home-actions { grid-template-columns: 1fr; max-width: 100%; }
     .home-card { padding: 2rem 1.5rem; }
+    .time-chip { width: 38px; height: 36px; font-size: 12px; }
+    .avail-grid thead th { font-size: 11px; }
+    .avail-grid tbody td:first-child { min-width: 90px; font-size: 14px; }
   }
 </style>
 </head>
@@ -810,6 +954,7 @@
     <button class="active" onclick="showView('home', this)">Home</button>
     <button onclick="showView('request', this)">Request Sub</button>
     <button onclick="showView('volunteer', this)">Volunteer</button>
+    <button onclick="showView('availability', this)">Availability</button>
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -838,6 +983,18 @@
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
         <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
+      </div>
+    </div>
+
+    <div style="max-width:700px;margin:20px auto 0;" id="home-avail-card-wrap">
+      <div id="home-avail-card" class="home-card home-card-avail" style="flex-direction:row;text-align:left;gap:20px;padding:1.75rem 2rem;align-items:center;"
+        onclick="showView('availability', document.querySelector('nav button:nth-child(4)'))">
+        <div style="font-size:40px;line-height:1;flex-shrink:0;">📅</div>
+        <div style="flex:1;">
+          <div class="home-card-title" style="font-size:20px;">Submit my availability</div>
+          <div class="home-card-desc" id="home-avail-desc" style="margin-top:4px;">Tell us which days you can play next month.</div>
+        </div>
+        <button class="home-card-btn home-card-btn-avail" style="width:auto;white-space:nowrap;flex-shrink:0;">Open</button>
       </div>
     </div>
   </div>
@@ -1058,6 +1215,95 @@
     </div>
   </div>
 
+  <!-- ── AVAILABILITY VIEW ── -->
+  <div id="view-availability" class="view">
+    <div class="section-header">
+      <div class="section-title">Submit Your Availability</div>
+    </div>
+
+    <!-- Window closed, no submission -->
+    <div id="avail-closed-panel" style="display:none;">
+      <div class="card" style="text-align:center;padding:2.5rem 2rem;">
+        <div style="font-size:48px;margin-bottom:1rem;">📅</div>
+        <div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Submissions are closed right now</div>
+        <div id="avail-closed-msg" style="font-size:17px;color:var(--ink-mid);line-height:1.6;">The coordinator will send an email when it's time to submit your availability.</div>
+      </div>
+    </div>
+
+    <!-- Window closed, has prior submission (read-only) -->
+    <div id="avail-readonly-panel" style="display:none;">
+      <div class="alert alert-info" style="margin-bottom:1.25rem;">
+        The submission window is now closed. Here is what you submitted.
+      </div>
+      <div class="card">
+        <div id="avail-readonly-header" style="margin-bottom:1rem;"></div>
+        <div id="avail-readonly-list"></div>
+        <div id="avail-readonly-notes" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line);font-size:15px;color:var(--ink-mid);"></div>
+      </div>
+    </div>
+
+    <!-- Window open — form -->
+    <div id="avail-open-panel" style="display:none;">
+      <div id="avail-alert" class="hidden" style="margin-bottom:1rem;"></div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div id="avail-window-banner" style="font-size:15px;color:var(--ink-mid);margin-bottom:1.25rem;"></div>
+
+        <div class="field" style="margin-bottom:1.25rem;">
+          <label style="font-size:17px;">Your name</label>
+          <div style="font-size:14px;color:var(--ink-light);margin-bottom:6px;">Select your name and we'll load any dates you already submitted.</div>
+          <div class="typeahead-wrap">
+            <div id="av-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="av-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('av')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="av-input-state">
+              <input class="typeahead-input" id="av-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('av', this.value)"
+                onblur="onTypeaheadBlur('av')"
+                onfocus="onTypeaheadFocus('av')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="av-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+          <input type="email" id="av-email" style="display:none;" />
+        </div>
+      </div>
+
+      <div id="avail-calendar-wrap" style="display:none;">
+        <div class="card" style="padding:1.25rem 1.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem;">
+            <div style="font-size:18px;font-weight:700;color:var(--ink);" id="avail-month-label">Dates</div>
+            <div style="display:flex;gap:12px;">
+              <button class="avail-util-btn" onclick="availSelectAll()">Select all</button>
+              <button class="avail-util-btn" onclick="availClearAll()">Clear all</button>
+            </div>
+          </div>
+          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap a time to mark yourself available. Tap again to remove it.</div>
+          <div id="avail-grid-wrap" style="overflow-x:auto;">
+            <table class="avail-grid" id="avail-grid"></table>
+          </div>
+
+          <div style="margin-top:1.25rem;border-top:1px solid var(--line);padding-top:1rem;">
+            <button class="avail-util-btn" style="font-size:14px;text-decoration:none;color:var(--ink-mid);" onclick="toggleAvailNotes()" id="avail-notes-toggle">+ Add a note (optional)</button>
+            <div id="avail-notes-wrap" style="display:none;margin-top:0.75rem;">
+              <label style="font-size:15px;font-weight:600;">Notes</label>
+              <textarea id="avail-notes" rows="3" placeholder="Anything the coordinator should know…"
+                style="width:100%;margin-top:6px;padding:10px;font-family:inherit;font-size:16px;border:1px solid var(--line);border-radius:var(--radius);resize:vertical;"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt12 flex gap8">
+          <button class="btn btn-primary" id="avail-submit-btn" onclick="submitAvailability()">Submit availability</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── ADMIN VIEW ── -->
   <div id="view-admin" class="view">
 
@@ -1121,6 +1367,7 @@
       <div class="inner-tabs">
         <button class="inner-tab active" onclick="showAdminTab('dispatch', this)">Dispatch</button>
         <button class="inner-tab" onclick="showAdminTab('players', this)">Player Ratings</button>
+        <button class="inner-tab" onclick="showAdminTab('scheduler', this)">Scheduler</button>
       </div>
 
       <div id="admin-tab-players" style="display:none;">
@@ -1137,6 +1384,40 @@
           <div id="players-grid"></div>
           <div style="margin-top:1rem;text-align:right;">
             <button class="btn btn-clay" onclick="saveAllRatings()">Save all ratings</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-tab-scheduler" style="display:none;">
+        <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
+        <div class="card mt8" style="max-width:520px;">
+          <div id="scheduler-status-badge" class="scheduler-status closed">
+            <div class="scheduler-dot"></div>
+            <span id="scheduler-status-text">Loading…</span>
+          </div>
+
+          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1.25rem;">Set the submission window</div>
+
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem;">
+            <div class="field">
+              <label style="font-size:16px;">Open date</label>
+              <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The first day players can submit.</div>
+              <input type="date" id="sched-open-date" style="font-size:16px;" />
+            </div>
+            <div class="field">
+              <label style="font-size:16px;">Close date</label>
+              <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The last day players can submit.</div>
+              <input type="date" id="sched-close-date" style="font-size:16px;" />
+            </div>
+          </div>
+
+          <div style="background:var(--teal-light);border-radius:var(--radius);padding:12px 16px;font-size:14px;color:var(--court);margin-bottom:1.5rem;line-height:1.6;">
+            Clicking <strong>Open Window</strong> will immediately send an email to all players letting them know the window is open and when it closes.
+          </div>
+
+          <div class="flex gap8">
+            <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()">Open Window &amp; Notify Players</button>
+            <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()">Close Window</button>
           </div>
         </div>
       </div>
@@ -1186,6 +1467,7 @@ function showView(name, btn) {
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   if (name === 'volunteer') buildCalendar();
+  if (name === 'availability') loadAvailabilityView();
   if (name === 'admin') {
     if (sessionStorage.getItem('adminAuthenticated') === 'true') {
       unlockAdmin(sessionStorage.getItem('adminName') || '');
@@ -1313,6 +1595,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
   document.getElementById(prefix + '-dropdown').style.display = 'none';
   if (prefix === 'vol') loadMySubmissions(email);
   if (prefix === 'req') loadMyRequests(email);
+  if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
 }
 
@@ -1331,6 +1614,10 @@ function clearTypeahead(prefix) {
   if (prefix === 'req') {
     document.getElementById('my-req-section').style.display = 'none';
     document.getElementById('my-req-list').innerHTML = '';
+  }
+  if (prefix === 'av') {
+    document.getElementById('avail-calendar-wrap').style.display = 'none';
+    availSelections = {};
   }
   if (prefix === 'adm') {
     document.getElementById('adm-send-btn').disabled = true;
@@ -2190,10 +2477,12 @@ async function resendAdminCode() {
 function showAdminTab(tab, btn) {
   document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('admin-tab-dispatch').style.display = tab === 'dispatch' ? '' : 'none';
-  document.getElementById('admin-tab-players').style.display  = tab === 'players'  ? '' : 'none';
-  if (tab === 'dispatch') loadDispatch();
-  if (tab === 'players')  loadCoordinatorRatings();
+  document.getElementById('admin-tab-dispatch').style.display  = tab === 'dispatch'  ? '' : 'none';
+  document.getElementById('admin-tab-players').style.display   = tab === 'players'   ? '' : 'none';
+  document.getElementById('admin-tab-scheduler').style.display = tab === 'scheduler' ? '' : 'none';
+  if (tab === 'dispatch')  loadDispatch();
+  if (tab === 'players')   loadCoordinatorRatings();
+  if (tab === 'scheduler') loadScheduler();
 }
 
 // ══════════════════════════════════════════════════
@@ -2275,11 +2564,338 @@ async function saveAllRatings() {
 }
 
 // ══════════════════════════════════════════════════
+// AVAILABILITY
+// ══════════════════════════════════════════════════
+let availConfig    = null;
+let availSelections = {}; // { 'YYYY-MM-DD': { '08:00': true, '09:30': false, ... } }
+
+async function loadAvailabilityView() {
+  try {
+    availConfig = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+  } catch(e) {
+    availConfig = { isOpen: false, openDate: '', closeDate: '', targetMonth: '', targetMonthLabel: '' };
+  }
+  renderAvailabilityView();
+}
+
+function renderAvailabilityView() {
+  const { isOpen, closeDate, targetMonthLabel } = availConfig;
+  document.getElementById('avail-closed-panel').style.display   = 'none';
+  document.getElementById('avail-readonly-panel').style.display = 'none';
+  document.getElementById('avail-open-panel').style.display     = 'none';
+
+  // Update home card
+  const homeCard = document.getElementById('home-avail-card');
+  const homeDesc = document.getElementById('home-avail-desc');
+  if (isOpen) {
+    homeCard.classList.remove('home-card-avail-closed');
+    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(4)'));
+    const closeFmt = closeDate ? formatDateShort(closeDate) : '';
+    homeDesc.textContent = 'Submit your available dates for ' + (targetMonthLabel || 'next month') + (closeFmt ? '. Closes ' + closeFmt + '.' : '.');
+  } else {
+    homeCard.classList.add('home-card-avail-closed');
+    homeCard.onclick = null;
+    homeDesc.textContent = 'The coordinator will notify you when it\'s time to submit your availability.';
+  }
+
+  if (isOpen) {
+    document.getElementById('avail-open-panel').style.display = 'block';
+    const closeFmt = closeDate ? formatDateShort(closeDate) : '';
+    document.getElementById('avail-window-banner').innerHTML =
+      'Submit your available dates for <strong>' + (targetMonthLabel || 'next month') + '</strong>' +
+      (closeFmt ? '. The window closes on <strong>' + closeFmt + '</strong>.' : '.');
+    buildAvailabilityGrid();
+  } else {
+    document.getElementById('avail-closed-panel').style.display = 'block';
+    const openFmt = availConfig.openDate ? formatDateShort(availConfig.openDate) : '';
+    document.getElementById('avail-closed-msg').textContent = openFmt
+      ? 'The coordinator will open the submission window soon. You\'ll receive an email when it\'s ready.'
+      : 'The coordinator will send an email when it\'s time to submit your availability.';
+  }
+}
+
+function buildAvailabilityGrid() {
+  const { targetMonth, targetMonthLabel } = availConfig;
+  document.getElementById('avail-month-label').textContent = targetMonthLabel || 'Dates';
+
+  // Build list of Mon/Wed/Fri dates for targetMonth
+  const [yr, mo] = (targetMonth || '').split('-').map(Number);
+  if (!yr || !mo) return;
+
+  const mwfDates = [];
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(yr, mo - 1, d);
+    const dow  = date.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri
+    if (dow === 1 || dow === 3 || dow === 5) {
+      const iso = yr + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const label = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      mwfDates.push({ iso, label });
+    }
+  }
+
+  const timeKeys   = ['08:00','09:30','11:00','12:30'];
+  const timeShort  = ['8am','9:30','11am','12:30'];
+
+  let html = '<thead><tr><th></th>';
+  timeKeys.forEach((_, i) => { html += '<th>' + timeShort[i] + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  mwfDates.forEach(({ iso, label }) => {
+    html += '<tr><td>' + label + '</td>';
+    timeKeys.forEach(t => {
+      const selected = availSelections[iso] && availSelections[iso][t] ? 'selected' : '';
+      html += '<td><button class="time-chip ' + selected + '" onclick="toggleChip(\'' + iso + '\',\'' + t + '\',this)">✓</button></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+
+  document.getElementById('avail-grid').innerHTML = html;
+  document.getElementById('avail-calendar-wrap').style.display = 'none'; // shown only after name selected
+}
+
+function toggleChip(date, time, el) {
+  if (!availSelections[date]) availSelections[date] = {};
+  const on = !availSelections[date][time];
+  availSelections[date][time] = on;
+  el.classList.toggle('selected', on);
+}
+
+function availSelectAll() {
+  document.querySelectorAll('.time-chip').forEach(chip => {
+    chip.classList.add('selected');
+  });
+  // Rebuild selections from DOM
+  const rows = document.querySelectorAll('#avail-grid tbody tr');
+  rows.forEach(row => {
+    const dateLabel = row.querySelector('td')?.textContent;
+    // Find the iso date from the chip onclick
+    const chips = row.querySelectorAll('.time-chip');
+    chips.forEach(chip => {
+      const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})','([^']+)'/);
+      if (match) {
+        const iso = match[1], time = match[2];
+        if (!availSelections[iso]) availSelections[iso] = {};
+        availSelections[iso][time] = true;
+      }
+    });
+  });
+}
+
+function availClearAll() {
+  document.querySelectorAll('.time-chip').forEach(chip => chip.classList.remove('selected'));
+  availSelections = {};
+}
+
+function toggleAvailNotes() {
+  const wrap = document.getElementById('avail-notes-wrap');
+  const btn  = document.getElementById('avail-notes-toggle');
+  const visible = wrap.style.display !== 'none';
+  wrap.style.display = visible ? 'none' : 'block';
+  btn.textContent = visible ? '+ Add a note (optional)' : '− Hide note';
+}
+
+async function loadMyAvailability(email) {
+  const { targetMonth } = availConfig || {};
+  if (!targetMonth) return;
+
+  document.getElementById('avail-calendar-wrap').style.display = 'block';
+  availSelections = {};
+
+  try {
+    const existing = await apiGetWithParams({ action: 'getMyAvailability', email, month: targetMonth });
+    if (existing && existing.availableDates && existing.availableDates.length) {
+      existing.availableDates.forEach(entry => {
+        availSelections[entry.date] = {};
+        (entry.times || []).forEach(t => { availSelections[entry.date][t] = true; });
+      });
+      // Re-render grid with pre-filled selections
+      buildAvailabilityGrid();
+      document.getElementById('avail-calendar-wrap').style.display = 'block';
+      if (existing.notes) {
+        document.getElementById('avail-notes').value = existing.notes;
+        document.getElementById('avail-notes-wrap').style.display = 'block';
+        document.getElementById('avail-notes-toggle').textContent = '− Hide note';
+      }
+    } else {
+      buildAvailabilityGrid();
+      document.getElementById('avail-calendar-wrap').style.display = 'block';
+    }
+  } catch(e) {
+    buildAvailabilityGrid();
+    document.getElementById('avail-calendar-wrap').style.display = 'block';
+  }
+}
+
+async function submitAvailability() {
+  const { name, email } = getTypeaheadValue('av');
+  if (!name || !email) {
+    showAlert('avail-alert', 'error', 'Please select your name before submitting.');
+    return;
+  }
+
+  const { targetMonth } = availConfig || {};
+  if (!targetMonth) return;
+
+  // Build availableDates array from selections
+  const availableDates = Object.entries(availSelections)
+    .map(([date, times]) => ({
+      date,
+      times: Object.entries(times).filter(([, v]) => v).map(([t]) => t).sort()
+    }))
+    .filter(d => d.times.length > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const notes = document.getElementById('avail-notes').value.trim();
+
+  const btn = document.getElementById('avail-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const result = await apiPost({
+      action: 'submitAvailability',
+      name, email,
+      month: targetMonth,
+      availableDates: JSON.stringify(availableDates),
+      notes
+    });
+    if (!result.success) {
+      showAlert('avail-alert', 'error', result.error || 'Could not submit. Please try again.');
+      return;
+    }
+    showAlert('avail-alert', 'success', 'Your availability has been submitted. A confirmation email is on its way!');
+    document.getElementById('avail-calendar-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(e) {
+    showAlert('avail-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit availability';
+  }
+}
+
+function renderAvailReadOnly(submission) {
+  const { targetMonthLabel } = availConfig || {};
+  document.getElementById('avail-readonly-header').innerHTML =
+    '<div style="font-size:20px;font-weight:700;color:var(--ink);">' + (targetMonthLabel || '') + '</div>' +
+    '<div style="font-size:14px;color:var(--ink-light);margin-top:2px;">Submitted ' + formatTS(submission.timestamp) + '</div>';
+
+  const list = document.getElementById('avail-readonly-list');
+  if (!submission.availableDates || !submission.availableDates.length) {
+    list.innerHTML = '<div style="color:var(--ink-light);font-size:15px;margin-top:8px;">No dates were selected.</div>';
+  } else {
+    list.innerHTML = submission.availableDates.map(d => {
+      const label = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const times = (d.times || []).map(t => TIME_LABELS[t] || t).join(' · ');
+      return '<div class="avail-readonly-date"><span class="avail-readonly-date-label">' + label + '</span><span class="avail-readonly-times">' + (times || '—') + '</span></div>';
+    }).join('');
+  }
+
+  const notesEl = document.getElementById('avail-readonly-notes');
+  if (submission.notes) {
+    notesEl.style.display = 'block';
+    notesEl.innerHTML = '<strong>Notes:</strong> ' + submission.notes;
+  } else {
+    notesEl.style.display = 'none';
+  }
+}
+
+function formatDateShort(str) {
+  if (!str) return '';
+  const d = new Date(str + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
+// ══════════════════════════════════════════════════
+// SCHEDULER (ADMIN)
+// ══════════════════════════════════════════════════
+async function loadScheduler() {
+  try {
+    const config = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+    const badge  = document.getElementById('scheduler-status-badge');
+    const text   = document.getElementById('scheduler-status-text');
+
+    if (config.isOpen) {
+      badge.className = 'scheduler-status open';
+      text.textContent = 'Window is OPEN — closes ' + formatDateShort(config.closeDate);
+    } else {
+      badge.className = 'scheduler-status closed';
+      text.textContent = config.openDate
+        ? 'Window is CLOSED (last opened ' + formatDateShort(config.openDate) + ')'
+        : 'Window is CLOSED — no dates set yet';
+    }
+
+    if (config.openDate)  document.getElementById('sched-open-date').value  = config.openDate;
+    if (config.closeDate) document.getElementById('sched-close-date').value = config.closeDate;
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
+  }
+}
+
+async function openAvailWindow() {
+  const openDate  = document.getElementById('sched-open-date').value;
+  const closeDate = document.getElementById('sched-close-date').value;
+  if (!openDate || !closeDate) {
+    showAlert('scheduler-alert', 'error', 'Please set both an open date and a close date before opening the window.');
+    return;
+  }
+  if (closeDate <= openDate) {
+    showAlert('scheduler-alert', 'error', 'The close date must be after the open date.');
+    return;
+  }
+
+  const btn = document.getElementById('sched-open-btn');
+  btn.disabled = true;
+  btn.textContent = 'Opening…';
+
+  try {
+    const result = await apiPost({ action: 'openAvailabilityWindow', openDate, closeDate });
+    if (!result.success) {
+      showAlert('scheduler-alert', 'error', result.error || 'Failed to open window.');
+      return;
+    }
+    showAlert('scheduler-alert', 'success',
+      'Window is now open. ' + (result.playerCount || 0) + ' players have been notified by email.');
+    availConfig = null; // reset cache
+    await loadScheduler();
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not open the window. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Open Window & Notify Players';
+  }
+}
+
+async function closeAvailWindow() {
+  const btn = document.getElementById('sched-close-btn');
+  btn.disabled = true;
+  btn.textContent = 'Closing…';
+
+  try {
+    await apiPost({ action: 'closeAvailabilityWindow' });
+    showAlert('scheduler-alert', 'success', 'Availability window is now closed.');
+    availConfig = null;
+    await loadScheduler();
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not close the window. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Close Window';
+  }
+}
+
+// ══════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   // Pre-warm player cache so typeaheads feel instant
   getPlayers().catch(() => {});
+  // Load availability config for home card state
+  apiGetWithParams({ action: 'getAvailabilityConfig' }).then(config => {
+    availConfig = config;
+    renderAvailabilityView();
+  }).catch(() => {});
 });
 
 
