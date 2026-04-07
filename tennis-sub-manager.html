@@ -1226,7 +1226,12 @@
       <div class="card" style="text-align:center;padding:2.5rem 2rem;">
         <div style="font-size:48px;margin-bottom:1rem;">📅</div>
         <div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Submissions are closed right now</div>
-        <div id="avail-closed-msg" style="font-size:17px;color:var(--ink-mid);line-height:1.6;">The coordinator will send an email when it's time to submit your availability.</div>
+        <div id="avail-closed-msg" style="font-size:17px;color:var(--ink-mid);line-height:1.6;margin-bottom:1.5rem;">The coordinator will send you an email when the window opens. Check back then.</div>
+        <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
+          <div style="font-size:16px;font-weight:700;color:var(--court);margin-bottom:6px;">Available to play right now?</div>
+          <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:12px;">If you're free to cover for someone, sign up as a volunteer. You'll be contacted when there's a match that fits your schedule.</div>
+          <button class="btn btn-primary" style="background:var(--court);" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">Go to Volunteer to Sub</button>
+        </div>
       </div>
     </div>
 
@@ -2570,10 +2575,14 @@ let availConfig    = null;
 let availSelections = {}; // { 'YYYY-MM-DD': { '08:00': true, '09:30': false, ... } }
 
 async function loadAvailabilityView() {
-  try {
-    availConfig = await apiGetWithParams({ action: 'getAvailabilityConfig' });
-  } catch(e) {
-    availConfig = { isOpen: false, openDate: '', closeDate: '', targetMonth: '', targetMonthLabel: '' };
+  // Use cached config if already loaded (e.g. from DOMContentLoaded pre-warm)
+  // so the view renders instantly on first click without waiting for a network round-trip
+  if (!availConfig) {
+    try {
+      availConfig = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+    } catch(e) {
+      availConfig = { isOpen: false, openDate: '', closeDate: '', targetMonth: '', targetMonthLabel: '' };
+    }
   }
   renderAvailabilityView();
 }
