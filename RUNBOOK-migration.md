@@ -109,12 +109,24 @@ If the GitHub account changes:
 
 ## Quick-reference: key IDs
 
+### TEST
 | Item | Value |
 |---|---|
-| Google Sheet ID | `1X2oM9GwH206qzFHBqi-oIPZ2wPdn43tIfcMRtvOw9wM` |
-| Current Web App URL | `https://script.google.com/macros/s/AKfycbxr-kM_2if-fdkXFu_le83WYsX3MtEVQAh1tR7I9zAO2TKHBtjgVYe_AHIlvpQicqGHsg/exec` |
-| GitHub repo | `briannabiesecker-cmd/subcourt` |
+| Google Sheet ID | `1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw` |
+| Web App URL | `https://script.google.com/macros/s/AKfycby6CoAz-3PE5p5r1Rhi3P9eva8cHu5IzpEe-WqepPJLVN9WMNtBWmDp1Aya_MkFwQO8/exec` |
 | GitHub Pages URL | `https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html` |
+
+### PROD
+| Item | Value |
+|---|---|
+| Google Sheet ID | `1hA-ZPhV62pp376qtWRDfQQkFv6y9U5Wkm0nUyKCHC6o` |
+| Web App URL | `https://script.google.com/macros/s/AKfycbyMaR0EQGmjTrVvjwSqYseZVGPZIaXI0-axH_miCCDgZaQKc4vOVkf4sjD9IDA4Q0Yxnw/exec` |
+| GitHub Pages URL | `https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager-prod.html` |
+
+### Shared
+| Item | Value |
+|---|---|
+| GitHub repo | `briannabiesecker-cmd/subcourt` |
 
 ---
 

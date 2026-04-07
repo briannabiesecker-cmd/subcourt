@@ -1,0 +1,3416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rally — Tennis League</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎾</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --court: #1F7A6E;
+    --court-light: #2D9B8D;
+    --teal: #4DBDAD;
+    --teal-light: #E6F7F5;
+    --clay: #E07A5A;
+    --clay-light: #F0A080;
+    --clay-bg: #FDF0EB;
+    --chalk: #F0F2F5;
+    --chalk-dark: #E4E7EC;
+    --ink: #1A1C1E;
+    --ink-mid: #374151;
+    --ink-light: #6B7280;
+    --line: #E8EBF0;
+    --success: #1B7A4E;
+    --success-bg: #E8F5EE;
+    --danger: #C0392B;
+    --danger-bg: #FDEEEC;
+    --warn: #8A4F0B;
+    --warn-bg: #FEF3E2;
+    --radius: 10px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
+    --shadow: 0 2px 8px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.05);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--chalk);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 17px;
+    line-height: 1.7;
+  }
+
+  /* ── Header ── */
+  header {
+    background: white;
+    color: var(--ink);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 68px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  .logo {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--ink);
+  }
+
+  .logo span { color: var(--clay); }
+
+  nav { display: flex; gap: 6px; }
+
+  nav button {
+    background: transparent;
+    border: 2px solid transparent;
+    color: var(--ink-mid);
+    padding: 8px 18px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+
+  nav button:hover { background: var(--chalk); color: var(--ink); }
+  nav button.active { background: var(--clay); color: white; border-color: var(--clay); box-shadow: 0 2px 8px rgba(224,122,90,0.35); }
+
+  /* ── Main Layout ── */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ── Section heading ── */
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .section-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.3px;
+  }
+
+  .section-sub {
+    font-size: 12px;
+    color: var(--ink-light);
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-top: 3px;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .badge-open { background: var(--warn-bg); color: var(--warn); }
+  .badge-filled { background: var(--success-bg); color: var(--success); }
+  .badge-cancelled { background: var(--chalk-dark); color: var(--ink-light); }
+  .badge-tbd { background: #E8F0FE; color: #1A5CC4; }
+  .badge-pending { background: var(--warn-bg); color: var(--warn); }
+  .badge-matched { background: var(--success-bg); color: var(--success); }
+
+  /* ── Forms ── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .form-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .form-grid.full { grid-template-columns: 1fr; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.span2 { grid-column: span 2; }
+
+  label {
+    font-size: 13px;
+    color: var(--ink-mid);
+    font-weight: 600;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="date"],
+  select,
+  textarea {
+    font-family: inherit;
+    font-size: 15px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--clay);
+    box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
+  }
+
+  .time-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .time-chip {
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    background: white;
+    color: var(--ink-mid);
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .time-chip:hover { border-color: var(--clay); color: var(--clay); }
+  .time-chip.selected { background: var(--clay); border-color: var(--clay); color: white; }
+  .time-chip.disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Buttons ── */
+  .btn {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 22px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--clay);
+    color: white;
+  }
+
+  .btn-primary:hover { opacity: 0.88; }
+
+  .btn-secondary {
+    background: var(--chalk);
+    color: var(--ink-mid);
+    border: 1.5px solid var(--line);
+  }
+
+  .btn-secondary:hover { background: var(--chalk-dark); }
+
+  .btn-clay {
+    background: var(--clay);
+    color: white;
+  }
+
+  .btn-clay:hover { opacity: 0.88; }
+
+  .btn-sm {
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  .btn-danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+
+  /* ── Alert ── */
+  .alert {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .alert-success { background: var(--success-bg); color: var(--success); }
+  .alert-error { background: var(--danger-bg); color: var(--danger); }
+  .alert-info { background: #E8F0FE; color: #1A5CC4; }
+
+  /* ── Match Board ── */
+  .board-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 16px;
+    border: none;
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    color: var(--ink-mid);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.15s;
+  }
+
+  .filter-btn.active {
+    background: var(--ink);
+    color: white;
+  }
+
+  /* ── Sub Request Card ── */
+  .request-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--teal);
+  }
+
+  .request-card.filled { border-left-color: var(--court); }
+  .request-card.cancelled { border-left-color: var(--chalk-dark); opacity: 0.65; }
+
+  .request-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .request-info { flex: 1; }
+  .request-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .match-detail {
+    display: flex;
+    gap: 20px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+
+  .match-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .detail-label { font-size: 11px; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .detail-value { font-size: 14px; color: var(--ink); font-weight: 600; }
+
+  /* ── Volunteer card ── */
+  .vol-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.5rem;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--teal);
+  }
+
+  .vol-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .times-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .time-tag {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: var(--chalk);
+    border-radius: 20px;
+    color: var(--ink-mid);
+    font-weight: 500;
+  }
+
+  .time-tag.all { background: var(--teal-light); color: var(--court); }
+
+  /* ── Matching panel ── */
+  .match-panel {
+    background: var(--chalk);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-top: 12px;
+  }
+
+  .match-panel-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ink-light);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .candidate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: white;
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .candidate-info { display: flex; flex-direction: column; gap: 2px; }
+  .candidate-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .candidate-meta { font-size: 12px; color: var(--ink-light); }
+  .candidate-rank { font-size: 20px; font-weight: 800; color: var(--clay); margin-right: 12px; }
+
+  .rank-row { display: flex; align-items: center; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 3.5rem 1rem;
+    color: var(--ink-light);
+    font-size: 15px;
+  }
+
+  .empty-icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  .stat-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 1.25rem 1rem;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stat-num {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--clay);
+    display: block;
+    letter-spacing: -1px;
+  }
+
+  .stat-label { font-size: 12px; color: var(--ink-light); font-weight: 500; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+
+  /* ── Tabs inside view ── */
+  .inner-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+  }
+
+  .inner-tab {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--ink-light);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+
+  .inner-tab.active { color: var(--clay); border-bottom-color: var(--clay); }
+
+  /* ── Loading ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-light);
+    font-size: 14px;
+    padding: 1.5rem 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--line);
+    border-top-color: var(--clay);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    header { padding: 0 1rem; }
+    main { padding: 1rem; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid .span2 { grid-column: span 1; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    nav button { padding: 6px 12px; font-size: 13px; }
+    .time-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── Utility ── */
+  .flex { display: flex; }
+  .gap8 { gap: 8px; }
+  .mt12 { margin-top: 12px; }
+  .mt8 { margin-top: 8px; }
+  .text-right { text-align: right; }
+  .hidden { display: none !important; }
+
+  /* ── Typeahead ── */
+  .typeahead-wrap { position: relative; }
+  .typeahead-input {
+    font-family: inherit;
+    font-size: 15px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    color: var(--ink);
+    background: white;
+    width: 100%;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .typeahead-input:focus {
+    outline: none;
+    border-color: var(--clay);
+    box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
+  }
+  .typeahead-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: white;
+    border-radius: var(--radius-lg);
+    z-index: 50;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .typeahead-item {
+    padding: 11px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--ink);
+    border-bottom: 1px solid var(--chalk);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .typeahead-item:last-child { border-bottom: none; }
+  .typeahead-item:hover, .typeahead-item.highlighted { background: var(--chalk); }
+  .typeahead-email { font-size: 12px; color: var(--ink-light); }
+  .selected-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    background: var(--success-bg);
+    border-radius: var(--radius);
+    font-size: 14px;
+    color: var(--success);
+    font-weight: 500;
+  }
+  .clear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--success);
+    font-size: 16px;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.6;
+  }
+  .clear-btn:hover { opacity: 1; }
+  input:disabled {
+    background: var(--chalk-dark) !important;
+    color: var(--ink-light) !important;
+    cursor: not-allowed;
+  }
+
+  /* ── Date list calendar ── */
+  .date-list { display: flex; flex-direction: column; gap: 6px; }
+  .month-header {
+    font-size: 11px;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 0 4px;
+    font-weight: 600;
+  }
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    transition: background 0.1s;
+  }
+  .date-row.any-selected { background: var(--success-bg); }
+  .date-row-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    min-width: 100px;
+  }
+  .date-row.any-selected .date-row-label { color: var(--success); }
+  .select-all-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-right: 10px;
+    border-right: 1px solid var(--line);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .select-all-wrap input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--clay); cursor: pointer; }
+  .select-all-label { font-size: 12px; color: var(--ink-light); white-space: nowrap; }
+  .time-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .time-chip-btn {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1.5px solid var(--line);
+    background: white;
+    color: var(--ink-mid);
+    cursor: pointer;
+    transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .time-chip-btn:hover { border-color: var(--clay); color: var(--clay); }
+  .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; }
+
+  /* ── Player rating grid ── */
+  .player-rating-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: white;
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    box-shadow: var(--shadow-sm);
+    gap: 12px;
+  }
+  .player-rating-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .player-rating-email {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ink-light);
+  }
+  .player-rating-input {
+    width: 80px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    font-family: inherit;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
+  }
+  .player-rating-input:focus {
+    outline: none;
+    border-color: var(--clay);
+    box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
+  }
+
+  /* ── Home page ── */
+  .home-hero {
+    text-align: center;
+    padding: 1.25rem 1rem 1rem;
+  }
+
+  .home-title {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+    margin-bottom: 0.3rem;
+  }
+
+  .home-subtitle {
+    font-size: 15px;
+    color: var(--ink-light);
+    line-height: 1.5;
+    font-weight: 400;
+  }
+
+  .home-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  .home-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem 1.25rem;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    text-align: center;
+    border-top: 4px solid var(--teal);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .home-card-alt {
+    border-top-color: var(--clay);
+  }
+
+  .home-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  .home-card-icon {
+    font-size: 36px;
+    line-height: 1;
+  }
+
+  .home-card-title {
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.2px;
+  }
+
+  .home-card-desc {
+    font-size: 14px;
+    color: var(--ink-mid);
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .home-card-btn {
+    margin-top: 4px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 11px 20px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    background: var(--teal);
+    color: white;
+    transition: opacity 0.15s;
+    width: 100%;
+  }
+
+  .home-card-btn-alt {
+    background: var(--clay);
+  }
+
+  .home-card-btn:hover { opacity: 0.88; }
+
+  .home-card-avail {
+    border-top-color: #7C6FCD;
+  }
+  .home-card-btn-avail {
+    background: #7C6FCD;
+  }
+  .home-card-avail-closed {
+    opacity: 0.6;
+    cursor: default;
+    pointer-events: none;
+  }
+  .home-card-avail-closed .home-card-btn-avail {
+    background: var(--ink-light);
+  }
+
+  /* ── Availability grid ── */
+  .avail-grid {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .avail-grid thead th {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 6px 10px;
+    text-align: center;
+  }
+  .avail-grid thead th:first-child {
+    text-align: left;
+    padding-left: 0;
+    min-width: 110px;
+  }
+  .avail-grid tbody tr {
+    border-top: 1px solid var(--line);
+  }
+  .avail-grid tbody td {
+    padding: 6px 6px;
+    text-align: center;
+  }
+  .avail-grid tbody td:first-child {
+    text-align: left;
+    padding-left: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .time-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 40px;
+    border-radius: 8px;
+    border: 2px solid var(--line);
+    background: var(--chalk-dark);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-light);
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    user-select: none;
+  }
+  .time-chip.selected {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+  }
+  .time-chip:hover:not(.selected) {
+    border-color: var(--clay);
+    color: var(--clay);
+    background: white;
+  }
+  .avail-row-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 0 8px;
+    font-size: 12px;
+  }
+  .avail-util-btn {
+    background: none;
+    border: none;
+    color: var(--clay);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 4px;
+    text-decoration: underline;
+    font-family: inherit;
+  }
+  .avail-util-btn:hover { color: var(--clay-light); }
+
+  .avail-readonly-date {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: 16px;
+  }
+  .avail-readonly-date-label {
+    font-weight: 700;
+    color: var(--ink);
+    min-width: 110px;
+  }
+  .avail-readonly-times {
+    color: var(--ink-mid);
+    font-size: 15px;
+  }
+
+  /* ── Schedule results table ── */
+  .sched-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .sched-table th {
+    background: var(--chalk-dark);
+    font-weight: 600;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 12px;
+    color: var(--ink-mid);
+    white-space: nowrap;
+    border-bottom: 2px solid var(--line);
+  }
+  .sched-table td { padding: 7px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+  .sched-table tr.date-first td { border-top: 2px solid var(--clay); }
+  .sched-table .date-cell { font-weight: 600; white-space: nowrap; }
+  .sched-table .group-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--court);
+    background: var(--teal-light);
+    border-radius: 4px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .sched-table .team-header-a { text-align: center; color: var(--court); border-bottom: 2px solid var(--court); }
+  .sched-table .team-header-b { text-align: center; color: var(--clay);  border-bottom: 2px solid var(--clay);  }
+  .sched-table .player-rating { font-size: 11px; color: var(--ink-light); margin-left: 4px; }
+  .sched-table .sit-out-cell  { color: var(--ink-light); font-style: italic; }
+  .captain-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    background: var(--clay);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-right: 5px;
+    vertical-align: middle;
+    line-height: 1.5;
+  }
+  .sched-table tr.skipped-row td {
+    color: var(--ink-light);
+    font-style: italic;
+    background: var(--chalk);
+    font-size: 13px;
+  }
+  .sched-gen-summary {
+    font-size: 14px;
+    color: var(--ink-mid);
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+  }
+  .sched-gen-summary strong { color: var(--ink); }
+
+  /* ── Scheduler (admin) ── */
+  .scheduler-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+  }
+  .scheduler-status.open {
+    background: var(--success-bg);
+    color: var(--success);
+  }
+  .scheduler-status.closed {
+    background: var(--chalk-dark);
+    color: var(--ink-mid);
+  }
+  .scheduler-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .scheduler-status.open  .scheduler-dot { background: var(--success); }
+  .scheduler-status.closed .scheduler-dot { background: var(--ink-light); }
+
+  @media (max-width: 700px) {
+    .home-title { font-size: 22px; }
+    .home-subtitle { font-size: 14px; }
+    .home-actions { grid-template-columns: 1fr; max-width: 100%; }
+    .home-card { padding: 1.25rem 1rem; }
+    .time-chip { width: 38px; height: 36px; font-size: 12px; }
+    .avail-grid thead th { font-size: 11px; }
+    .avail-grid tbody td:first-child { min-width: 90px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Ral<span>ly</span></div>
+  <nav>
+    <button class="active" onclick="showView('home', this)">Home</button>
+    <button onclick="showView('request', this)">Request Sub</button>
+    <button onclick="showView('volunteer', this)">Volunteer</button>
+    <button onclick="showView('availability', this)">Availability</button>
+    <button onclick="showView('schedule', this)">Schedule</button>
+    <button onclick="showView('admin', this)">Admin</button>
+  </nav>
+</header>
+
+
+
+<main>
+
+  <!-- ── HOME VIEW ── -->
+  <div id="view-home" class="view active">
+    <div class="home-hero">
+      <div class="home-title">MTC MWF Tennis League</div>
+      <div class="home-subtitle">Manage subs, volunteer to play, and submit your monthly availability.</div>
+    </div>
+
+    <div class="home-actions">
+      <div class="home-card" onclick="showView('request', document.querySelector('nav button:nth-child(2)'))">
+        <div class="home-card-icon">🎾</div>
+        <div class="home-card-title">I need a sub</div>
+        <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
+        <button class="home-card-btn">Request a Sub</button>
+      </div>
+
+      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">
+        <div class="home-card-icon">🙋</div>
+        <div class="home-card-title">I can sub</div>
+        <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
+        <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
+      </div>
+
+      <div id="home-avail-card" class="home-card home-card-avail"
+        onclick="showView('availability', document.querySelector('nav button:nth-child(4)'))">
+        <div class="home-card-icon">📅</div>
+        <div class="home-card-title">My availability</div>
+        <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
+        <button class="home-card-btn home-card-btn-avail">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── REQUEST VIEW ── -->
+  <div id="view-request" class="view">
+    <div class="section-header">
+      <div class="section-title">Request a Substitute</div>
+    </div>
+
+    <div id="my-req-section" style="display:none;">
+      <div class="section-header">
+        <div class="section-title" style="font-size:18px;">Your Requests</div>
+      </div>
+      <div id="my-req-list"></div>
+      <hr class="divider" />
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1.25rem;">
+      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
+    </div>
+
+    <div class="card">
+      <div id="req-alert" class="hidden"></div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Your name</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Start typing your name and select it from the list. Already submitted a request? Select your name to see it here.</div>
+          <div class="typeahead-wrap">
+            <div id="req-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="req-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('req')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="req-input-state">
+              <input class="typeahead-input" id="req-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('req', this.value)"
+                onblur="onTypeaheadBlur('req')"
+                onfocus="onTypeaheadFocus('req')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="req-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">This will be filled in automatically.</div>
+          <input type="email" id="req-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+        <div class="field">
+          <label>Match date</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The date of the match you need covered.</div>
+          <input type="date" id="req-date" />
+        </div>
+        <div class="field">
+          <label>Match time</label>
+          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Select your start time, or leave as TBD if unsure.</div>
+          <select id="req-time">
+            <option value="">Unknown / TBD</option>
+            <option value="08:00">8:00 AM</option>
+            <option value="09:30">9:30 AM</option>
+            <option value="11:00">11:00 AM</option>
+            <option value="12:30">12:30 PM</option>
+          </select>
+        </div>
+
+        <div class="field span2" style="margin-top:8px;">
+          <label>Who else is in your group?</label>
+          <div style="font-size:13px;color:var(--ink-light);">Enter the names of your 3 partners. They'll be copied on the confirmation email so everyone stays in the loop.</div>
+        </div>
+
+        <!-- Partner 2 -->
+        <div class="field">
+          <label>Partner 2 name</label>
+          <div class="typeahead-wrap">
+            <div id="p2-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="p2-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('p2')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="p2-input-state">
+              <input class="typeahead-input" id="p2-name-input" type="text"
+                placeholder="Start typing…"
+                oninput="onTypeaheadInput('p2', this.value)"
+                onblur="onTypeaheadBlur('p2')"
+                onfocus="onTypeaheadFocus('p2')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="p2-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Partner 2 email</label>
+          <input type="email" id="p2-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+
+        <!-- Partner 3 -->
+        <div class="field">
+          <label>Partner 3 name</label>
+          <div class="typeahead-wrap">
+            <div id="p3-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="p3-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('p3')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="p3-input-state">
+              <input class="typeahead-input" id="p3-name-input" type="text"
+                placeholder="Start typing…"
+                oninput="onTypeaheadInput('p3', this.value)"
+                onblur="onTypeaheadBlur('p3')"
+                onfocus="onTypeaheadFocus('p3')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="p3-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Partner 3 email</label>
+          <input type="email" id="p3-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+
+        <!-- Partner 4 -->
+        <div class="field">
+          <label>Partner 4 name</label>
+          <div class="typeahead-wrap">
+            <div id="p4-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="p4-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('p4')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="p4-input-state">
+              <input class="typeahead-input" id="p4-name-input" type="text"
+                placeholder="Start typing…"
+                oninput="onTypeaheadInput('p4', this.value)"
+                onblur="onTypeaheadBlur('p4')"
+                onfocus="onTypeaheadFocus('p4')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="p4-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Partner 4 email</label>
+          <input type="email" id="p4-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+      </div>
+
+      <div class="mt12 flex gap8">
+        <button class="btn btn-primary" id="req-submit-btn" onclick="submitRequest()">Submit request</button>
+        <button class="btn btn-secondary" onclick="clearRequestForm()">Clear</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── VOLUNTEER VIEW ── -->
+  <div id="view-volunteer" class="view">
+
+    <div id="my-vol-section" style="display:none;">
+      <div class="section-header">
+        <div class="section-title">Your Submissions</div>
+      </div>
+      <div id="my-vol-list"></div>
+      <hr class="divider" />
+    </div>
+
+    <div class="section-header">
+      <div class="section-title">Volunteer to Sub</div>
+    </div>
+
+    <div class="alert alert-info">Select every date and time slot you're free to play. The more times you select, the more matches you can be considered for.</div>
+
+    <div class="card mt8">
+      <div id="vol-alert" class="hidden"></div>
+
+      <div class="form-grid" style="margin-bottom:1.25rem;">
+        <div class="field">
+          <label>Your name</label>
+          <div class="typeahead-wrap">
+            <div id="vol-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="vol-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('vol')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="vol-input-state">
+              <input class="typeahead-input" id="vol-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('vol', this.value)"
+                onblur="onTypeaheadBlur('vol')"
+                onfocus="onTypeaheadFocus('vol')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="vol-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+      </div>
+
+      <label style="display:block; margin-bottom:8px; font-size:11px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:500;">Select available dates &amp; times (MWF only)</label>
+      <div id="vol-calendar"></div>
+
+      <div id="vol-summary" class="alert alert-info hidden" style="margin-top:12px;"></div>
+
+      <div class="flex gap8 mt12">
+        <button class="btn btn-clay" id="vol-submit-btn" onclick="submitVolunteer()">Submit availability</button>
+        <button class="btn btn-secondary" onclick="clearVolForm()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── AVAILABILITY VIEW ── -->
+  <div id="view-availability" class="view">
+    <div class="section-header">
+      <div class="section-title">Submit Your Availability</div>
+    </div>
+
+    <!-- Loading state (shown while fetching config on first visit) -->
+    <div id="avail-loading-panel" style="display:none;">
+      <div class="card" style="text-align:center;padding:2.5rem 2rem;">
+        <div style="font-size:17px;color:var(--ink-light);">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Window closed, no submission -->
+    <div id="avail-closed-panel" style="display:none;">
+      <div class="card" style="text-align:center;padding:2.5rem 2rem;">
+        <div style="font-size:48px;margin-bottom:1rem;">📅</div>
+        <div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Submissions are closed right now</div>
+        <div id="avail-closed-msg" style="font-size:17px;color:var(--ink-mid);line-height:1.6;margin-bottom:1.5rem;">The coordinator will send you an email when the window opens. Check back then.</div>
+        <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
+          <div style="font-size:16px;font-weight:700;color:var(--court);margin-bottom:6px;">Available to play right now?</div>
+          <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:12px;">If you're free to cover for someone, sign up as a volunteer. You'll be contacted when there's a match that fits your schedule.</div>
+          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">Go to Volunteer to Sub</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Window closed, has prior submission (read-only) -->
+    <div id="avail-readonly-panel" style="display:none;">
+      <div class="alert alert-info" style="margin-bottom:1.25rem;">
+        The submission window is now closed. Here is what you submitted.
+      </div>
+      <div class="card">
+        <div id="avail-readonly-header" style="margin-bottom:1rem;"></div>
+        <div id="avail-readonly-list"></div>
+        <div id="avail-readonly-notes" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line);font-size:15px;color:var(--ink-mid);"></div>
+      </div>
+    </div>
+
+    <!-- Window open — form -->
+    <div id="avail-open-panel" style="display:none;">
+      <div id="avail-alert" class="hidden" style="margin-bottom:1rem;"></div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div id="avail-window-banner" style="font-size:15px;color:var(--ink-mid);margin-bottom:1.25rem;"></div>
+
+        <div class="field" style="margin-bottom:1.25rem;">
+          <label style="font-size:17px;">Your name</label>
+          <div style="font-size:14px;color:var(--ink-light);margin-bottom:6px;">Select your name and we'll load any dates you already submitted.</div>
+          <div class="typeahead-wrap">
+            <div id="av-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="av-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('av')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="av-input-state">
+              <input class="typeahead-input" id="av-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('av', this.value)"
+                onblur="onTypeaheadBlur('av')"
+                onfocus="onTypeaheadFocus('av')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="av-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+          <input type="email" id="av-email" style="display:none;" />
+          <div id="avail-load-status" style="display:none;margin-top:8px;font-size:14px;color:var(--ink-light);"></div>
+        </div>
+      </div>
+
+      <div id="avail-calendar-wrap" style="display:none;">
+        <div class="card" style="padding:1.25rem 1.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.5rem;">
+            <div style="font-size:18px;font-weight:700;color:var(--ink);" id="avail-month-label">Dates</div>
+            <div style="display:flex;gap:12px;">
+              <button class="avail-util-btn" onclick="availSelectAll()">Select all dates</button>
+              <button class="avail-util-btn" onclick="availClearAll()">Clear all</button>
+            </div>
+          </div>
+          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap <strong>Y</strong> to mark yourself available on that date. Tap again to change it to <strong>N</strong>.</div>
+
+          <div class="mt12 flex gap8" style="margin-bottom:1rem;">
+            <button class="btn btn-primary" id="avail-submit-btn-top" onclick="submitAvailability()">Submit availability</button>
+          </div>
+
+          <div id="avail-grid-wrap" style="overflow-x:auto;">
+            <table class="avail-grid" id="avail-grid"></table>
+          </div>
+        </div>
+
+        <div class="mt12 flex gap8">
+          <button class="btn btn-primary" id="avail-submit-btn" onclick="submitAvailability()">Submit availability</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SCHEDULE VIEW ── -->
+  <div id="view-schedule" class="view">
+    <div class="section-header">
+      <div class="section-title">Match Schedule</div>
+      <span class="section-sub" id="sch-month-label"></span>
+    </div>
+
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="field" style="margin-bottom:0;">
+        <label style="font-size:17px;">Find my dates</label>
+        <div style="font-size:14px;color:var(--ink-light);margin-bottom:6px;">Enter your name to see only the dates you're scheduled to play.</div>
+        <div class="typeahead-wrap">
+          <div id="sch-selected-state" style="display:none;">
+            <div class="selected-pill">
+              <span id="sch-selected-name"></span>
+              <button class="clear-btn" onclick="clearTypeahead('sch')" title="Clear">×</button>
+            </div>
+          </div>
+          <div id="sch-input-state">
+            <input class="typeahead-input" id="sch-name-input" type="text"
+              placeholder="Start typing your name…"
+              oninput="onTypeaheadInput('sch', this.value)"
+              onblur="onTypeaheadBlur('sch')"
+              onfocus="onTypeaheadFocus('sch')"
+              autocomplete="off" />
+            <div class="typeahead-dropdown" id="sch-dropdown" style="display:none;"></div>
+          </div>
+        </div>
+        <input type="email" id="sch-email" style="display:none;" />
+      </div>
+    </div>
+
+    <div id="sch-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading schedule…</div>
+    <div id="sch-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No schedule has been published yet.</div>
+    <div id="sch-table-wrap" style="display:none;overflow-x:auto;">
+      <table class="sched-table" id="sch-table"></table>
+    </div>
+  </div>
+
+  <!-- ── ADMIN VIEW ── -->
+  <div id="view-admin" class="view">
+
+    <!-- Auth panel -->
+    <div id="admin-auth-panel">
+      <div class="section-header">
+        <div class="section-title">Admin Access</div>
+        <span class="section-sub">Coordinator tools</span>
+      </div>
+      <div class="card" style="max-width:480px;">
+        <div id="admin-auth-alert" class="hidden"></div>
+        <p style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:1.5rem;">Enter your name to receive a one-time access code by email.</p>
+        <div class="field" style="margin-bottom:1rem;">
+          <label>Your name</label>
+          <div class="typeahead-wrap">
+            <div id="adm-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="adm-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('adm')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="adm-input-state">
+              <input class="typeahead-input" id="adm-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('adm', this.value)"
+                onblur="onTypeaheadBlur('adm')"
+                onfocus="onTypeaheadFocus('adm')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="adm-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <input type="email" id="adm-email" style="display:none;" disabled />
+        <button class="btn btn-primary" id="adm-send-btn" onclick="sendAdminCode()" disabled>Send code</button>
+
+        <div id="adm-code-section" style="display:none;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--line);">
+          <div class="field" style="margin-bottom:1rem;">
+            <label>Enter your 6-digit code</label>
+            <input type="text" id="adm-code-input" placeholder="000000" maxlength="6" inputmode="numeric"
+              style="letter-spacing:0.3em;font-size:22px;font-weight:700;max-width:180px;"
+              oninput="this.value=this.value.replace(/\D/g,'')" />
+          </div>
+          <div class="flex gap8">
+            <button class="btn btn-clay" onclick="verifyAdminCode()">Verify</button>
+            <button class="btn btn-secondary btn-sm" onclick="resendAdminCode()">Resend code</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin content (unlocked) -->
+    <div id="admin-content" style="display:none;">
+      <div class="section-header">
+        <div class="section-title">Admin</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="admin-logged-in-as" style="font-size:13px;color:var(--ink-light);"></span>
+          <button class="btn btn-secondary btn-sm" onclick="adminSignOut()">Sign out</button>
+        </div>
+      </div>
+
+      <div class="inner-tabs">
+        <button class="inner-tab active" onclick="showAdminTab('scheduler', this)">Scheduler</button>
+        <button class="inner-tab" onclick="showAdminTab('players', this)">Player Profiles</button>
+        <button class="inner-tab" onclick="showAdminTab('dispatch', this)">Dispatch</button>
+      </div>
+
+      <div id="admin-tab-players" style="display:none;">
+        <div id="players-alert" class="hidden" style="margin-top:1rem;"></div>
+        <div class="card mt8" style="padding:1rem 1.5rem;">
+          <p style="font-size:14px;color:var(--ink-mid);margin-bottom:0;">You are editing <strong>your ratings only</strong>. Other coordinators' ratings and the final average are not shown here.</p>
+        </div>
+        <div id="players-loading" class="loading"><div class="spinner"></div>Loading players…</div>
+        <div id="players-list" style="display:none;">
+          <div style="margin:1.25rem 0 0.75rem;display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:13px;color:var(--ink-light);">Rate each player 1.0 – 5.0. Leave blank if unknown.</div>
+            <button class="btn btn-clay btn-sm" onclick="saveAllRatings()">Save all ratings</button>
+          </div>
+          <div id="players-grid"></div>
+          <div style="margin-top:1rem;text-align:right;">
+            <button class="btn btn-clay" onclick="saveAllRatings()">Save all ratings</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-tab-scheduler">
+        <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
+        <div class="card mt8" style="max-width:520px;">
+          <div id="scheduler-status-badge" class="scheduler-status closed">
+            <div class="scheduler-dot"></div>
+            <span id="scheduler-status-text">Loading…</span>
+          </div>
+
+          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1.25rem;">Set the submission window</div>
+
+          <div class="field" style="max-width:220px;margin-bottom:1.5rem;">
+            <label style="font-size:16px;">Close date</label>
+            <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The last day players can submit.</div>
+            <input type="date" id="sched-close-date" style="font-size:16px;" />
+          </div>
+
+          <div style="background:var(--teal-light);border-radius:var(--radius);padding:12px 16px;font-size:14px;color:var(--court);margin-bottom:1.5rem;line-height:1.6;">
+            Clicking <strong>Open Window</strong> will open the window today and automatically close it on the close date. All players will be notified by email.
+          </div>
+
+          <div class="flex gap8">
+            <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()">Open Window &amp; Notify Players</button>
+            <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()">Close Window</button>
+          </div>
+        </div>
+
+        <!-- Email notifications toggle card -->
+        <div class="card mt8" style="max-width:520px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div>
+              <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:2px;">Email Notifications</div>
+              <div style="font-size:13px;color:var(--ink-light);">Controls all outbound player emails (availability window, reminders, confirmations). Admin OTP always sends.</div>
+            </div>
+            <div id="email-toggle-wrap" style="flex-shrink:0;">
+              <div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Generate Schedule card -->
+        <div class="card mt8" style="max-width:520px;">
+          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
+          <div id="sched-gen-summary" class="sched-gen-summary">
+            <div class="loading"><div class="spinner"></div>Loading…</div>
+          </div>
+          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled>Generate</button>
+        </div>
+
+        <!-- Results -->
+        <div id="sched-results" style="display:none;margin-top:1.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
+            <div style="font-size:17px;font-weight:700;color:var(--ink);" id="sched-results-title">Schedule Preview</div>
+            <div class="flex gap8">
+              <button class="btn btn-secondary" onclick="exportScheduleExcel()">Export to Excel</button>
+              <button class="btn btn-secondary" onclick="exportSchedulePDF()">Export to PDF</button>
+              <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="sched-table" id="sched-table"></table>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-tab-dispatch" style="display:none;">
+        <div class="card mt8" id="dispatch-status-card">
+          <div id="dispatch-status-content">
+            <div class="loading"><div class="spinner"></div>Loading status…</div>
+          </div>
+        </div>
+        <div id="dispatch-filled-section" style="display:none;margin-top:1.5rem;">
+          <div class="section-header">
+            <div class="section-title" style="font-size:17px;">Filled by Auto-Dispatch</div>
+          </div>
+          <div id="dispatch-filled-list"></div>
+          <hr class="divider" />
+        </div>
+        <div style="margin-top:1.5rem;">
+          <div class="section-header">
+            <div class="section-title" style="font-size:17px;">Needs Attention</div>
+            <span class="section-sub">Manual override</span>
+          </div>
+          <div id="dispatch-loading" class="loading hidden"><div class="spinner"></div>Loading…</div>
+          <div id="dispatch-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const TIMES = ['08:00','09:30','11:00','12:30'];
+const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:30':'12:30 PM'};
+
+// ══════════════════════════════════════════════════
+// CONFIG — paste your Apps Script URL here after deploying
+// ══════════════════════════════════════════════════
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyMaR0EQGmjTrVvjwSqYseZVGPZIaXI0-axH_miCCDgZaQKc4vOVkf4sjD9IDA4Q0Yxnw/exec';
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+function showView(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'volunteer') buildCalendar();
+  if (name === 'availability') loadAvailabilityView();
+  if (name === 'schedule') loadScheduleView();
+  if (name === 'admin') {
+    if (sessionStorage.getItem('adminAuthenticated') === 'true') {
+      unlockAdmin(sessionStorage.getItem('adminName') || '');
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════
+// APPS SCRIPT API HELPERS
+// ══════════════════════════════════════════════════
+async function apiGet(action) {
+  return apiGetWithParams({ action });
+}
+
+async function apiPost(payload) {
+  // Convert to GET/JSONP to avoid CORS issues with Apps Script
+  const params = { ...payload };
+  // Serialize any object values as JSON strings
+  Object.keys(params).forEach(k => {
+    if (typeof params[k] === 'object') params[k] = JSON.stringify(params[k]);
+  });
+  return apiGetWithParams(params);
+}
+
+async function apiGetWithParams(params) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => {
+      delete window[callbackName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('Request timed out'));
+    }, 15000);
+
+    window[callbackName] = function(data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      if (data && data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    const qs = Object.entries({ ...params, callback: callbackName })
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+
+    script.src = `${SCRIPT_URL}?${qs}`;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      reject(new Error('Script load failed'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+// ══════════════════════════════════════════════════
+// TYPEAHEAD
+// ══════════════════════════════════════════════════
+let playerList = [];
+const taBlurTimers = {};
+
+async function loadPlayerList() {
+  if (playerList.length) return playerList;
+  try {
+    const data = await apiGet('getPlayers');
+    playerList = data;
+  } catch(e) { playerList = []; }
+  return playerList;
+}
+
+function onTypeaheadInput(prefix, val) {
+  showTypeaheadDropdown(prefix, val);
+}
+
+function onTypeaheadFocus(prefix) {
+  clearTimeout(taBlurTimers[prefix]);
+  const val = document.getElementById(prefix + '-name-input').value;
+  showTypeaheadDropdown(prefix, val);
+}
+
+function onTypeaheadBlur(prefix) {
+  taBlurTimers[prefix] = setTimeout(() => {
+    document.getElementById(prefix + '-dropdown').style.display = 'none';
+  }, 150);
+}
+
+async function showTypeaheadDropdown(prefix, val) {
+  const dd = document.getElementById(prefix + '-dropdown');
+  const players = await loadPlayerList();
+  const matches = val.trim()
+    ? players.filter(p => p.name.toLowerCase().includes(val.toLowerCase()))
+    : players;
+
+  if (!matches.length) {
+    dd.innerHTML = '<div class="typeahead-item" style="color:var(--ink-light);">No players found</div>';
+    dd.style.display = 'block';
+    return;
+  }
+
+  dd.innerHTML = matches.map((p, i) => `
+    <div class="typeahead-item ${i === 0 && val ? 'highlighted' : ''}"
+      onmousedown="selectTypeaheadPlayer('${prefix}', '${p.name}', '${p.email}')">
+      <span>${val ? highlightMatch(p.name, val) : p.name}</span>
+      <span class="typeahead-email">${p.email}</span>
+    </div>
+  `).join('');
+  dd.style.display = 'block';
+}
+
+function highlightMatch(name, query) {
+  const idx = name.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return name;
+  return name.slice(0, idx) +
+    '<strong>' + name.slice(idx, idx + query.length) + '</strong>' +
+    name.slice(idx + query.length);
+}
+
+function selectTypeaheadPlayer(prefix, name, email) {
+  clearTimeout(taBlurTimers[prefix]);
+  document.getElementById(prefix + '-input-state').style.display = 'none';
+  document.getElementById(prefix + '-selected-state').style.display = 'block';
+  document.getElementById(prefix + '-selected-name').textContent = name;
+  document.getElementById(prefix + '-email').value = email;
+  document.getElementById(prefix + '-dropdown').style.display = 'none';
+  if (prefix === 'vol') loadMySubmissions(email);
+  if (prefix === 'req') loadMyRequests(email);
+  if (prefix === 'av')  loadMyAvailability(email);
+  if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
+  if (prefix === 'sch') renderPublishedSchedule(email);
+}
+
+function clearTypeahead(prefix) {
+  document.getElementById(prefix + '-input-state').style.display = 'block';
+  document.getElementById(prefix + '-selected-state').style.display = 'none';
+  document.getElementById(prefix + '-name-input').value = '';
+  document.getElementById(prefix + '-email').value = '';
+  document.getElementById(prefix + '-dropdown').style.display = 'none';
+  document.getElementById(prefix + '-name-input').focus();
+  if (prefix === 'vol') {
+    document.getElementById('my-vol-section').style.display = 'none';
+    document.getElementById('my-vol-list').innerHTML = '';
+    volEditSelections = {};
+  }
+  if (prefix === 'req') {
+    document.getElementById('my-req-section').style.display = 'none';
+    document.getElementById('my-req-list').innerHTML = '';
+  }
+  if (prefix === 'av') {
+    availSelections = {};
+    document.getElementById('avail-calendar-wrap').style.display = 'none';
+    document.getElementById('avail-load-status').style.display = 'none';
+    if (availConfig && availConfig.targetMonth) buildAvailabilityGrid();
+  }
+  if (prefix === 'adm') {
+    document.getElementById('adm-send-btn').disabled = true;
+    document.getElementById('adm-send-btn').textContent = 'Send code';
+    document.getElementById('adm-code-section').style.display = 'none';
+    document.getElementById('adm-code-input').value = '';
+  }
+  if (prefix === 'sch') renderPublishedSchedule(null);
+}
+
+function getTypeaheadValue(prefix) {
+  const name = document.getElementById(prefix + '-selected-name').textContent.trim();
+  const email = document.getElementById(prefix + '-email').value.trim();
+  return { name, email };
+}
+let requestCache   = null;
+let volunteerCache = null;
+let configCache    = null;
+
+async function getRequests() {
+  if (requestCache) return requestCache;
+  requestCache = await apiGet('getRequests');
+  return requestCache;
+}
+
+async function getVolunteers() {
+  if (volunteerCache) return volunteerCache;
+  volunteerCache = await apiGet('getVolunteers');
+  return volunteerCache;
+}
+
+async function getAppConfig() {
+  if (configCache) return configCache;
+  try {
+    configCache = await apiGet('getConfig');
+  } catch(e) {
+    configCache = { calendarLookaheadDays: 30 };
+  }
+  return configCache;
+}
+
+function clearCache() {
+  requestCache   = null;
+  volunteerCache = null;
+  // Note: configCache intentionally not cleared — config changes require page refresh
+}
+
+// ══════════════════════════════════════════════════
+// SUB REQUESTS
+// ══════════════════════════════════════════════════
+async function submitRequest() {
+  const { name, email } = getTypeaheadValue('req');
+  const matchDate = document.getElementById('req-date').value;
+  const matchTime = document.getElementById('req-time').value;
+
+  if (!name || !email) {
+    showAlert('req-alert', 'error', 'Please select your name from the dropdown.');
+    return;
+  }
+
+  if (!matchDate) {
+    showAlert('req-alert', 'error', 'Please fill in the match date.');
+    return;
+  }
+
+  const dow = new Date(matchDate + 'T12:00:00').getDay();
+  if (![1, 3, 5].includes(dow)) {
+    showAlert('req-alert', 'error', 'Match dates must be Monday, Wednesday, or Friday.');
+    return;
+  }
+
+  const partners = ['p2', 'p3', 'p4'].map(prefix => getTypeaheadValue(prefix));
+  if (partners.some(p => !p.name || !p.email)) {
+    showAlert('req-alert', 'error', 'Please select all 3 group partners from the dropdown.');
+    return;
+  }
+  const allEmails = [email.toLowerCase(), ...partners.map(p => p.email.toLowerCase())];
+  if (new Set(allEmails).size !== allEmails.length) {
+    showAlert('req-alert', 'error', 'Each group member must be a different player.');
+    return;
+  }
+
+  const btn = document.getElementById('req-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const existing = await getRequests();
+    const duplicate = existing.find(r =>
+      r.email.toLowerCase() === email.toLowerCase() &&
+      r.matchDate === matchDate &&
+      r.status !== 'cancelled'
+    );
+    if (duplicate) {
+      showAlert('req-alert', 'error',
+        'You already have a request for ' + formatDate(matchDate) + '. Contact the coordinator to make changes.'
+      );
+      return;
+    }
+
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
+    showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    clearRequestForm();
+    clearCache();
+  } catch(e) {
+    showAlert('req-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit request';
+  }
+}
+
+function clearRequestForm() {
+  clearTypeahead('req');
+  clearTypeahead('p2');
+  clearTypeahead('p3');
+  clearTypeahead('p4');
+  document.getElementById('req-date').value = '';
+  document.getElementById('req-time').value = '';
+}
+
+async function loadMyRequests(email) {
+  const el      = document.getElementById('my-req-list');
+  const section = document.getElementById('my-req-section');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  section.style.display = 'block';
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    requestCache = null;
+    const requests = await getRequests();
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const mine = requests.filter(r =>
+      r.email.toLowerCase() === email.toLowerCase() &&
+      r.status !== 'cancelled' &&
+      new Date(r.matchDate + 'T23:59:59') >= cutoff
+    );
+
+    if (!mine.length) {
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No recent requests found.</div>';
+      return;
+    }
+
+    el.innerHTML = mine.map(r => {
+      const isOpen = r.status === 'open';
+      const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : 'TBD';
+      const subPlayer = r.assignedSub ? playerList.find(p => p.name.toLowerCase() === r.assignedSub.toLowerCase()) : null;
+      const subEmail  = subPlayer ? subPlayer.email : '';
+
+      if (isOpen) {
+        return `
+          <div class="request-card" id="req-card-${r.rowIndex}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
+              <div>
+                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
+                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
+              </div>
+              <span class="badge badge-open" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Looking for sub</span>
+            </div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
+              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
+              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
+              <span style="color:var(--ink-light);font-weight:500;">Status</span>
+              <span style="color:var(--warn);font-weight:600;">Waiting — sub not yet found</span>
+            </div>
+            <div style="background:var(--warn-bg);border-radius:var(--radius);padding:10px 14px;font-size:14px;color:var(--warn);margin-bottom:14px;">
+              Need to update your match time? Use the dropdown below and tap <strong>Save</strong>.
+            </div>
+            <div class="field" style="max-width:260px;">
+              <label style="font-size:15px;">Update match time</label>
+              <select id="req-time-edit-${r.rowIndex}" style="font-size:16px;">
+                <option value="" ${!r.matchTime ? 'selected' : ''}>Unknown / TBD</option>
+                <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
+                <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
+                <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
+                <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
+              </select>
+            </div>
+            <div class="flex gap8 mt12">
+              <button class="btn btn-clay" onclick="saveRequestTime(${r.rowIndex})">Save</button>
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="request-card filled">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
+              <div>
+                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
+                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
+              </div>
+              <span class="badge badge-filled" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Sub found!</span>
+            </div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
+              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
+              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
+              <span style="color:var(--ink-light);font-weight:500;">Status</span>
+              <span style="color:var(--success);font-weight:600;">Filled — you are all set!</span>
+            </div>
+            ${r.assignedSub ? `
+            <div style="background:var(--success-bg);border-radius:var(--radius);padding:14px 16px;">
+              <div style="font-size:13px;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Your substitute</div>
+              <div style="font-size:20px;font-weight:700;color:var(--ink);">${r.assignedSub}</div>
+              ${subEmail ? `<div style="font-size:15px;color:var(--ink-mid);margin-top:2px;">${subEmail}</div>` : ''}
+            </div>` : ''}
+          </div>`;
+      }
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+  }
+}
+
+async function saveRequestTime(rowIndex) {
+  const sel = document.getElementById(`req-time-edit-${rowIndex}`);
+  const matchTime = sel ? sel.value : '';
+  try {
+    await apiPost({ action: 'updateRequestTime', rowIndex, matchTime });
+    const { email } = getTypeaheadValue('req');
+    await loadMyRequests(email);
+  } catch(e) {
+    alert('Failed to save: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// VOLUNTEERS
+// ══════════════════════════════════════════════════
+let volSelections = {};
+
+async function buildCalendar() {
+  try {
+    const cal = document.getElementById('vol-calendar');
+    cal.innerHTML = '';
+    volSelections = {};
+
+    const config = await getAppConfig();
+    const lookahead = config.calendarLookaheadDays || 30;
+
+    const dates = [];
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() + lookahead);
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    while (d <= cutoff) {
+      if ([1,3,5].includes(d.getDay())) dates.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+
+    const list = document.createElement('div');
+    list.className = 'date-list';
+    let lastMonth = '';
+
+    dates.forEach(date => {
+      const k = dateKey(date);
+      volSelections[k] = [];
+
+      const month = date.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      if (month !== lastMonth) {
+        const mh = document.createElement('div');
+        mh.className = 'month-header';
+        mh.textContent = month;
+        list.appendChild(mh);
+        lastMonth = month;
+      }
+
+      const label = date.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      const row = document.createElement('div');
+      row.className = 'date-row';
+      row.id = 'daterow-' + k;
+      row.innerHTML = `
+        <div class="date-row-label">${label}</div>
+        <div class="select-all-wrap" onclick="toggleAllTimes('${k}')">
+          <input type="checkbox" id="allchk-${k}" onclick="event.stopPropagation(); toggleAllTimes('${k}')" />
+          <span class="select-all-label">All times</span>
+        </div>
+        <div class="time-chips">
+          ${TIMES.map(t => `
+            <button class="time-chip-btn" id="chip-${k}-${t}" onclick="toggleTime('${k}','${t}')">${TIME_LABELS[t]}</button>
+          `).join('')}
+        </div>
+      `;
+      list.appendChild(row);
+    });
+
+    cal.appendChild(list);
+  } catch(e) {
+    const cal = document.getElementById('vol-calendar');
+    if (cal) cal.innerHTML = `<div class="alert alert-error">Calendar error: ${e.message}</div>`;
+    console.error('buildCalendar error:', e);
+  }
+}
+
+function toggleAllTimes(k) {
+  const allOn = TIMES.every(t => volSelections[k].includes(t));
+  volSelections[k] = allOn ? [] : [...TIMES];
+  refreshDateRow(k);
+  updateVolSummary();
+}
+
+function toggleTime(k, time) {
+  const arr = volSelections[k];
+  const idx = arr.indexOf(time);
+  if (idx > -1) arr.splice(idx, 1);
+  else arr.push(time);
+  refreshDateRow(k);
+  updateVolSummary();
+}
+
+function refreshDateRow(k) {
+  const arr = volSelections[k];
+  const row = document.getElementById('daterow-' + k);
+  const allChk = document.getElementById('allchk-' + k);
+  if (!row) return;
+  const anyOn = arr.length > 0;
+  const allOn = TIMES.every(t => arr.includes(t));
+  row.className = 'date-row' + (anyOn ? ' any-selected' : '');
+  allChk.checked = allOn;
+  allChk.indeterminate = anyOn && !allOn;
+  TIMES.forEach(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    if (chip) chip.className = 'time-chip-btn' + (arr.includes(t) ? ' on' : '');
+  });
+}
+
+function updateVolSummary() {
+  const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
+  const el = document.getElementById('vol-summary');
+  if (!entries.length) { el.classList.add('hidden'); return; }
+  const allFour = entries.filter(([,v]) => TIMES.every(t => v.includes(t)));
+  el.classList.remove('hidden');
+  el.textContent = `${entries.length} date(s) selected · ${allFour.length} with all time slots open`;
+}
+
+async function submitVolunteer() {
+  const { name, email } = getTypeaheadValue('vol');
+
+  if (!name || !email) {
+    showAlert('vol-alert', 'error', 'Please select your name from the dropdown.');
+    return;
+  }
+
+  const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
+  if (!entries.length) {
+    showAlert('vol-alert', 'error', 'Please select at least one date and time slot.');
+    return;
+  }
+
+  const btn = document.getElementById('vol-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const existing = await getVolunteers();
+    const duplicates = entries
+      .map(([date]) => date)
+      .filter(date => existing.some(v =>
+        v.email.toLowerCase() === email.toLowerCase() &&
+        v.date === date &&
+        v.status !== 'cancelled'
+      ));
+    if (duplicates.length) {
+      showAlert('vol-alert', 'error',
+        'You already have a submission for: ' + duplicates.map(d => formatDate(d)).join(', ') +
+        '. Remove the existing entry first if you want to change it.'
+      );
+      return;
+    }
+
+    await apiPost({
+      action: 'submitVolunteer',
+      name,
+      email,
+      entries: entries.map(([date, times]) => ({ date, times: times.map(t => t.replace(':', '_')) }))
+    });
+    showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    buildCalendar();
+    clearCache();
+    await loadMySubmissions(email);
+  } catch(e) {
+    showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit availability';
+  }
+}
+
+function clearVolForm() {
+  clearTypeahead('vol');
+  document.getElementById('vol-summary').classList.add('hidden');
+  buildCalendar();
+}
+
+async function loadMySubmissions(email) {
+  const el      = document.getElementById('my-vol-list');
+  const section = document.getElementById('my-vol-section');
+  volEditSelections = {};
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  section.style.display = 'block';
+
+  try {
+    volunteerCache = null;
+    const vols = await getVolunteers();
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const mine = vols.filter(v =>
+      v.email.toLowerCase() === email.toLowerCase() &&
+      v.status !== 'cancelled' &&
+      new Date(v.date + 'T23:59:59') >= cutoff
+    );
+    if (!mine.length) {
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found.</div>';
+      return;
+    }
+    mine.forEach(v => { volEditSelections[v.rowIndex] = [...v.times]; });
+
+    el.innerHTML = mine.map(v => {
+      const isPending = v.status === 'pending';
+      const timesText = v.times.length === 4
+        ? 'All 4 times ✓'
+        : v.times.map(t => TIME_LABELS[t] || t).join(' · ');
+
+      if (isPending) {
+        return `
+          <div class="vol-card" id="vol-card-${v.rowIndex}">
+            <div class="vol-header">
+              <div>
+                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+              </div>
+              <span class="badge badge-pending">pending</span>
+            </div>
+            <div class="time-chips" style="margin-top:10px;">
+              ${TIMES.map(t => `
+                <button class="time-chip-btn${v.times.includes(t) ? ' on' : ''}"
+                  id="edit-chip-${v.rowIndex}-${t}"
+                  onclick="toggleEditChip(${v.rowIndex}, '${t}')">${TIME_LABELS[t]}</button>
+              `).join('')}
+            </div>
+            <div class="flex gap8 mt12">
+              <button class="btn btn-clay btn-sm" onclick="saveVolunteerEdit(${v.rowIndex})">Save changes</button>
+              <button class="btn btn-secondary btn-sm" onclick="removeVolunteer(${v.rowIndex})">Remove</button>
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="vol-card">
+            <div class="vol-header">
+              <div>
+                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
+              </div>
+              <span class="badge badge-matched">${v.status}</span>
+            </div>
+            <div class="times-list" style="margin-top:8px;">
+              ${v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
+            </div>
+            <div style="font-size:11px; color:var(--ink-light); margin-top:6px;">Already matched — cannot edit</div>
+          </div>`;
+      }
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function toggleEditChip(rowIndex, time) {
+  const arr = volEditSelections[rowIndex];
+  const idx = arr.indexOf(time);
+  if (idx > -1) arr.splice(idx, 1);
+  else arr.push(time);
+  const btn = document.getElementById(`edit-chip-${rowIndex}-${time}`);
+  if (btn) btn.classList.toggle('on', arr.includes(time));
+}
+
+async function saveVolunteerEdit(rowIndex) {
+  const times = volEditSelections[rowIndex] || [];
+  if (!times.length) { alert('Select at least one time before saving.'); return; }
+  try {
+    await apiPost({ action: 'updateVolunteer', rowIndex, times: JSON.stringify(times) });
+    const { email } = getTypeaheadValue('vol');
+    await loadMySubmissions(email);
+  } catch(e) {
+    alert('Failed to save: ' + e.message);
+  }
+}
+
+async function removeVolunteer(rowIndex) {
+  if (!confirm('Remove this submission?')) return;
+  try {
+    await apiPost({ action: 'deleteVolunteer', rowIndex });
+    const { email } = getTypeaheadValue('vol');
+    await loadMySubmissions(email);
+  } catch(e) {
+    alert('Failed to remove: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// BOARD
+// ══════════════════════════════════════════════════
+let allRequests = [];
+let currentFilter = 'all';
+
+
+// ══════════════════════════════════════════════════
+// DISPATCH (matching engine)
+// ══════════════════════════════════════════════════
+async function loadDispatch() {
+  document.getElementById('dispatch-status-content').innerHTML =
+    '<div class="loading"><div class="spinner"></div>Loading status…</div>';
+  document.getElementById('dispatch-loading').classList.remove('hidden');
+  document.getElementById('dispatch-list').innerHTML = '';
+  document.getElementById('dispatch-filled-section').style.display = 'none';
+  document.getElementById('dispatch-filled-list').innerHTML = '';
+
+  let config, log, requests;
+  try {
+    [config, log, requests] = await Promise.all([
+      getAppConfig(),
+      apiGet('getDispatchLog'),
+      getRequests()
+    ]);
+  } catch(e) {
+    document.getElementById('dispatch-status-content').innerHTML =
+      `<div class="alert alert-error">Failed to load dispatch data: ${e.message}</div>`;
+    document.getElementById('dispatch-loading').classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('dispatch-loading').classList.add('hidden');
+  renderDispatchStatus(config, log);
+  renderDispatchFilled(log);
+  renderDispatchOpen(requests, log);
+}
+
+function renderDispatchStatus(config, log) {
+  const enabled = config && config.autoDispatchEnabled;
+  const time = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '—';
+  const lastEntry = log && log.length ? log[0] : null;
+  const lastRun = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
+  const lastResult = lastEntry
+    ? (lastEntry.result === 'matched'
+        ? `<span style="color:#2E7D32;">matched ${lastEntry.subName}</span>`
+        : lastEntry.result === 'no_candidates'
+          ? '<span style="color:#B45309;">no candidates</span>'
+          : `<span style="color:#A32D2D;">${lastEntry.result}</span>`)
+    : '—';
+
+  document.getElementById('dispatch-status-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;"></span>
+        <span style="font-weight:600;font-size:15px;">${enabled ? 'Auto-Dispatch Enabled' : 'Auto-Dispatch Disabled'}</span>
+      </div>
+      ${enabled ? `<span class="badge badge-matched" style="font-size:12px;">Runs daily at ${time} ET</span>` : ''}
+    </div>
+    <div style="margin-top:10px;font-size:13px;color:#666;display:flex;gap:24px;flex-wrap:wrap;">
+      <span>Last run: <strong>${lastRun}</strong></span>
+      <span>Last result: <strong>${lastResult}</strong></span>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:#999;">To change schedule or toggle, edit the Config tab in the Google Sheet, then run <code>setupTriggers()</code> from the Apps Script editor.</div>
+  `;
+}
+
+function renderDispatchFilled(log) {
+  if (!log || !log.length) return;
+  const matched = log.filter(e => e.result === 'matched');
+  if (!matched.length) return;
+
+  document.getElementById('dispatch-filled-section').style.display = '';
+  document.getElementById('dispatch-filled-list').innerHTML = matched.map(e => `
+    <div class="request-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${e.requestorName}</div>
+          <div class="card-meta">${formatDate(e.matchDate)}${e.matchTime ? ' · ' + formatTime(e.matchTime) : ''} · Sub: <strong>${e.subName}</strong> (${e.subEmail})</div>
+        </div>
+        <span class="badge badge-matched">Auto-matched</span>
+      </div>
+      <div style="font-size:12px;color:#999;margin-top:4px;">Dispatched ${formatTS(e.timestamp)}</div>
+    </div>
+  `).join('');
+}
+
+function renderDispatchOpen(requests, log) {
+  const open = requests.filter(r => r.status === 'open');
+  const noCandidate = new Set((log || []).filter(e => e.result === 'no_candidates').map(e => e.requestId));
+
+  if (!open.length) {
+    document.getElementById('dispatch-list').innerHTML =
+      '<div class="empty"><span class="empty-icon">✓</span>No open requests. All clear!</div>';
+    return;
+  }
+
+  document.getElementById('dispatch-list').innerHTML = open.map(r => `
+    <div class="request-card" id="dr-${r.id}">
+      <div class="request-row">
+        <div class="request-info">
+          <div class="card-header" style="margin-bottom:6px;">
+            <div>
+              <div class="card-title">${r.name}</div>
+              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + formatTime(r.matchTime) : '· <span class="badge badge-tbd">TBD</span>'}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${noCandidate.has(r.id) ? '<span class="badge" style="background:#FEF3C7;color:#92400E;">No candidates</span>' : ''}
+              ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+            </div>
+          </div>
+        </div>
+        <div class="request-actions">
+          <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
+        </div>
+      </div>
+      <div id="match-result-${r.id}"></div>
+    </div>
+  `).join('');
+}
+
+async function runMatch(requestId) {
+  const container = document.getElementById(`match-result-${requestId}`);
+  container.innerHTML = '<div class="loading"><div class="spinner"></div>Running matching engine…</div>';
+
+  try {
+    const result = await apiPost({ action: 'runMatch', requestId });
+
+    if (!result.candidates || !result.candidates.length) {
+      const phaseDesc = result.phase === 'last-minute'
+        ? 'no skill restriction, exact time required'
+        : `skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}`;
+      container.innerHTML = `
+        <div class="match-panel">
+          <div class="match-panel-title">Matching engine results</div>
+          <div class="alert alert-error">No eligible candidates found. Criteria: ${phaseDesc}.</div>
+        </div>`;
+      return;
+    }
+
+    // We need request details to pass to confirmSub for emails
+    const requests = await getRequests();
+    const req = requests.find(r => r.id === requestId);
+
+    const cHTML = result.candidates.map((c, i) => `
+      <div class="candidate-row">
+        <div class="rank-row">
+          <div class="candidate-rank">${i+1}</div>
+          <div class="candidate-info">
+            <div class="candidate-name">${c.name}</div>
+            <div class="candidate-meta">${c.email} · rating diff: ±${c.ratingDiff.toFixed(1)} · submitted ${formatTS(c.timestamp)}</div>
+          </div>
+        </div>
+        ${i === 0
+          ? `<button class="btn btn-clay btn-sm" onclick="confirmSub('${requestId}','${c.email}','${c.name}','${c.rowIndex}')">Confirm</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="confirmSub('${requestId}','${c.email}','${c.name}','${c.rowIndex}')">Assign</button>`}
+      </div>
+    `).join('');
+
+    const phaseLabel = result.phase === 'last-minute'
+      ? 'Last minute — no skill restriction'
+      : result.phase === 'post-schedule'
+        ? `Skill window ±${result.skillWindow}`
+        : `Skill window ±${result.skillWindow}`;
+
+    const availLabel = result.requireAllTimes ? 'all 4 times required' : result.matchTime + ' required';
+
+    container.innerHTML = `
+      <div class="match-panel">
+        <div class="match-panel-title">
+          Candidates — ${result.candidates.length} found · ${phaseLabel} · ${availLabel}
+        </div>
+        ${cHTML}
+      </div>`;
+  } catch(e) {
+    container.innerHTML = `<div class="alert alert-error">Matching engine error: ${e.message}</div>`;
+  }
+}
+
+async function confirmSub(requestId, subEmail, subName, volunteerRowIndex) {
+  if (!confirm(`Assign ${subName} as substitute? A confirmation email will be sent to the full group.`)) return;
+
+  const requests = await getRequests();
+  const req      = requests.find(r => r.id === requestId);
+  if (!req) return;
+
+  try {
+    await apiPost({
+      action:            'confirmSub',
+      requestId,
+      requestRowIndex:   req.rowIndex,
+      subEmail,
+      subName,
+      requestorName:     req.name,
+      requestorEmail:    req.email,
+      matchDate:         req.matchDate,
+      matchTime:         req.matchTime,
+      volunteerRowIndex: volunteerRowIndex || null,
+      groupPlayers:      req.groupPlayers || []
+    });
+
+    document.getElementById(`dr-${requestId}`).innerHTML = `
+      <div style="padding:10px 0;">
+        <div class="alert alert-success">✓ ${subName} confirmed. Confirmation email sent to ${req.name} and group.</div>
+      </div>`;
+    clearCache();
+  } catch(e) {
+    alert('Could not confirm sub: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function isUrgent(req) {
+  if (!req.matchDate) return false;
+  const matchDT = new Date(req.matchDate + 'T' + (req.matchTime || '12:00') + ':00');
+  const now     = new Date();
+  const diffHrs = (matchDT - now) / 36e5;
+  return diffHrs <= 48 && diffHrs > 0;
+}
+
+function dateKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDate(str) {
+  if (!str) return '—';
+  // Handle Google Sheets date serial numbers and ISO strings
+  const s = str.toString().trim();
+  if (!s) return '—';
+  // Already a clean YYYY-MM-DD string
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  }
+  // ISO timestamp from Sheets
+  if (s.includes('T')) {
+    const d = new Date(s);
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  }
+  return s;
+}
+
+function formatTime(str) {
+  if (!str) return 'TBD';
+  const s = str.toString().trim();
+  if (!s) return 'TBD';
+  // Clean HH:MM format
+  if (/^\d{2}:\d{2}$/.test(s)) return TIME_LABELS[s] || s;
+  // Sheets time serial (fraction of a day) or full timestamp
+  if (s.includes('T') || s.includes('1899')) {
+    const d = new Date(s);
+    const hh = d.getUTCHours().toString().padStart(2,'0');
+    const mm = d.getUTCMinutes().toString().padStart(2,'0');
+    return TIME_LABELS[`${hh}:${mm}`] || `${hh}:${mm}`;
+  }
+  return s;
+}
+
+function formatTS(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' +
+         d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+
+function showAlert(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type}`;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  if (type === 'success') setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+async function refreshAll() {
+  clearCache();
+  if (document.getElementById('view-admin').classList.contains('active') &&
+      document.getElementById('admin-content').style.display !== 'none' &&
+      document.getElementById('admin-tab-dispatch').style.display !== 'none') loadDispatch();
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN AUTH
+// ══════════════════════════════════════════════════
+async function sendAdminCode() {
+  const { email } = getTypeaheadValue('adm');
+  if (!email) return;
+  const btn = document.getElementById('adm-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  showAlert('admin-auth-alert', 'info', 'Sending code…');
+  try {
+    const result = await apiPost({ action: 'sendAdminCode', email });
+    if (!result.success) {
+      showAlert('admin-auth-alert', 'error', result.error || 'Not authorized.');
+      btn.disabled = false;
+      btn.textContent = 'Send code';
+      return;
+    }
+    document.getElementById('adm-code-section').style.display = 'block';
+    showAlert('admin-auth-alert', 'success', 'Code sent — check your email.');
+    btn.textContent = 'Code sent';
+  } catch(e) {
+    showAlert('admin-auth-alert', 'error', 'Failed to send code: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Send code';
+  }
+}
+
+async function verifyAdminCode() {
+  const { email, name } = getTypeaheadValue('adm');
+  const code = document.getElementById('adm-code-input').value.trim();
+  if (code.length !== 6) {
+    showAlert('admin-auth-alert', 'error', 'Please enter the full 6-digit code.');
+    return;
+  }
+  try {
+    const result = await apiPost({ action: 'verifyAdminCode', email, code });
+    if (!result.success) {
+      showAlert('admin-auth-alert', 'error', result.error || 'Invalid code.');
+      return;
+    }
+    sessionStorage.setItem('adminAuthenticated', 'true');
+    sessionStorage.setItem('adminEmail', email);
+    sessionStorage.setItem('adminName', name);
+    unlockAdmin(name);
+  } catch(e) {
+    showAlert('admin-auth-alert', 'error', 'Verification failed: ' + e.message);
+  }
+}
+
+function unlockAdmin(name) {
+  document.getElementById('admin-auth-panel').style.display = 'none';
+  document.getElementById('admin-content').style.display = 'block';
+  document.getElementById('admin-logged-in-as').textContent = name;
+  // Reset inner tabs to default (Dispatch highlighted, no data loaded yet)
+  document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector('#admin-content .inner-tab').classList.add('active');
+  document.getElementById('admin-tab-scheduler').style.display = '';
+  document.getElementById('admin-tab-players').style.display   = 'none';
+  document.getElementById('admin-tab-dispatch').style.display  = 'none';
+  loadScheduler();
+}
+
+function adminSignOut() {
+  sessionStorage.removeItem('adminAuthenticated');
+  sessionStorage.removeItem('adminEmail');
+  sessionStorage.removeItem('adminName');
+  document.getElementById('admin-auth-panel').style.display = 'block';
+  document.getElementById('admin-content').style.display = 'none';
+  clearTypeahead('adm');
+  document.getElementById('adm-code-section').style.display = 'none';
+  document.getElementById('adm-code-input').value = '';
+}
+
+async function resendAdminCode() {
+  document.getElementById('adm-send-btn').disabled = false;
+  document.getElementById('adm-send-btn').textContent = 'Send code';
+  document.getElementById('adm-code-section').style.display = 'none';
+  document.getElementById('adm-code-input').value = '';
+  await sendAdminCode();
+}
+
+function showAdminTab(tab, btn) {
+  document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('admin-tab-dispatch').style.display  = tab === 'dispatch'  ? '' : 'none';
+  document.getElementById('admin-tab-players').style.display   = tab === 'players'   ? '' : 'none';
+  document.getElementById('admin-tab-scheduler').style.display = tab === 'scheduler' ? '' : 'none';
+  if (tab === 'dispatch')  loadDispatch();
+  if (tab === 'players')   loadCoordinatorRatings();
+  if (tab === 'scheduler') loadScheduler();
+}
+
+// ══════════════════════════════════════════════════
+// PLAYER RATINGS
+// ══════════════════════════════════════════════════
+let playerRatings = []; // current loaded player list with coordinator's ratings
+
+async function loadCoordinatorRatings() {
+  const email = sessionStorage.getItem('adminEmail');
+  if (!email) return;
+  document.getElementById('players-loading').classList.remove('hidden');
+  document.getElementById('players-list').style.display = 'none';
+  document.getElementById('players-alert').classList.add('hidden');
+
+  try {
+    const result = await apiPost({ action: 'getCoordinatorRatings', email });
+    document.getElementById('players-loading').classList.add('hidden');
+
+    if (result.notAssigned) {
+      showAlert('players-alert', 'error', 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns E–I in the Players sheet.');
+      return;
+    }
+
+    playerRatings = result.players || [];
+    if (!playerRatings.length) {
+      document.getElementById('players-grid').innerHTML =
+        '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
+      document.getElementById('players-list').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('players-grid').innerHTML = playerRatings.map((p, i) => `
+      <div class="player-rating-row">
+        <div class="player-rating-name">${p.name}<span class="player-rating-email">${p.email}</span></div>
+        <input type="number" class="player-rating-input" id="pr-${i}"
+          min="1.0" max="5.0" step="0.5"
+          value="${p.myRating !== '' ? p.myRating : ''}"
+          placeholder="—" />
+      </div>
+    `).join('');
+
+    document.getElementById('players-list').style.display = 'block';
+  } catch(e) {
+    document.getElementById('players-loading').classList.add('hidden');
+    showAlert('players-alert', 'error', 'Failed to load players: ' + e.message);
+  }
+}
+
+async function saveAllRatings() {
+  const email = sessionStorage.getItem('adminEmail');
+  if (!email) return;
+
+  const ratings = playerRatings.map((p, i) => {
+    const input = document.getElementById(`pr-${i}`);
+    const val   = input ? input.value.trim() : '';
+    return { playerEmail: p.email, rating: val !== '' ? parseFloat(val) : '' };
+  });
+
+  // Validate range
+  const invalid = ratings.filter(r => r.rating !== '' && (r.rating < 1.0 || r.rating > 5.0));
+  if (invalid.length) {
+    showAlert('players-alert', 'error', 'All ratings must be between 1.0 and 5.0.');
+    return;
+  }
+
+  try {
+    const result = await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
+    if (!result.success) {
+      showAlert('players-alert', 'error', result.error === 'not_assigned'
+        ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns E–I in the Players sheet.'
+        : (result.error || 'Failed to save.'));
+      return;
+    }
+    showAlert('players-alert', 'success', 'Ratings saved successfully.');
+    await loadCoordinatorRatings();
+  } catch(e) {
+    showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// AVAILABILITY
+// ══════════════════════════════════════════════════
+let availConfig    = null;
+let availSelections = {}; // { 'YYYY-MM-DD': { '08:00': true, '09:30': false, ... } }
+
+async function loadAvailabilityView() {
+  if (availConfig) {
+    renderAvailabilityView();
+    return;
+  }
+  // Config not cached yet — show loading state immediately, then render when ready
+  document.getElementById('avail-loading-panel').style.display = 'block';
+  try {
+    availConfig = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+  } catch(e) {
+    availConfig = { isOpen: false, openDate: '', closeDate: '', targetMonth: '', targetMonthLabel: '' };
+  }
+  renderAvailabilityView();
+}
+
+function renderAvailabilityView() {
+  const { isOpen, closeDate, targetMonthLabel } = availConfig;
+  document.getElementById('avail-loading-panel').style.display  = 'none';
+  document.getElementById('avail-closed-panel').style.display   = 'none';
+  document.getElementById('avail-readonly-panel').style.display = 'none';
+  document.getElementById('avail-open-panel').style.display     = 'none';
+
+  // Update home card
+  const homeCard = document.getElementById('home-avail-card');
+  const homeDesc = document.getElementById('home-avail-desc');
+  if (isOpen) {
+    homeCard.classList.remove('home-card-avail-closed');
+    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(4)'));
+    const closeFmt = closeDate ? formatDateShort(closeDate) : '';
+    homeDesc.textContent = 'Submit your available dates for ' + (targetMonthLabel || 'next month') + (closeFmt ? '. Closes ' + closeFmt + '.' : '.');
+  } else {
+    homeCard.classList.add('home-card-avail-closed');
+    homeCard.onclick = null;
+    homeDesc.textContent = 'The coordinator will notify you when it\'s time to submit your availability.';
+  }
+
+  if (isOpen) {
+    document.getElementById('avail-open-panel').style.display = 'block';
+    const closeFmt = closeDate ? formatDateShort(closeDate) : '';
+    document.getElementById('avail-window-banner').innerHTML =
+      'Submit your available dates for <strong>' + (targetMonthLabel || 'next month') + '</strong>' +
+      (closeFmt ? '. The window closes on <strong>' + closeFmt + '</strong>.' : '.');
+    buildAvailabilityGrid();
+  } else {
+    document.getElementById('avail-closed-panel').style.display = 'block';
+    const openFmt = availConfig.openDate ? formatDateShort(availConfig.openDate) : '';
+    document.getElementById('avail-closed-msg').textContent = openFmt
+      ? 'The coordinator will open the submission window soon. You\'ll receive an email when it\'s ready.'
+      : 'The coordinator will send an email when it\'s time to submit your availability.';
+  }
+}
+
+function buildAvailabilityGrid() {
+  const { targetMonth, targetMonthLabel } = availConfig;
+  document.getElementById('avail-month-label').textContent = targetMonthLabel || 'Dates';
+
+  // Build list of Mon/Wed/Fri dates for targetMonth
+  const [yr, mo] = (targetMonth || '').split('-').map(Number);
+  if (!yr || !mo) return;
+
+  const mwfDates = [];
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(yr, mo - 1, d);
+    const dow  = date.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri
+    if (dow === 1 || dow === 3 || dow === 5) {
+      const iso = yr + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const label = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      mwfDates.push({ iso, label });
+    }
+  }
+
+  let html = '<thead><tr><th></th><th>Available?</th></tr></thead><tbody>';
+
+  mwfDates.forEach(({ iso, label }) => {
+    const on  = !!availSelections[iso];
+    const cls = on ? 'selected' : '';
+    const txt = on ? 'Y' : 'N';
+    html += '<tr><td>' + label + '</td>';
+    html += '<td><button class="time-chip ' + cls + '" onclick="toggleDateChip(\'' + iso + '\',this)">' + txt + '</button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody>';
+
+  document.getElementById('avail-grid').innerHTML = html;
+  // Visibility is controlled by the caller — do not touch display here
+}
+
+function toggleDateChip(date, el) {
+  const on = !availSelections[date];
+  availSelections[date] = on;
+  el.classList.toggle('selected', on);
+  el.textContent = on ? 'Y' : 'N';
+}
+
+function availSelectAll() {
+  document.querySelectorAll('#avail-grid tbody tr').forEach(row => {
+    const chip = row.querySelector('.time-chip');
+    if (!chip) return;
+    const match = chip.getAttribute('onclick').match(/'(\d{4}-\d{2}-\d{2})'/);
+    if (!match) return;
+    availSelections[match[1]] = true;
+    chip.classList.add('selected');
+    chip.textContent = 'Y';
+  });
+}
+
+function availClearAll() {
+  availSelections = {};
+  document.querySelectorAll('#avail-grid tbody tr').forEach(row => {
+    const chip = row.querySelector('.time-chip');
+    if (chip) { chip.classList.remove('selected'); chip.textContent = 'N'; }
+  });
+}
+
+
+async function loadMyAvailability(email) {
+  const statusEl = document.getElementById('avail-load-status');
+  const setStatus = (msg, color) => {
+    statusEl.style.display = msg ? 'block' : 'none';
+    statusEl.style.color   = color || 'var(--ink-light)';
+    statusEl.textContent   = msg;
+  };
+
+  // Reset state immediately so no stale chips show while loading
+  availSelections = {};
+  buildAvailabilityGrid();
+  document.getElementById('avail-calendar-wrap').style.display = 'block';
+  setStatus('Loading your availability…');
+
+  try {
+    // Single call: returns config + submission together, eliminating a round-trip
+    // and fixing the race condition where config wasn't cached yet
+    const data = await apiGetWithParams({ action: 'getAvailabilityData', email });
+
+    if (data && data.config) availConfig = data.config;
+
+    const { targetMonth, targetMonthLabel } = availConfig || {};
+
+    // If window state changed while loading, re-render the correct panel
+    if (!availConfig || !availConfig.isOpen) {
+      renderAvailabilityView();
+      return;
+    }
+    if (!targetMonth) { setStatus(''); return; }
+
+    const existing = data && data.submission;
+    if (existing && existing.availableDates && existing.availableDates.length) {
+      existing.availableDates.forEach(date => { availSelections[date] = true; });
+      buildAvailabilityGrid();
+      setStatus('Your previous submission loaded — ' + existing.availableDates.length + ' date(s) selected.', 'var(--success)');
+    } else {
+      setStatus('No previous submission found for ' + (targetMonthLabel || targetMonth) + '. Select your available dates below.');
+    }
+  } catch(e) {
+    setStatus('Could not load availability. You can still select dates and submit.', 'var(--warn)');
+  }
+}
+
+async function submitAvailability() {
+  const { name, email } = getTypeaheadValue('av');
+  if (!name || !email) {
+    showAlert('avail-alert', 'error', 'Please select your name before submitting.');
+    return;
+  }
+
+  const { targetMonth } = availConfig || {};
+  if (!targetMonth) return;
+
+  // Build availableDates array from selections — simple list of date strings
+  const availableDates = Object.entries(availSelections)
+    .filter(([, v]) => v)
+    .map(([date]) => date)
+    .sort();
+
+  const payload = {
+    action: 'submitAvailability',
+    name, email,
+    month: targetMonth,
+    availableDates: JSON.stringify(availableDates),
+    notes: ''
+  };
+  const allBtns = ['avail-submit-btn', 'avail-submit-btn-top'];
+  allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Submitting…'; } });
+
+  try {
+    const result = await apiPost(payload);
+    if (!result || !result.success) {
+      showAlert('avail-alert', 'error', (result && result.error) || 'Could not submit. Please try again.');
+      return;
+    }
+    showAlert('avail-alert', 'success', 'Your availability has been submitted. A confirmation email is on its way!');
+    document.getElementById('avail-alert').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(e) {
+    showAlert('avail-alert', 'error', 'Could not submit: ' + e.message);
+  } finally {
+    allBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Submit availability'; } });
+  }
+}
+
+function renderAvailReadOnly(submission) {
+  const { targetMonthLabel } = availConfig || {};
+  document.getElementById('avail-readonly-header').innerHTML =
+    '<div style="font-size:20px;font-weight:700;color:var(--ink);">' + (targetMonthLabel || '') + '</div>' +
+    '<div style="font-size:14px;color:var(--ink-light);margin-top:2px;">Submitted ' + formatTS(submission.timestamp) + '</div>';
+
+  const list = document.getElementById('avail-readonly-list');
+  if (!submission.availableDates || !submission.availableDates.length) {
+    list.innerHTML = '<div style="color:var(--ink-light);font-size:15px;margin-top:8px;">No dates were selected.</div>';
+  } else {
+    list.innerHTML = submission.availableDates.map(d => {
+      const label = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const times = (d.times || []).map(t => TIME_LABELS[t] || t).join(' · ');
+      return '<div class="avail-readonly-date"><span class="avail-readonly-date-label">' + label + '</span><span class="avail-readonly-times">' + (times || '—') + '</span></div>';
+    }).join('');
+  }
+
+  const notesEl = document.getElementById('avail-readonly-notes');
+  if (submission.notes) {
+    notesEl.style.display = 'block';
+    notesEl.innerHTML = '<strong>Notes:</strong> ' + submission.notes;
+  } else {
+    notesEl.style.display = 'none';
+  }
+}
+
+function formatDateShort(str) {
+  if (!str) return '';
+  const d = new Date(str + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
+// ══════════════════════════════════════════════════
+// SCHEDULER (ADMIN)
+// ══════════════════════════════════════════════════
+let scheduleData = null; // last generated result
+
+async function loadEmailToggle() {
+  const wrap = document.getElementById('email-toggle-wrap');
+  try {
+    const s = await apiGetWithParams({ action: 'getEmailSettings' });
+    renderEmailToggle(s.emailEnabled);
+  } catch(e) {
+    wrap.innerHTML = '<span style="font-size:13px;color:var(--danger);">Could not load</span>';
+  }
+}
+
+function renderEmailToggle(enabled) {
+  const wrap = document.getElementById('email-toggle-wrap');
+  const color  = enabled ? 'var(--success)' : 'var(--ink-light)';
+  const label  = enabled ? 'Enabled' : 'Disabled';
+  const btnTxt = enabled ? 'Disable' : 'Enable';
+  const btnCls = enabled ? 'btn btn-secondary' : 'btn btn-primary';
+  wrap.innerHTML = `
+    <div style="text-align:center;">
+      <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:6px;">${label}</div>
+      <button class="${btnCls}" style="font-size:13px;padding:6px 14px;" onclick="toggleEmail(${!enabled})">${btnTxt}</button>
+    </div>`;
+}
+
+async function toggleEmail(enable) {
+  const wrap = document.getElementById('email-toggle-wrap');
+  wrap.innerHTML = '<div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>';
+  try {
+    const result = await apiPost({ action: 'setEmailEnabled', enabled: enable });
+    if (result.success) renderEmailToggle(result.emailEnabled);
+    else throw new Error(result.error || 'Failed');
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not update email setting. Please try again.');
+    loadEmailToggle();
+  }
+}
+
+async function loadScheduler() {
+  try {
+    const config = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+    const badge  = document.getElementById('scheduler-status-badge');
+    const text   = document.getElementById('scheduler-status-text');
+
+    if (config.isOpen) {
+      badge.className = 'scheduler-status open';
+      text.textContent = 'Window is OPEN — closes ' + formatDateShort(config.closeDate);
+    } else {
+      badge.className = 'scheduler-status closed';
+      text.textContent = config.openDate
+        ? 'Window is CLOSED (last opened ' + formatDateShort(config.openDate) + ')'
+        : 'Window is CLOSED — no dates set yet';
+    }
+
+    if (config.closeDate) document.getElementById('sched-close-date').value = config.closeDate;
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
+  }
+  loadSchedulerSettings();
+  loadEmailToggle();
+}
+
+async function loadSchedulerSettings() {
+  const summaryEl = document.getElementById('sched-gen-summary');
+  const genBtn    = document.getElementById('sched-gen-btn');
+  try {
+    const s = await apiGetWithParams({ action: 'getSchedulerSettings' });
+    const month = s.targetMonth || '—';
+    const count = s.submissionCount || 0;
+    summaryEl.innerHTML =
+      'Target month: <strong>' + (s.targetMonthLabel || month) + '</strong><br>' +
+      'Submissions received: <strong>' + count + ' player' + (count !== 1 ? 's' : '') + '</strong>';
+    genBtn.disabled = count < 3;
+    if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 submissions to generate.</span>';
+  } catch(e) {
+    summaryEl.innerHTML = '<span style="color:var(--warn);">Could not load settings.</span>';
+  }
+}
+
+async function runGenerateSchedule() {
+  const btn = document.getElementById('sched-gen-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  document.getElementById('sched-results').style.display = 'none';
+  showAlert('scheduler-alert', 'info', 'Running optimizer…');
+
+  try {
+    const result = await apiGetWithParams({
+      action: 'generateSchedule',
+      pairCounts:   JSON.stringify(scheduleData ? scheduleData.pairCounts   : {}),
+      sitOutCounts: JSON.stringify(scheduleData ? scheduleData.sitOutCounts : {})
+    });
+
+    if (result.error) { showAlert('scheduler-alert', 'error', result.error); return; }
+
+    scheduleData = result;
+    renderScheduleTable(result.slots, result.month);
+    document.getElementById('sched-results').style.display = '';
+    document.getElementById('sched-results-title').textContent =
+      'Schedule Preview — ' + (result.month || '');
+    const active = result.slots.filter(s => !s.skipped).length;
+    const skipped = result.slots.filter(s => s.skipped).length;
+    showAlert('scheduler-alert', 'success',
+      active + ' date' + (active !== 1 ? 's' : '') + ' scheduled' +
+      (skipped ? ', ' + skipped + ' skipped (too few players).' : '.'));
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Generation failed. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate';
+  }
+}
+
+function playerCell(p, isCaptain) {
+  if (!p || !p.name) return '';
+  const c = isCaptain ? '<span class="captain-badge">C</span>' : '';
+  const r = (p.rating != null && p.rating !== 0)
+    ? '<span class="player-rating">(' + Number(p.rating).toFixed(1) + ')</span>' : '';
+  return c + p.name + r;
+}
+
+function renderScheduleTable(slots) {
+  const fmt = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  let html = '<thead><tr>' +
+    '<th>Date</th><th>Group</th>' +
+    '<th>Player 1</th><th>Player 2</th><th>Player 3</th><th>Player 4</th>' +
+    '<th>Sit Out</th>' +
+    '</tr></thead><tbody>';
+
+  slots.forEach((slot, si) => {
+    const dateLabel = fmt(slot.date);
+    const isFirst   = si === 0 || slots[si - 1].date !== slot.date;
+
+    if (slot.skipped) {
+      html += '<tr class="skipped-row' + (isFirst ? ' date-first' : '') + '">' +
+        '<td class="date-cell">' + dateLabel + '</td>' +
+        '<td colspan="6">' + (slot.reason || 'Skipped') + '</td>' +
+        '</tr>';
+      return;
+    }
+
+    slot.groups.forEach((group, gi) => {
+      const firstRow     = gi === 0;
+      const captainEmail = (slot.captains || [])[gi] || '';
+      // Captain always in Player 1 column
+      const ordered = [...group].sort((a, b) =>
+        a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0
+      ).concat([{},{},{},{}]);
+      const sitOut = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
+      html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
+        '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
+        '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
+        '<td>' + playerCell(ordered[0], ordered[0].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[1], ordered[1].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[2], ordered[2].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(ordered[3], ordered[3].email === captainEmail) + '</td>' +
+        '<td class="sit-out-cell">' + sitOut + '</td>' +
+        '</tr>';
+    });
+  });
+
+  html += '</tbody>';
+  document.getElementById('sched-table').innerHTML = html;
+}
+
+async function exportScheduleExcel() {
+  if (!scheduleData || !scheduleData.slots) return;
+
+  const fmt = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  // Collect active dates (columns) and all players (rows)
+  const dates = [];
+  const playerMap = {};
+  scheduleData.slots.forEach(slot => {
+    if (slot.skipped) return;
+    dates.push(slot.date);
+    slot.groups.forEach(group => group.forEach(p => { if (p.email) playerMap[p.email] = p.name; }));
+  });
+
+  // Build cell lookup: cellData[email][date] = "A" or "A [C]"
+  const cellData = {};
+  scheduleData.slots.forEach(slot => {
+    if (slot.skipped) return;
+    slot.groups.forEach((group, gi) => {
+      const letter       = String.fromCharCode(65 + gi);
+      const captainEmail = (slot.captains || [])[gi] || '';
+      group.forEach(p => {
+        if (!p.email) return;
+        if (!cellData[p.email]) cellData[p.email] = {};
+        cellData[p.email][slot.date] = letter + (p.email === captainEmail ? ' [C]' : '');
+      });
+    });
+  });
+
+  const players = Object.entries(playerMap).sort((a, b) => a[1].localeCompare(b[1]));
+
+  // Build workbook with ExcelJS for full formatting support
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(scheduleData.month || 'Schedule');
+
+  // Column widths
+  ws.columns = [{ width: 24 }].concat(dates.map(() => ({ width: 13 })));
+
+  // Header row
+  const headerRow = ws.addRow(['Player'].concat(dates.map(fmt)));
+  headerRow.height = 22;
+  headerRow.eachCell((cell, col) => {
+    cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A5C3A' } };
+    cell.font   = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF0F3D25' } } };
+  });
+
+  // Data rows with alternating shading
+  players.forEach(([email, name], i) => {
+    const values = [name].concat(dates.map(d => (cellData[email] || {})[d] || ''));
+    const row = ws.addRow(values);
+    row.height = 18;
+    const bg = i % 2 === 0 ? 'FFFFFFFF' : 'FFF0F5F2';
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+      cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+      cell.border    = {
+        top:    { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        bottom: { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        left:   { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        right:  { style: 'hair', color: { argb: 'FFD0D8D4' } }
+      };
+      // Bold the [C] entries
+      if (typeof cell.value === 'string' && cell.value.includes('[C]')) {
+        cell.font = { bold: true };
+      }
+    });
+  });
+
+  // Freeze the header row and player name column
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement('a');
+  a.href       = url;
+  a.download   = 'schedule-' + (scheduleData.month || 'export') + '.xlsx';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportSchedulePDF() {
+  if (!scheduleData || !scheduleData.slots) return;
+  const title = document.getElementById('sched-results-title').textContent;
+  const table = document.getElementById('sched-table').outerHTML;
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    body { font-family: Arial, sans-serif; font-size: 12px; margin: 24px; color: #111; }
+    h2   { font-size: 16px; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th   { background: #f0f0f0; padding: 7px 10px; text-align: left; font-size: 11px; color: #555; border-bottom: 2px solid #ccc; }
+    td   { padding: 6px 10px; vertical-align: middle; }
+    tr.date-first td { border-top: 2px solid #c96048; }
+    tr:not(.date-first) td { border-top: 1px solid #e0e0e0; }
+    tr.skipped-row td { color: #aaa; font-style: italic; }
+    .captain-badge { background: #c96048; color: #fff; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 700; margin-right: 5px; }
+    .group-badge   { background: #e8f4ef; color: #2a7a5a; border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
+    .player-rating { color: #999; font-size: 10px; margin-left: 4px; }
+    .sit-out-cell  { color: #aaa; font-style: italic; }
+    .date-cell     { font-weight: 600; white-space: nowrap; }
+    @media print { body { margin: 12px; } }
+  </style></head><body>
+    <h2>${title}</h2>${table}
+    <script>window.onload = function(){ window.print(); }<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+async function publishScheduleToSheet() {
+  if (!scheduleData || !scheduleData.slots) return;
+  const btn = document.getElementById('sched-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Publishing…';
+  try {
+    const result = await apiPost({
+      action:      'publishSchedule',
+      month:       scheduleData.month,
+      slots:       JSON.stringify(scheduleData.slots.filter(s => !s.skipped)),
+      pairCounts:  JSON.stringify(scheduleData.pairCounts   || {}),
+      sitOutCounts:JSON.stringify(scheduleData.sitOutCounts || {})
+    });
+    if (!result.success) { showAlert('scheduler-alert', 'error', result.error || 'Publish failed.'); return; }
+    showAlert('scheduler-alert', 'success', 'Schedule published — ' + result.groupsPublished + ' group(s) visible on the Schedule tab.');
+    btn.textContent = 'Published ✓';
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not publish. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Publish';
+  }
+}
+
+// ── Schedule tab ─────────────────────────────────────
+
+let publishedSchedule = null;
+
+async function loadScheduleView() {
+  const loading = document.getElementById('sch-loading');
+  const empty   = document.getElementById('sch-empty');
+  const wrap    = document.getElementById('sch-table-wrap');
+  const label   = document.getElementById('sch-month-label');
+
+  loading.style.display = '';
+  empty.style.display   = 'none';
+  wrap.style.display    = 'none';
+
+  try {
+    const result = await apiGetWithParams({ action: 'getPublishedSchedule' });
+    publishedSchedule = result;
+    loading.style.display = 'none';
+    if (!result.month || !result.dates || !result.dates.length) {
+      empty.style.display = '';
+      label.textContent = '';
+      return;
+    }
+    const [yr, mo] = result.month.split('-');
+    label.textContent = new Date(parseInt(yr), parseInt(mo) - 1, 1)
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    renderPublishedSchedule(null);
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display = '';
+    empty.textContent = 'Could not load schedule. Please try again.';
+  }
+}
+
+function renderPublishedSchedule(filterEmail) {
+  const wrap  = document.getElementById('sch-table-wrap');
+  const empty = document.getElementById('sch-empty');
+  const tbl   = document.getElementById('sch-table');
+
+  if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) return;
+
+  const filterLower = filterEmail ? filterEmail.toLowerCase().trim() : null;
+
+  let dates = publishedSchedule.dates;
+  if (filterLower) {
+    dates = dates.map(d => {
+      const filteredGroups = d.groups.filter(g =>
+        g.players.some(p => p.email && p.email.toLowerCase() === filterLower)
+      );
+      return filteredGroups.length ? { ...d, groups: filteredGroups } : null;
+    }).filter(Boolean);
+  }
+
+  if (!dates.length) {
+    wrap.style.display  = 'none';
+    empty.style.display = '';
+    empty.textContent   = 'No scheduled dates found for that name.';
+    return;
+  }
+
+  empty.style.display = 'none';
+  wrap.style.display  = '';
+
+  let html = '<thead><tr><th>Date</th><th>Group</th><th>Captain</th><th>Players</th><th>Sit Out</th></tr></thead><tbody>';
+  dates.forEach(d => {
+    const dateStr = formatDateShort(d.date);
+    d.groups.forEach((g, gi) => {
+      const captain = g.players.find(p => p.isCaptain);
+      const others  = g.players.filter(p => !p.isCaptain);
+      const playerNames = others.map(p => {
+        const isMe = filterLower && p.email && p.email.toLowerCase() === filterLower;
+        return isMe ? `<strong>${p.name}</strong>` : p.name;
+      }).filter(Boolean).join(', ');
+      const captainName = captain
+        ? (filterLower && captain.email && captain.email.toLowerCase() === filterLower
+            ? `<strong>${captain.name}</strong>` : captain.name)
+        : '';
+      const sitOutName = g.sitOut ? g.sitOut.name : '';
+      const rowClass = gi === 0 ? 'date-first' : '';
+      html += `<tr class="${rowClass}">`;
+      if (gi === 0) html += `<td rowspan="${d.groups.length}" class="date-cell">${dateStr}</td>`;
+      html += `<td style="font-weight:600;color:var(--court);">Group ${g.letter}</td>`;
+      html += `<td><span class="captain-badge">C</span>${captainName}</td>`;
+      html += `<td>${playerNames}</td>`;
+      html += `<td style="color:var(--ink-light);font-size:14px;">${sitOutName}</td>`;
+      html += '</tr>';
+    });
+  });
+  html += '</tbody>';
+  tbl.innerHTML = html;
+}
+
+async function openAvailWindow() {
+  const closeDate = document.getElementById('sched-close-date').value;
+  if (!closeDate) {
+    showAlert('scheduler-alert', 'error', 'Please set a close date before opening the window.');
+    return;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  if (closeDate <= today) {
+    showAlert('scheduler-alert', 'error', 'Close date must be in the future.');
+    return;
+  }
+
+  const btn = document.getElementById('sched-open-btn');
+  btn.disabled = true;
+  btn.textContent = 'Opening…';
+
+  try {
+    const result = await apiPost({ action: 'openAvailabilityWindow', closeDate });
+    if (!result.success) {
+      showAlert('scheduler-alert', 'error', result.error || 'Failed to open window.');
+      return;
+    }
+    showAlert('scheduler-alert', 'success',
+      'Window is now open. ' + (result.playerCount || 0) + ' players have been notified by email.');
+    availConfig = null; // reset cache
+    await loadScheduler();
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not open the window. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Open Window & Notify Players';
+  }
+}
+
+async function closeAvailWindow() {
+  const btn = document.getElementById('sched-close-btn');
+  btn.disabled = true;
+  btn.textContent = 'Closing…';
+
+  try {
+    await apiPost({ action: 'closeAvailabilityWindow' });
+    showAlert('scheduler-alert', 'success', 'Availability window is now closed.');
+    availConfig = null;
+    await loadScheduler();
+  } catch(e) {
+    showAlert('scheduler-alert', 'error', 'Could not close the window. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Close Window';
+  }
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Pre-warm player cache so typeaheads feel instant
+  loadPlayerList().catch(() => {});
+  // Load availability config for home card state
+  apiGetWithParams({ action: 'getAvailabilityConfig' }).then(config => {
+    availConfig = config;
+    renderAvailabilityView();
+  }).catch(() => {});
+});
+
+
+</script>
+</body>
+</html>

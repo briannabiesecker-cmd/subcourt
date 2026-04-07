@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE="$SCRIPT_DIR/SubCourt-AppScript.js"
 
 TEST_SHEET_ID="1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw"
-PROD_SHEET_ID=""   # fill in when PROD sheet is created
+PROD_SHEET_ID="1hA-ZPhV62pp376qtWRDfQQkFv6y9U5Wkm0nUyKCHC6o"
 
 TARGET="${1:-}"
 
