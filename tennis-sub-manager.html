@@ -1446,21 +1446,14 @@
 
           <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1.25rem;">Set the submission window</div>
 
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem;">
-            <div class="field">
-              <label style="font-size:16px;">Open date</label>
-              <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The first day players can submit.</div>
-              <input type="date" id="sched-open-date" style="font-size:16px;" />
-            </div>
-            <div class="field">
-              <label style="font-size:16px;">Close date</label>
-              <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The last day players can submit.</div>
-              <input type="date" id="sched-close-date" style="font-size:16px;" />
-            </div>
+          <div class="field" style="max-width:220px;margin-bottom:1.5rem;">
+            <label style="font-size:16px;">Close date</label>
+            <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The last day players can submit.</div>
+            <input type="date" id="sched-close-date" style="font-size:16px;" />
           </div>
 
           <div style="background:var(--teal-light);border-radius:var(--radius);padding:12px 16px;font-size:14px;color:var(--court);margin-bottom:1.5rem;line-height:1.6;">
-            Clicking <strong>Open Window</strong> will immediately send an email to all players letting them know the window is open and when it closes.
+            Clicking <strong>Open Window</strong> will open the window today and automatically close it on the close date. All players will be notified by email.
           </div>
 
           <div class="flex gap8">
@@ -2900,7 +2893,6 @@ async function loadScheduler() {
         : 'Window is CLOSED — no dates set yet';
     }
 
-    if (config.openDate)  document.getElementById('sched-open-date').value  = config.openDate;
     if (config.closeDate) document.getElementById('sched-close-date').value = config.closeDate;
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
@@ -3062,14 +3054,14 @@ async function saveScheduleToSheet() {
 }
 
 async function openAvailWindow() {
-  const openDate  = document.getElementById('sched-open-date').value;
   const closeDate = document.getElementById('sched-close-date').value;
-  if (!openDate || !closeDate) {
-    showAlert('scheduler-alert', 'error', 'Please set both an open date and a close date before opening the window.');
+  if (!closeDate) {
+    showAlert('scheduler-alert', 'error', 'Please set a close date before opening the window.');
     return;
   }
-  if (closeDate <= openDate) {
-    showAlert('scheduler-alert', 'error', 'The close date must be after the open date.');
+  const today = new Date().toISOString().slice(0, 10);
+  if (closeDate <= today) {
+    showAlert('scheduler-alert', 'error', 'Close date must be in the future.');
     return;
   }
 
@@ -3078,7 +3070,7 @@ async function openAvailWindow() {
   btn.textContent = 'Opening…';
 
   try {
-    const result = await apiPost({ action: 'openAvailabilityWindow', openDate, closeDate });
+    const result = await apiPost({ action: 'openAvailabilityWindow', closeDate });
     if (!result.success) {
       showAlert('scheduler-alert', 'error', result.error || 'Failed to open window.');
       return;

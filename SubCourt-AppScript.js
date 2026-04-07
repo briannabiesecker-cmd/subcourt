@@ -84,7 +84,7 @@ function setupTriggers() {
   // Remove existing managed triggers
   ScriptApp.getProjectTriggers().forEach(function(t) {
     var fn = t.getHandlerFunction();
-    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit' || fn === 'cleanupOldAvailability') {
+    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit' || fn === 'cleanupOldAvailability' || fn === 'checkAvailabilityWindow') {
       ScriptApp.deleteTrigger(t);
     }
   });
@@ -98,6 +98,12 @@ function setupTriggers() {
     .timeBased()
     .onMonthDay(1)
     .atHour(2)
+    .create();
+  // Daily check to auto-close availability window when close date passes
+  ScriptApp.newTrigger('checkAvailabilityWindow')
+    .timeBased()
+    .atHour(1)   // 1 AM — runs before anyone opens the app
+    .everyDays(1)
     .create();
   // Set up the dispatch time trigger
   updateDispatchTrigger();
@@ -167,6 +173,8 @@ function updateDispatchTrigger() {
 }
 
 function runAutoDispatch() {
+  // Dispatch is currently disabled — remove this line to re-enable
+  return;
   var config = getConfig();
   if (!config.autoDispatchEnabled) return;
 
@@ -963,10 +971,22 @@ function getAvailabilityConfig() {
   };
 }
 
+// Runs daily at 1 AM to enforce the close date without relying on app traffic
+function checkAvailabilityWindow() {
+  var config = getAvailabilityConfig();
+  // getAvailabilityConfig already writes B18=false when past close date — just calling it is enough
+  Logger.log('checkAvailabilityWindow: isOpen=' + config.isOpen + ' closeDate=' + config.closeDate);
+}
+
 function openAvailabilityWindow(params) {
-  const openDate  = params.openDate;
   const closeDate = params.closeDate;
-  if (!openDate || !closeDate) return { success: false, error: 'Both open and close dates are required.' };
+  if (!closeDate) return { success: false, error: 'A close date is required.' };
+
+  // Open date = today (the day the coordinator clicks the button)
+  const today = new Date();
+  const openDate = today.getFullYear() + '-' +
+    String(today.getMonth() + 1).padStart(2, '0') + '-' +
+    String(today.getDate()).padStart(2, '0');
 
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
   sheet.getRange('B16').setValue(openDate);
