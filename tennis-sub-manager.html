@@ -1413,9 +1413,9 @@
       </div>
 
       <div class="inner-tabs">
-        <button class="inner-tab active" onclick="showAdminTab('dispatch', this)">Dispatch</button>
-        <button class="inner-tab" onclick="showAdminTab('players', this)">Player Ratings</button>
-        <button class="inner-tab" onclick="showAdminTab('scheduler', this)">Scheduler</button>
+        <button class="inner-tab active" onclick="showAdminTab('scheduler', this)">Scheduler</button>
+        <button class="inner-tab" onclick="showAdminTab('players', this)">Player Profiles</button>
+        <button class="inner-tab" onclick="showAdminTab('dispatch', this)">Dispatch</button>
       </div>
 
       <div id="admin-tab-players" style="display:none;">
@@ -1436,7 +1436,7 @@
         </div>
       </div>
 
-      <div id="admin-tab-scheduler" style="display:none;">
+      <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
         <div class="card mt8" style="max-width:520px;">
           <div id="scheduler-status-badge" class="scheduler-status closed">
@@ -1486,7 +1486,7 @@
         </div>
       </div>
 
-      <div id="admin-tab-dispatch">
+      <div id="admin-tab-dispatch" style="display:none;">
         <div class="card mt8" id="dispatch-status-card">
           <div id="dispatch-status-content">
             <div class="loading"><div class="spinner"></div>Loading status…</div>
@@ -2520,10 +2520,10 @@ function unlockAdmin(name) {
   // Reset inner tabs to default (Dispatch highlighted, no data loaded yet)
   document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
   document.querySelector('#admin-content .inner-tab').classList.add('active');
-  document.getElementById('admin-tab-dispatch').style.display  = '';
+  document.getElementById('admin-tab-scheduler').style.display = '';
   document.getElementById('admin-tab-players').style.display   = 'none';
-  document.getElementById('admin-tab-scheduler').style.display = 'none';
-  // Do not auto-load — user clicks the tab they want
+  document.getElementById('admin-tab-dispatch').style.display  = 'none';
+  loadScheduler();
 }
 
 function adminSignOut() {
