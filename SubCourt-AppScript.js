@@ -1341,13 +1341,54 @@ function generateSchedule(params) {
     }
   });
 
+  assignCaptains(slotResults);
+
   return {
     month:          month,
     submissionCount: emailList.length,
     slots:          slotResults,
-    pairCounts:     pairCounts,   // return updated state for client to persist
+    pairCounts:     pairCounts,
     sitOutCounts:   sitOutCounts
   };
+}
+
+// ── Captain Assignment ──────────────────────────────
+// Assigns one captain per group so each player is captain ~25% of their scheduled dates.
+// Adds slot.captains = [emailForGroupA, emailForGroupB, ...] to every active slot.
+function assignCaptains(slotResults) {
+  // Count total appearances per player across all slots
+  var appearanceCounts = {};
+  slotResults.forEach(function(slot) {
+    if (slot.skipped) return;
+    slot.groups.forEach(function(group) {
+      group.forEach(function(p) {
+        if (p.email) appearanceCounts[p.email] = (appearanceCounts[p.email] || 0) + 1;
+      });
+    });
+  });
+
+  // Greedy assignment: for each group pick the player with the lowest captaincy ratio
+  var captainCounts = {};
+  slotResults.forEach(function(slot) {
+    if (slot.skipped) return;
+    var captains = [];
+    slot.groups.forEach(function(group) {
+      var best = null;
+      var bestRatio = Infinity;
+      group.forEach(function(p) {
+        if (!p.email) return;
+        var ratio = (captainCounts[p.email] || 0) / (appearanceCounts[p.email] || 1);
+        if (ratio < bestRatio) { bestRatio = ratio; best = p; }
+      });
+      if (best) {
+        captains.push(best.email);
+        captainCounts[best.email] = (captainCounts[best.email] || 0) + 1;
+      } else {
+        captains.push('');
+      }
+    });
+    slot.captains = captains;
+  });
 }
 
 // ── Core Optimizer ─────────────────────────────────

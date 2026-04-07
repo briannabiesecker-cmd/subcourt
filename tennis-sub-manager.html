@@ -939,6 +939,18 @@
   .sched-table .team-header-b { text-align: center; color: var(--clay);  border-bottom: 2px solid var(--clay);  }
   .sched-table .player-rating { font-size: 11px; color: var(--ink-light); margin-left: 4px; }
   .sched-table .sit-out-cell  { color: var(--ink-light); font-style: italic; }
+  .captain-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    background: var(--clay);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-right: 5px;
+    vertical-align: middle;
+    line-height: 1.5;
+  }
   .sched-table tr.skipped-row td {
     color: var(--ink-light);
     font-style: italic;
@@ -2954,11 +2966,12 @@ async function runGenerateSchedule() {
   }
 }
 
-function playerCell(p) {
+function playerCell(p, isCaptain) {
   if (!p || !p.name) return '';
+  const c = isCaptain ? '<span class="captain-badge">C</span>' : '';
   const r = (p.rating != null && p.rating !== 0)
     ? '<span class="player-rating">(' + Number(p.rating).toFixed(1) + ')</span>' : '';
-  return p.name + r;
+  return c + p.name + r;
 }
 
 function renderScheduleTable(slots) {
@@ -2986,16 +2999,17 @@ function renderScheduleTable(slots) {
     }
 
     slot.groups.forEach((group, gi) => {
-      const firstRow = gi === 0;
-      const p = group.concat([{},{},{},{}]);
-      const sitOut   = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
+      const firstRow    = gi === 0;
+      const p           = group.concat([{},{},{},{}]);
+      const captainEmail = (slot.captains || [])[gi] || '';
+      const sitOut      = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
       html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
         '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
         '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
-        '<td>' + playerCell(p[0]) + '</td>' +
-        '<td>' + playerCell(p[1]) + '</td>' +
-        '<td>' + playerCell(p[2]) + '</td>' +
-        '<td>' + playerCell(p[3]) + '</td>' +
+        '<td>' + playerCell(p[0], p[0].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(p[1], p[1].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(p[2], p[2].email === captainEmail) + '</td>' +
+        '<td>' + playerCell(p[3], p[3].email === captainEmail) + '</td>' +
         '<td class="sit-out-cell">' + sitOut + '</td>' +
         '</tr>';
     });
@@ -3012,7 +3026,10 @@ function exportScheduleExcel() {
     const [y, m, d] = iso.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
-  const pStr = p => p && p.name ? p.name + (p.rating ? ' (' + Number(p.rating).toFixed(1) + ')' : '') : '';
+  const pStr = (p, isCapt) => {
+    if (!p || !p.name) return '';
+    return (isCapt ? '[C] ' : '') + p.name + (p.rating ? ' (' + Number(p.rating).toFixed(1) + ')' : '');
+  };
 
   const rows = [['Date', 'Group', 'Player 1', 'Player 2', 'Player 3', 'Player 4', 'Sit Out']];
 
@@ -3022,11 +3039,15 @@ function exportScheduleExcel() {
       return;
     }
     slot.groups.forEach((group, gi) => {
-      const p = group.concat([{},{},{},{}]);
+      const p            = group.concat([{},{},{},{}]);
+      const captainEmail = (slot.captains || [])[gi] || '';
       rows.push([
         gi === 0 ? fmt(slot.date) : '',
         'Group ' + String.fromCharCode(65 + gi),
-        pStr(p[0]), pStr(p[1]), pStr(p[2]), pStr(p[3]),
+        pStr(p[0], p[0].email === captainEmail),
+        pStr(p[1], p[1].email === captainEmail),
+        pStr(p[2], p[2].email === captainEmail),
+        pStr(p[3], p[3].email === captainEmail),
         (gi === 0 && slot.sitOut) ? slot.sitOut.name : ''
       ]);
     });
