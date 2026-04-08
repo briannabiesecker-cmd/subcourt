@@ -2778,9 +2778,14 @@ function showAdminTab(tab, btn) {
 // ══════════════════════════════════════════════════
 let playerRatings = []; // current loaded player list with coordinator's ratings
 
-async function loadCoordinatorRatings() {
+async function loadCoordinatorRatings(forceRefresh) {
   const email = sessionStorage.getItem('adminEmail');
   if (!email) return;
+  // Use cache if available and not forced
+  if (!forceRefresh && playerRatings.length) {
+    document.getElementById('players-list').style.display = 'block';
+    return;
+  }
   document.getElementById('players-loading').classList.remove('hidden');
   document.getElementById('players-list').style.display = 'none';
   document.getElementById('players-alert').classList.add('hidden');
@@ -2845,7 +2850,11 @@ async function saveAllRatings() {
       return;
     }
     showAlert('players-alert', 'success', 'Ratings saved successfully.');
-    await loadCoordinatorRatings();
+    // Update local cache with saved values (no need to re-fetch)
+    ratings.forEach(r => {
+      const p = playerRatings.find(p => p.email === r.playerEmail);
+      if (p) p.myRating = r.rating;
+    });
   } catch(e) {
     showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
   }

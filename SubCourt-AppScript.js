@@ -721,33 +721,43 @@ function saveCoordinatorRatings(params) {
     if (e) emailToRow[e] = r + 1; // 1-indexed sheet row
   }
 
-  // Write ratings
+  // Build rating lookup from input
+  var ratingMap = {};
   ratings.forEach(function(item) {
     var pe = (item.playerEmail || '').toLowerCase().trim();
-    if (!emailToRow[pe]) return;
-    var rowNum = emailToRow[pe];
-    var val    = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
-    var cell   = sheet.getRange(rowNum, coordColIdx + 1);
-    cell.setNumberFormat('0.0');
-    cell.setValue(val);
+    if (pe) ratingMap[pe] = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
   });
 
-  // Recalculate averages in col C
+  // Find all coordinator columns with data for average calculation
   var coordCols = [];
   for (var k = 4; k <= 8; k++) {
-    if (headers[k] || k === coordColIdx) coordCols.push(k + 1);
+    if (headers[k]) coordCols.push(k);
   }
-  // re-read to get updated values
-  var updated = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-  for (var row = 1; row < updated.length; row++) {
-    if (!updated[row][0]) continue;
-    var vals = coordCols.map(function(col) {
-      var v = updated[row][col - 1];
+
+  // Update allData in memory, then batch-write ratings column + averages column
+  for (var row = 1; row < allData.length; row++) {
+    var pe = (allData[row][1] || '').toLowerCase().trim();
+    if (pe && ratingMap.hasOwnProperty(pe)) {
+      allData[row][coordColIdx] = ratingMap[pe];
+    }
+    // Recalculate average from all coordinator columns
+    if (!allData[row][0]) continue;
+    var vals = coordCols.map(function(ci) {
+      var v = allData[row][ci];
       return (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
     }).filter(function(v) { return v !== null; });
-    var avg = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
-    sheet.getRange(row + 1, 3).setValue(avg);
+    allData[row][2] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
   }
+
+  // Batch write: ratings column
+  var ratingsCol = allData.slice(1).map(function(r) { return [r[coordColIdx]]; });
+  var ratingRange = sheet.getRange(2, coordColIdx + 1, ratingsCol.length, 1);
+  ratingRange.setNumberFormat('0.0');
+  ratingRange.setValues(ratingsCol);
+
+  // Batch write: averages column (C)
+  var avgsCol = allData.slice(1).map(function(r) { return [r[2]]; });
+  sheet.getRange(2, 3, avgsCol.length, 1).setValues(avgsCol);
 
   return { success: true };
 }
