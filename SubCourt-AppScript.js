@@ -268,6 +268,7 @@ function doGet(e) {
     else if (action === 'getMyAvailability')        result = getMyAvailability(e.parameter);
     else if (action === 'getAvailabilityData')      result = getAvailabilityData(e.parameter);
     else if (action === 'getSchedulerSettings')     result = getSchedulerSettings();
+    else if (action === 'getSchedulerDashboard')   result = getSchedulerDashboard();
     else if (action === 'generateSchedule')         result = generateSchedule(e.parameter);
     else if (action === 'publishScheduleStart')     result = publishScheduleStart(e.parameter);
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
@@ -1335,6 +1336,95 @@ function getSchedulerSettings() {
       targetMonthLabel:    '',
       submissionCount:     0
     };
+  }
+}
+
+// ── Combined Scheduler Dashboard ──────────────────
+// Single endpoint returning both availability config and scheduler settings.
+// Eliminates redundant getConfig() calls from separate endpoints.
+function getSchedulerDashboard() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var configSheet = ss.getSheetByName(TABS.config);
+
+    // Read availability window state (B16–B18)
+    var openDateRaw  = configSheet.getRange('B16').getValue();
+    var closeDateRaw = configSheet.getRange('B17').getValue();
+    var activeRaw    = configSheet.getRange('B18').getValue();
+
+    var openDate  = openDateRaw instanceof Date ? formatSheetDate(openDateRaw) : (openDateRaw ? openDateRaw.toString() : '');
+    var closeDate = closeDateRaw instanceof Date ? formatSheetDate(closeDateRaw) : (closeDateRaw ? closeDateRaw.toString() : '');
+    var isOpen    = activeRaw === true || activeRaw.toString().toUpperCase() === 'TRUE';
+
+    // Auto-close if past close date
+    var today = new Date(); today.setHours(0,0,0,0);
+    var closeDateObj = closeDate ? new Date(closeDate + 'T00:00:00') : null;
+    if (isOpen && closeDateObj && today > closeDateObj) {
+      isOpen = false;
+      configSheet.getRange('B18').setValue(false);
+    }
+
+    // Target month
+    var targetMonth, targetMonthLabel;
+    var openDateObj = openDate ? new Date(openDate + 'T00:00:00') : null;
+    if (openDateObj) {
+      var t = new Date(openDateObj.getFullYear(), openDateObj.getMonth() + 1, 1);
+      targetMonth      = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0');
+      targetMonthLabel = t.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    } else {
+      var t = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      targetMonth      = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0');
+      targetMonthLabel = t.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+
+    // Scheduler weights (B20–B25)
+    var raw = configSheet.getRange('B20:B25').getValues();
+    var wTV   = parseFloat(raw[0][0]);
+    var wGV   = parseFloat(raw[1][0]);
+    var wSV   = parseFloat(raw[2][0]);
+    var wRec  = parseFloat(raw[3][0]);
+    var iters = parseInt(raw[4][0]);
+    var rests = parseInt(raw[5][0]);
+
+    // Submission count
+    var submissionCount = 0;
+    if (targetMonth) {
+      var avSheet = ss.getSheetByName(TABS.availability);
+      if (avSheet && avSheet.getLastRow() >= 2) {
+        var avRows = avSheet.getRange(2, 3, avSheet.getLastRow() - 1, 2).getValues();
+        var seen = {};
+        avRows.forEach(function(r) {
+          var email = (r[0] || '').toLowerCase();
+          var mon   = normalizeMonth(r[1]);
+          if (email && mon === targetMonth && !seen[email]) {
+            seen[email] = true;
+            submissionCount++;
+          }
+        });
+      }
+    }
+
+    // Roster count
+    var playersSheet = ss.getSheetByName(TABS.players);
+    var rosterCount = (playersSheet && playersSheet.getLastRow() >= 2) ? playersSheet.getLastRow() - 1 : 0;
+
+    return {
+      isOpen: isOpen,
+      openDate: openDate,
+      closeDate: closeDate,
+      targetMonth: targetMonth,
+      targetMonthLabel: targetMonthLabel,
+      submissionCount: submissionCount,
+      rosterCount: rosterCount,
+      weightTeamVariance:  isNaN(wTV)   ? 1.0 : wTV,
+      weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
+      weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,
+      weightRecency:       isNaN(wRec)  ? 1.5 : wRec,
+      solverIterations:    isNaN(iters) ? 200  : iters,
+      solverRestarts:      isNaN(rests) ? 5    : rests
+    };
+  } catch(e) {
+    return { error: 'Could not load scheduler dashboard.' };
   }
 }
 

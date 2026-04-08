@@ -3129,12 +3129,10 @@ async function loadScheduler() {
   loadingEl.style.display = '';
   contentEl.style.display = 'none';
 
-  // Fire both requests in parallel
-  const configP   = apiGetWithParams({ action: 'getAvailabilityConfig' });
-  const settingsP = apiGetWithParams({ action: 'getSchedulerSettings' });
-
   try {
-    const [config, settings] = await Promise.all([configP, settingsP]);
+    // Single API call replaces two parallel calls
+    const config = await apiGetWithParams({ action: 'getSchedulerDashboard' });
+    const settings = config; // same object has both config and settings data
 
     // --- Populate config side ---
     const badge  = document.getElementById('scheduler-status-badge');
