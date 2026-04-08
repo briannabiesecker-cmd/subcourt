@@ -668,7 +668,7 @@ function getCoordinatorRatings(params) {
   var lastRow    = sheet.getLastRow();
   if (lastRow < 2) return { players: [] };
 
-  var lastCol  = Math.max(sheet.getLastColumn(), 9); // ensure we read through col I
+  var lastCol  = Math.max(sheet.getLastColumn(), 10); // ensure we read through col J (No8am)
   var allData  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers  = allData[0];
 
@@ -687,10 +687,12 @@ function getCoordinatorRatings(params) {
   for (var r = 1; r < allData.length; r++) {
     var row = allData[r];
     if (!row[0]) continue;
+    var no8amVal = row[9];
     players.push({
       name:     row[0] || '',
       email:    (row[1] || '').toLowerCase(),
-      myRating: row[coordColIdx] !== '' ? row[coordColIdx] : ''
+      myRating: row[coordColIdx] !== '' ? row[coordColIdx] : '',
+      no8am:    no8amVal === true || (no8amVal && no8amVal.toString().toUpperCase() === 'TRUE')
     });
   }
   return { players: players, notAssigned: false };
@@ -698,10 +700,10 @@ function getCoordinatorRatings(params) {
 
 function saveCoordinatorRatings(params) {
   var coordEmail = (params.coordEmail || '').toLowerCase().trim();
-  var ratings    = JSON.parse(params.ratings || '[]'); // [{playerEmail, rating}]
+  var ratings    = JSON.parse(params.ratings || '[]'); // [{playerEmail, rating, no8am}]
   var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   var lastRow    = sheet.getLastRow();
-  var lastCol    = Math.max(sheet.getLastColumn(), 9);
+  var lastCol    = Math.max(sheet.getLastColumn(), 10);
   var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers    = allData[0];
 
@@ -721,11 +723,15 @@ function saveCoordinatorRatings(params) {
     if (e) emailToRow[e] = r + 1; // 1-indexed sheet row
   }
 
-  // Build rating lookup from input
+  // Build rating + no8am lookup from input
   var ratingMap = {};
+  var no8amMap = {};
   ratings.forEach(function(item) {
     var pe = (item.playerEmail || '').toLowerCase().trim();
-    if (pe) ratingMap[pe] = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
+    if (pe) {
+      ratingMap[pe] = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
+      no8amMap[pe] = item.no8am === true || item.no8am === 'true';
+    }
   });
 
   // Find all coordinator columns with data for average calculation
@@ -739,6 +745,7 @@ function saveCoordinatorRatings(params) {
     var pe = (allData[row][1] || '').toLowerCase().trim();
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
+      allData[row][9] = no8amMap[pe] ? true : false;
     }
     // Recalculate average from all coordinator columns
     if (!allData[row][0]) continue;
@@ -758,6 +765,14 @@ function saveCoordinatorRatings(params) {
   // Batch write: averages column (C)
   var avgsCol = allData.slice(1).map(function(r) { return [r[2]]; });
   sheet.getRange(2, 3, avgsCol.length, 1).setValues(avgsCol);
+
+  // Batch write: No 8am column (J)
+  // Ensure header exists
+  if (!headers[9] || headers[9].toString() !== 'No8am') {
+    sheet.getRange(1, 10).setValue('No8am');
+  }
+  var no8amCol = allData.slice(1).map(function(r) { return [r[9] === true]; });
+  sheet.getRange(2, 10, no8amCol.length, 1).setValues(no8amCol);
 
   return { success: true };
 }
