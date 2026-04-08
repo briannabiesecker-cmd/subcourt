@@ -1010,8 +1010,8 @@
   <div class="logo">Ral<span>ly</span></div>
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
-    <button onclick="showView('request', this)">Request Sub</button>
-    <button onclick="showView('volunteer', this)">Volunteer</button>
+    <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Request Sub</button>
+    <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Volunteer</button>
     <button onclick="showView('availability', this)">Availability</button>
     <button onclick="showView('schedule', this)">Schedule</button>
     <button onclick="showView('admin', this)">Admin</button>
@@ -1030,18 +1030,18 @@
     </div>
 
     <div class="home-actions">
-      <div class="home-card" onclick="showView('request', document.querySelector('nav button:nth-child(2)'))">
+      <div class="home-card" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
         <div class="home-card-icon">🎾</div>
         <div class="home-card-title">I need a sub</div>
         <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
-        <button class="home-card-btn">Request a Sub</button>
+        <button class="home-card-btn" disabled>Request a Sub</button>
       </div>
 
-      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">
+      <div class="home-card home-card-alt" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
         <div class="home-card-icon">🙋</div>
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
-        <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
+        <button class="home-card-btn home-card-btn-alt" disabled>Volunteer to Sub</button>
       </div>
 
       <div id="home-avail-card" class="home-card home-card-avail"
