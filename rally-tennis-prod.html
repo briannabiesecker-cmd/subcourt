@@ -1010,10 +1010,10 @@
   <div class="logo">Ral<span>ly</span></div>
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
+    <button onclick="showView('schedule', this)">Schedule</button>
     <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Request Sub</button>
     <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Volunteer</button>
     <button onclick="showView('availability', this)">Availability</button>
-    <button onclick="showView('schedule', this)">Schedule</button>
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -1030,6 +1030,14 @@
     </div>
 
     <div class="home-actions">
+      <div id="home-avail-card" class="home-card home-card-avail"
+        onclick="showView('availability', document.querySelector('nav button:nth-child(5)'))">
+        <div class="home-card-icon">📅</div>
+        <div class="home-card-title">My availability</div>
+        <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
+        <button class="home-card-btn home-card-btn-avail">Submit</button>
+      </div>
+
       <div class="home-card" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
         <div class="home-card-icon">🎾</div>
         <div class="home-card-title">I need a sub</div>
@@ -1042,14 +1050,6 @@
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
         <button class="home-card-btn home-card-btn-alt" disabled>Volunteer to Sub</button>
-      </div>
-
-      <div id="home-avail-card" class="home-card home-card-avail"
-        onclick="showView('availability', document.querySelector('nav button:nth-child(4)'))">
-        <div class="home-card-icon">📅</div>
-        <div class="home-card-title">My availability</div>
-        <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
-        <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
     </div>
   </div>
@@ -1292,7 +1292,7 @@
         <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
           <div style="font-size:16px;font-weight:700;color:var(--court);margin-bottom:6px;">Available to play right now?</div>
           <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:12px;">If you're free to cover for someone, sign up as a volunteer. You'll be contacted when there's a match that fits your schedule.</div>
-          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav button:nth-child(3)'))">Go to Volunteer to Sub</button>
+          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav button:nth-child(4)'))">Go to Volunteer to Sub</button>
         </div>
       </div>
     </div>
@@ -2754,7 +2754,7 @@ function renderAvailabilityView() {
   const homeDesc = document.getElementById('home-avail-desc');
   if (isOpen) {
     homeCard.classList.remove('home-card-avail-closed');
-    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(4)'));
+    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(5)'));
     const closeFmt = closeDate ? formatDateShort(closeDate) : '';
     homeDesc.textContent = 'Submit your available dates for ' + (targetMonthLabel || 'next month') + (closeFmt ? '. Closes ' + closeFmt + '.' : '.');
   } else {
