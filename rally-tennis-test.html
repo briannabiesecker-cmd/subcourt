@@ -3427,10 +3427,10 @@ function renderScheduleMetrics(data) {
       </div>
       <div class="metric-card ${spreadClass}">
         <div class="metric-label">Skill Balance</div>
-        <div class="metric-value">${avgSpread.toFixed(1)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> avg spread</span>
+        <div class="metric-value">${avgSpread.toFixed(1)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> pts apart</span>
           <span class="metric-badge ${spreadClass}">${spreadLabel}</span>
         </div>
-        <div class="metric-sub">Avg rating range within each court. Lower = more evenly matched rallies.</div>
+        <div class="metric-sub">On average, players on each court are ${avgSpread.toFixed(1)} rating points apart. Closer = better matched games.</div>
       </div>
       <div class="metric-card ${socialClass}">
         <div class="metric-label">Social Variety</div>
