@@ -3155,9 +3155,7 @@ async function loadScheduler() {
     } else {
       badge.className = 'scheduler-status closed';
       title.textContent = 'Window Closed';
-      sub.textContent = config.openDate
-        ? 'Last opened ' + formatDateShort(config.openDate)
-        : '';
+      sub.textContent = '';
 
       closedState.style.display = '';
       openState.style.display   = 'none';
