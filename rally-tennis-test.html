@@ -3006,7 +3006,11 @@ function renderAvailReadOnly(submission) {
 
 function formatDateShort(str) {
   if (!str) return '';
-  const d = new Date(str + 'T12:00:00');
+  // Handle both "YYYY-MM-DD" and fallback for other date strings
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(str)
+    ? new Date(str + 'T12:00:00')
+    : new Date(str);
+  if (isNaN(d)) return str; // show raw string rather than "Invalid Date"
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 }
 
