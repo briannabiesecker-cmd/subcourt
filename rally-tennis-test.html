@@ -3120,8 +3120,12 @@ async function toggleEmail(enable) {
 }
 
 async function loadScheduler() {
+  // Fire both requests in parallel — cuts load time in half
+  const configP   = apiGetWithParams({ action: 'getAvailabilityConfig' });
+  const settingsP = apiGetWithParams({ action: 'getSchedulerSettings' });
+
   try {
-    const config = await apiGetWithParams({ action: 'getAvailabilityConfig' });
+    const config = await configP;
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
     const sub    = document.getElementById('scheduler-status-sub');
@@ -3163,14 +3167,14 @@ async function loadScheduler() {
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
   }
-  loadSchedulerSettings();
+  applySchedulerSettings(settingsP);
 }
 
-async function loadSchedulerSettings() {
+async function applySchedulerSettings(settingsPromise) {
   const summaryEl = document.getElementById('sched-gen-summary');
   const genBtn    = document.getElementById('sched-gen-btn');
   try {
-    const s = await apiGetWithParams({ action: 'getSchedulerSettings' });
+    const s = await settingsPromise;
     const month = s.targetMonth || '—';
     const count = s.submissionCount || 0;
     summaryEl.innerHTML =
