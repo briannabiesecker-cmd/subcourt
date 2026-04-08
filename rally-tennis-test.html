@@ -1006,10 +1006,11 @@
 </head>
 <body>
 
-<div style="background:#E07A5A;color:white;text-align:center;padding:7px 16px;font-size:13px;font-weight:600;letter-spacing:0.03em;">
-  ⚠ TEST INSTANCE — Data here is not real. Use the <a href="rally-tennis-prod.html" style="color:white;text-decoration:underline;">PROD app</a> for live use.
-</div>
-<header>
+<div style="position:sticky;top:0;z-index:1000;">
+  <div style="background:#E07A5A;color:white;text-align:center;padding:7px 16px;font-size:13px;font-weight:600;letter-spacing:0.03em;">
+    ⚠ TEST INSTANCE — Data here is not real. Use the <a href="rally-tennis-prod.html" style="color:white;text-decoration:underline;">PROD app</a> for live use.
+  </div>
+  <header style="background:#C8E634;position:static;">
   <div class="logo">Ral<span>ly</span></div>
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
@@ -1020,6 +1021,7 @@
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
+</div>
 
 
 
