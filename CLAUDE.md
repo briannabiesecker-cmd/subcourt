@@ -1,6 +1,6 @@
-# Rally — MTC Tennis Sub Manager
+# Rally — MWF Tennis League Sub Manager
 
-Web app for managing MTC tennis team match scheduling, sub requests, and player availability. Two instances (test/prod), shared codebase, deployed to GitHub Pages + Google Apps Script.
+Web app for managing MWF Tennis League match scheduling, sub requests, and player availability. Two instances (test/prod), shared codebase, deployed to GitHub Pages + Google Apps Script.
 
 ## Architecture
 
