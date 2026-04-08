@@ -1428,9 +1428,21 @@ function getSchedulerDashboard() {
       }
     }
 
-    // Roster count
+    // Roster count + no8am emails
     var playersSheet = ss.getSheetByName(TABS.players);
-    var rosterCount = (playersSheet && playersSheet.getLastRow() >= 2) ? playersSheet.getLastRow() - 1 : 0;
+    var rosterCount = 0;
+    var no8amEmails = [];
+    if (playersSheet && playersSheet.getLastRow() >= 2) {
+      rosterCount = playersSheet.getLastRow() - 1;
+      var pRows = playersSheet.getRange(2, 1, rosterCount, 4).getValues();
+      pRows.forEach(function(r) {
+        var email = (r[1] || '').toLowerCase().trim();
+        var flag  = r[3];
+        if (email && (flag === true || (flag && flag.toString().toUpperCase() === 'TRUE'))) {
+          no8amEmails.push(email);
+        }
+      });
+    }
 
     return {
       isOpen: isOpen,
@@ -1440,6 +1452,7 @@ function getSchedulerDashboard() {
       targetMonthLabel: targetMonthLabel,
       submissionCount: submissionCount,
       rosterCount: rosterCount,
+      no8amEmails: no8amEmails,
       weightTeamVariance:  isNaN(wTV)   ? 1.0 : wTV,
       weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
       weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,

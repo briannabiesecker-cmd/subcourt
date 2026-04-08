@@ -3174,6 +3174,11 @@ async function loadScheduler() {
     const config = await apiGetWithParams({ action: 'getSchedulerDashboard' });
     const settings = config; // same object has both config and settings data
 
+    // Populate no8am set for asterisk display
+    if (config.no8amEmails) {
+      no8amSet = new Set(config.no8amEmails.map(e => e.toLowerCase()));
+    }
+
     // --- Populate config side ---
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
@@ -3267,8 +3272,12 @@ async function runGenerateSchedule() {
   }
 }
 
+let no8amSet = new Set(); // populated from scheduler dashboard or player profiles
+
 function isNo8am(email) {
-  if (!email || !playerRatings.length) return false;
+  if (!email) return false;
+  if (no8amSet.size) return no8amSet.has(email.toLowerCase());
+  // Fallback to playerRatings if set not populated
   const p = playerRatings.find(r => r.email === email.toLowerCase());
   return p && p.no8am;
 }
