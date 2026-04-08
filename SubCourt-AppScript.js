@@ -1791,8 +1791,23 @@ function publishScheduleSlot(params) {
 // Returns the most recently published month's schedule
 // grouped by date → groups.
 function getPublishedSchedule() {
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.matchGroups);
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { month: null, dates: [] };
+
+  // Load no8am flags from Players sheet (column D = index 3)
+  var no8amEmails = [];
+  var playersSheet = ss.getSheetByName(TABS.players);
+  if (playersSheet && playersSheet.getLastRow() >= 2) {
+    var pRows = playersSheet.getRange(2, 1, playersSheet.getLastRow() - 1, 4).getValues();
+    pRows.forEach(function(r) {
+      var email = (r[1] || '').toLowerCase().trim();
+      var flag  = r[3];
+      if (email && (flag === true || (flag && flag.toString().toUpperCase() === 'TRUE'))) {
+        no8amEmails.push(email);
+      }
+    });
+  }
 
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 14).getValues();
 
@@ -1846,7 +1861,7 @@ function getPublishedSchedule() {
     };
   });
 
-  return { month: latestMonth, dates: dates };
+  return { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
 }
 
 // ── Sheet helper ────────────────────────────────────

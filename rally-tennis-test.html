@@ -3268,10 +3268,17 @@ async function runGenerateSchedule() {
   }
 }
 
+function isNo8am(email) {
+  if (!email || !playerRatings.length) return false;
+  const p = playerRatings.find(r => r.email === email.toLowerCase());
+  return p && p.no8am;
+}
+
 function playerCell(p, isCaptain) {
   if (!p || !p.name) return '';
   const c = isCaptain ? '<span class="captain-badge">C</span>' : '';
-  return c + p.name;
+  const star = isNo8am(p.email) ? '<span style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">*</span>' : '';
+  return c + p.name + star;
 }
 
 function renderScheduleTable(slots) {
@@ -3480,7 +3487,8 @@ async function exportScheduleExcel() {
 
   // Data rows with alternating shading
   players.forEach(([email, name], i) => {
-    const values = [name].concat(dates.map(d => (cellData[email] || {})[d] || ''));
+    const displayName = name + (isNo8am(email) ? '*' : '');
+    const values = [displayName].concat(dates.map(d => (cellData[email] || {})[d] || ''));
     const row = ws.addRow(values);
     row.height = 18;
     const bg = i % 2 === 0 ? 'FFFFFFFF' : 'FFF0F5F2';
@@ -3622,6 +3630,8 @@ function renderPublishedSchedule(filterEmail) {
   if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) return;
 
   const filterLower = filterEmail ? filterEmail.toLowerCase().trim() : null;
+  const no8amList = (publishedSchedule.no8amEmails || []).map(e => e.toLowerCase());
+  const starHtml = '<span style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">*</span>';
 
   let dates = publishedSchedule.dates;
   if (filterLower) {
@@ -3651,11 +3661,14 @@ function renderPublishedSchedule(filterEmail) {
       const others  = g.players.filter(p => !p.isCaptain);
       const playerNames = others.map(p => {
         const isMe = filterLower && p.email && p.email.toLowerCase() === filterLower;
-        return isMe ? `<strong>${p.name}</strong>` : p.name;
+        const star = p.email && no8amList.includes(p.email.toLowerCase()) ? starHtml : '';
+        const name = p.name + star;
+        return isMe ? `<strong>${name}</strong>` : name;
       }).filter(Boolean).join(', ');
+      const captainStar = captain && captain.email && no8amList.includes(captain.email.toLowerCase()) ? starHtml : '';
       const captainName = captain
         ? (filterLower && captain.email && captain.email.toLowerCase() === filterLower
-            ? `<strong>${captain.name}</strong>` : captain.name)
+            ? `<strong>${captain.name}${captainStar}</strong>` : captain.name + captainStar)
         : '';
       const rowClass = gi === 0 ? 'date-first' : '';
       html += `<tr class="${rowClass}">`;
