@@ -1025,14 +1025,6 @@
     line-height: 1.4;
     margin-top: 2px;
   }
-  .date-quality-dot {
-    display: inline-block;
-    width: 8px; height: 8px; border-radius: 50%;
-    margin-right: 6px; vertical-align: middle;
-  }
-  .date-quality-dot.excellent { background: var(--success); }
-  .date-quality-dot.good { background: var(--court); }
-  .date-quality-dot.fair { background: #D4A017; }
 
   @media (max-width: 700px) {
     .metrics-banner { grid-template-columns: 1fr; }
@@ -1654,8 +1646,8 @@
             <div style="font-size:17px;font-weight:700;color:var(--ink);" id="sched-results-title">Schedule Preview</div>
             <div class="flex gap8">
               <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
-              <button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;cursor:not-allowed;">Export to Excel</button>
-              <button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;cursor:not-allowed;">Export to PDF</button>
+              <span id="sched-excel-wrap" title="Publish the schedule first to enable export"><button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;pointer-events:none;">Export to Excel</button></span>
+              <span id="sched-pdf-wrap" title="Publish the schedule first to enable export"><button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;pointer-events:none;">Export to PDF</button></span>
             </div>
           </div>
           <!-- Optimization Metrics -->
@@ -3177,6 +3169,11 @@ async function loadScheduler() {
     const config = await apiGetWithParams({ action: 'getSchedulerDashboard' });
     const settings = config; // same object has both config and settings data
 
+    // Populate no8am set for asterisk display
+    if (config.no8amEmails) {
+      no8amSet = new Set(config.no8amEmails.map(e => e.toLowerCase()));
+    }
+
     // --- Populate config side ---
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
@@ -3270,8 +3267,11 @@ async function runGenerateSchedule() {
   }
 }
 
+let no8amSet = new Set();
+
 function isNo8am(email) {
-  if (!email || !playerRatings.length) return false;
+  if (!email) return false;
+  if (no8amSet.size) return no8amSet.has(email.toLowerCase());
   const p = playerRatings.find(r => r.email === email.toLowerCase());
   return p && p.no8am;
 }
@@ -3298,10 +3298,6 @@ function renderScheduleTable(slots) {
   slots.forEach((slot, si) => {
     const dateLabel = fmt(slot.date);
     const isFirst   = si === 0 || slots[si - 1].date !== slot.date;
-    const dateGap   = window._dateGaps ? window._dateGaps[slot.date] : null;
-    const dotClass  = dateGap !== null && dateGap !== undefined
-      ? (dateGap < 0.3 ? 'excellent' : dateGap < 0.6 ? 'good' : 'fair') : '';
-    const dotHtml   = dotClass ? '<span class="date-quality-dot ' + dotClass + '" title="Team gap: ' + dateGap.toFixed(2) + '"></span>' : '';
 
     if (slot.skipped) {
       html += '<tr class="skipped-row' + (isFirst ? ' date-first' : '') + '">' +
@@ -3319,7 +3315,7 @@ function renderScheduleTable(slots) {
       ).concat([{},{},{},{}]);
       const sitOut = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
       html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
-        '<td class="date-cell">' + (firstRow ? dotHtml + dateLabel : '') + '</td>' +
+        '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
         '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
         '<td>' + playerCell(ordered[0], ordered[0].email === captainEmail) + '</td>' +
         '<td>' + playerCell(ordered[1], ordered[1].email === captainEmail) + '</td>' +
@@ -3343,13 +3339,13 @@ function renderScheduleMetrics(data) {
 
   // Single pass: compute all metrics together
   const teamGaps = [];
-  const perDateGaps = [];
+
   const spreads = [];
   const monthPairs = {};
   let totalPairs = 0;
 
   activeSlots.forEach(slot => {
-    const dateGaps = [];
+
     (slot.groups || []).forEach(group => {
       const ratings = group.map(p => p.rating || 0);
 
@@ -3365,7 +3361,6 @@ function renderScheduleMetrics(data) {
         bestGap = (Math.max(...ratings) - Math.min(...ratings)) / 2;
       }
       teamGaps.push(bestGap);
-      dateGaps.push(bestGap);
 
       // Skill balance: spread
       spreads.push(Math.max(...ratings) - Math.min(...ratings));
@@ -3380,8 +3375,6 @@ function renderScheduleMetrics(data) {
         }
       }
     });
-    const avg = dateGaps.reduce((s,v) => s+v, 0) / (dateGaps.length || 1);
-    perDateGaps.push({ date: slot.date, avgGap: avg });
   });
 
   const avgTeamGap = teamGaps.reduce((s,v) => s+v, 0) / (teamGaps.length || 1);
@@ -3402,10 +3395,6 @@ function renderScheduleMetrics(data) {
   const freshPct = uniquePairings > 0 ? Math.round((newPairs / uniquePairings) * 100) : 100;
   const socialLabel = freshPct >= 85 ? 'Excellent' : freshPct >= 70 ? 'Good' : 'Fair';
   const socialClass = socialLabel.toLowerCase();
-
-  // Store per-date gaps for schedule table dots
-  window._dateGaps = {};
-  perDateGaps.forEach(d => { window._dateGaps[d.date] = d.avgGap; });
 
   // --- Render ---
   el.style.display = '';
@@ -3579,8 +3568,10 @@ async function publishScheduleToSheet() {
     // Unlock exports now that published version is in sync
     const excelBtn = document.getElementById('sched-excel-btn');
     const pdfBtn   = document.getElementById('sched-pdf-btn');
-    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.cursor = '';
-    pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.cursor = '';
+    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.pointerEvents = '';
+    pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.pointerEvents = '';
+    document.getElementById('sched-excel-wrap').title = '';
+    document.getElementById('sched-pdf-wrap').title = '';
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
