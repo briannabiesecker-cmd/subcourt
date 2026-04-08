@@ -3317,12 +3317,20 @@ async function publishScheduleToSheet() {
   btn.disabled = true;
   btn.textContent = 'Publishing…';
   try {
+    // Strip rating and other unused fields to keep the URL within JSONP limits
+    const slimSlots = scheduleData.slots
+      .filter(s => !s.skipped)
+      .map(s => ({
+        date:     s.date,
+        groups:   (s.groups || []).map(g => g.map(p => ({ name: p.name, email: p.email }))),
+        captains: s.captains || [],
+        sitOut:   s.sitOut ? { name: s.sitOut.name, email: s.sitOut.email } : null
+      }));
+
     const result = await apiPost({
-      action:      'publishSchedule',
-      month:       scheduleData.month,
-      slots:       JSON.stringify(scheduleData.slots.filter(s => !s.skipped)),
-      pairCounts:  JSON.stringify(scheduleData.pairCounts   || {}),
-      sitOutCounts:JSON.stringify(scheduleData.sitOutCounts || {})
+      action: 'publishSchedule',
+      month:  scheduleData.month,
+      slots:  JSON.stringify(slimSlots)
     });
     if (!result.success) { showAlert('scheduler-alert', 'error', result.error || 'Publish failed.'); return; }
     showAlert('scheduler-alert', 'success', 'Schedule published — ' + result.groupsPublished + ' group(s) visible on the Schedule tab.');
