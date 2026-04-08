@@ -23,7 +23,7 @@ if [ "$TARGET" = "test" ]; then
   echo "→ Deploying to TEST..."
   cp "$SOURCE" "$SCRIPT_DIR/clasp/test/Code.js"
   cd "$SCRIPT_DIR/clasp/test"
-  clasp push
+  clasp push --force
   echo "✓ TEST deploy complete. Create a new version in the Apps Script editor (Deploy → Manage deployments) to make it live."
 
 elif [ "$TARGET" = "prod" ]; then
@@ -34,7 +34,7 @@ elif [ "$TARGET" = "prod" ]; then
   echo "→ Deploying to PROD..."
   sed "s/$TEST_SHEET_ID/$PROD_SHEET_ID/" "$SOURCE" > "$SCRIPT_DIR/clasp/prod/Code.js"
   cd "$SCRIPT_DIR/clasp/prod"
-  clasp push
+  clasp push --force
   echo "✓ PROD deploy complete. Create a new version in the Apps Script editor (Deploy → Manage deployments) to make it live."
 
 else
