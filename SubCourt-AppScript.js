@@ -269,8 +269,6 @@ function doGet(e) {
     else if (action === 'getAvailabilityData')      result = getAvailabilityData(e.parameter);
     else if (action === 'getSchedulerSettings')     result = getSchedulerSettings();
     else if (action === 'generateSchedule')         result = generateSchedule(e.parameter);
-    else if (action === 'saveSchedule')             result = saveSchedule(e.parameter);
-    else if (action === 'publishSchedule')          result = publishSchedule(e.parameter);
     else if (action === 'publishScheduleStart')     result = publishScheduleStart(e.parameter);
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
@@ -1277,8 +1275,9 @@ function cleanupOldAvailability() {
 // Coordinators can tune these directly in the sheet.
 function getSchedulerSettings() {
   try {
-    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-    var raw   = sheet.getRange('B20:B25').getValues();
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var configSheet = ss.getSheetByName(TABS.config);
+    var raw = configSheet.getRange('B20:B25').getValues();
     var wTV   = parseFloat(raw[0][0]);
     var wGV   = parseFloat(raw[1][0]);
     var wSV   = parseFloat(raw[2][0]);
@@ -1294,18 +1293,14 @@ function getSchedulerSettings() {
       solverRestarts:      isNaN(rests) ? 5    : rests
     };
 
-    // Also return a summary of how many players have submitted for the target month
     var availConfig = getAvailabilityConfig();
     var targetMonth = availConfig.targetMonth;
-    // Count unique emails that have submitted for the target month
-    // (deduplicates rows from before the normalizeMonth fix)
     var submissionCount = 0;
     if (targetMonth) {
-      var avSheet  = getOrCreateAvailabilitySheet();
-      var lastRow  = avSheet.getLastRow();
-      if (lastRow >= 2) {
-        var avRows  = avSheet.getRange(2, 3, lastRow - 1, 2).getValues(); // cols: email, month
-        var seen    = {};
+      var avSheet = ss.getSheetByName(TABS.availability);
+      if (avSheet && avSheet.getLastRow() >= 2) {
+        var avRows = avSheet.getRange(2, 3, avSheet.getLastRow() - 1, 2).getValues();
+        var seen = {};
         avRows.forEach(function(r) {
           var email = (r[0] || '').toLowerCase();
           var mon   = normalizeMonth(r[1]);
@@ -1494,7 +1489,6 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   if (remainder === 0) {
     groupSizes = fillArray(n / 4, 4);
   } else if (remainder === 1) {
-    groupSizes = fillArray((n - 1) / 4, 4);
     groupSizes = fillArray(Math.floor((n - 1) / 4), 4);
   } else if (remainder === 2) {
     groupSizes = fillArray(Math.floor(n / 4) - 1, 4).concat([3, 3]);
@@ -1628,140 +1622,6 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   return { groups: outputGroups, sitOut: sitOutPlayer };
 }
 
-// ── Penalty Function ────────────────────────────────
-// Skill component: sum over each group of within-group rating variance.
-// Social component: penalises repeat pairings (squared to punish heavy repeats).
-// Recency is handled by caller passing updated pairCounts between consecutive slots.
-function calcPenalty(groups, settings, pairCounts) {
-  var wTV  = settings.weightTeamVariance  || 1.0;
-  var wGV  = settings.weightGroupVariance || 0.5;
-  var wSV  = settings.weightSocialVariety || 2.0;
-
-  var skillPenalty  = 0;
-  var socialPenalty = 0;
-
-  // Flatten all ratings to get overall group variance
-  var allRatings = [];
-  groups.forEach(function(group) { group.forEach(function(p) { allRatings.push(p.rating); }); });
-  var totalGroupVar = variance(allRatings);
-
-  groups.forEach(function(group) {
-    var ratings    = group.map(function(p) { return p.rating; });
-    var groupVar   = variance(ratings);
-    // Split variance equally across two "teams" within a 4-player group (or use full group for 3)
-    var teamVar    = group.length === 4 ? variance(ratings.slice(0,2)) + variance(ratings.slice(2,4)) : groupVar;
-    skillPenalty  += teamVar * wTV + groupVar * wGV;
-
-    // Social: penalise pairs that have played together before
-    for (var i = 0; i < group.length; i++) {
-      for (var j = i + 1; j < group.length; j++) {
-        var key    = pairKey(group[i].email, group[j].email);
-        var hist   = pairCounts[key] || 0;
-        socialPenalty += wSV * hist * hist;
-      }
-    }
-  });
-
-  skillPenalty += totalGroupVar * wGV;
-
-  return skillPenalty + socialPenalty;
-}
-
-// ── Save ───────────────────────────────────────────
-// Writes the confirmed schedule to the MatchGroups sheet.
-// params.slots — JSON string of slot results from generateSchedule
-// params.month — "YYYY-MM"
-function saveSchedule(params) {
-  var slots = safeParseJSON(params.slots, []);
-  var month = params.month || '';
-  if (!slots.length) return { error: 'No slots to save.' };
-
-  var sheet = getOrCreateMatchGroupsSheet();
-
-  slots.forEach(function(slot) {
-    if (slot.skipped) return;
-    var dateLabel   = slot.date;
-    var sitOutName  = slot.sitOut  ? slot.sitOut.name  : '';
-    var sitOutEmail = slot.sitOut  ? slot.sitOut.email : '';
-
-    (slot.groups || []).forEach(function(group, gi) {
-      var groupLabel = 'Group ' + String.fromCharCode(65 + gi); // A, B, C...
-      var p = group.concat([{name:'',email:''},{name:'',email:''},{name:'',email:''},{name:'',email:''}]);
-      sheet.appendRow([
-        new Date().toISOString(),
-        month,
-        dateLabel,
-        groupLabel,
-        p[0].name, p[0].email,
-        p[1].name, p[1].email,
-        p[2].name, p[2].email,
-        p[3].name, p[3].email,
-        sitOutName,
-        sitOutEmail
-      ]);
-    });
-  });
-
-  Logger.log('saveSchedule: saved ' + slots.length + ' slot(s) for ' + month);
-  return { success: true, slotsSaved: slots.filter(function(s) { return !s.skipped; }).length };
-}
-
-// ── Publish ─────────────────────────────────────────
-// Clears existing rows for the month, writes new rows with captain as P1.
-// params.slots — JSON string of slot results
-// params.month — "YYYY-MM"
-function publishSchedule(params) {
-  var slots = safeParseJSON(params.slots, []);
-  var month = params.month || '';
-  if (!slots.length) return { error: 'No slots to publish.' };
-
-  var sheet = getOrCreateMatchGroupsSheet();
-
-  // Delete existing rows for this month (iterate backwards to preserve indices)
-  var lastRow = sheet.getLastRow();
-  if (lastRow >= 2) {
-    var monthVals = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
-    for (var i = monthVals.length - 1; i >= 0; i--) {
-      if (normalizeMonth(monthVals[i][0]) === month) {
-        sheet.deleteRow(i + 2);
-      }
-    }
-  }
-
-  var saved = 0;
-  slots.forEach(function(slot) {
-    if (slot.skipped) return;
-    var dateLabel   = slot.date;
-    var sitOutName  = slot.sitOut ? slot.sitOut.name  : '';
-    var sitOutEmail = slot.sitOut ? slot.sitOut.email : '';
-
-    (slot.groups || []).forEach(function(group, gi) {
-      var captainEmail = (slot.captains || [])[gi] || '';
-      // Put captain first
-      var ordered = group.slice().sort(function(a, b) {
-        return a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0;
-      });
-      var p = ordered.concat([{name:'',email:''},{name:'',email:''},{name:'',email:''},{name:'',email:''}]);
-      sheet.appendRow([
-        new Date().toISOString(),
-        month,
-        dateLabel,
-        String.fromCharCode(65 + gi), // just letter: A, B, C…
-        p[0].name, p[0].email,
-        p[1].name, p[1].email,
-        p[2].name, p[2].email,
-        p[3].name, p[3].email,
-        sitOutName,
-        sitOutEmail
-      ]);
-      saved++;
-    });
-  });
-
-  Logger.log('publishSchedule: published ' + saved + ' group row(s) for ' + month);
-  return { success: true, groupsPublished: saved };
-}
-
 // ── Chunked Publish Helpers ─────────────────────────
 // Step 1: clear existing rows for the month.
 function publishScheduleStart(params) {
@@ -1814,28 +1674,27 @@ function getPublishedSchedule() {
 
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 14).getValues();
 
-  // Find the most recent month
+  // Single pass: find latest month and build dateMap simultaneously
   var latestMonth = '';
+  var dateMap = {};
   rows.forEach(function(r) {
     var m = normalizeMonth(r[1]);
-    if (m && m > latestMonth) latestMonth = m;
-  });
-  if (!latestMonth) return { month: null, dates: [] };
+    if (!m) return;
+    if (m > latestMonth) {
+      latestMonth = m;
+      dateMap = {}; // reset — new latest month found
+    }
+    if (m !== latestMonth) return;
 
-  // Group rows by date then group letter
-  var dateMap = {}; // date → { letter → {players, sitOut} }
-  rows.forEach(function(r) {
-    if (normalizeMonth(r[1]) !== latestMonth) return;
-    var date   = r[2] instanceof Date
+    var date = r[2] instanceof Date
       ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
       : (r[2] ? r[2].toString() : '');
-    var letter = r[3]  ? r[3].toString()  : '';
+    var letter = r[3] ? r[3].toString() : '';
     var sitOutName  = r[12] ? r[12].toString() : '';
     var sitOutEmail = r[13] ? r[13].toString() : '';
 
     if (!date) return;
     if (!dateMap[date]) dateMap[date] = {};
-    // P1 is captain
     var players = [];
     for (var pi = 0; pi < 4; pi++) {
       var nm = r[4 + pi*2]     ? r[4 + pi*2].toString()     : '';
@@ -1848,7 +1707,8 @@ function getPublishedSchedule() {
     };
   });
 
-  // Sort dates, build output array
+  if (!latestMonth) return { month: null, dates: [] };
+
   var sortedDates = Object.keys(dateMap).sort();
   var dates = sortedDates.map(function(date) {
     var groupLetters = Object.keys(dateMap[date]).sort();

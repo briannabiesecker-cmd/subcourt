@@ -3167,7 +3167,7 @@ async function loadScheduler() {
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
   }
-  applySchedulerSettings(settingsP);
+  applySchedulerSettings(settingsP).catch(() => {});
 }
 
 async function applySchedulerSettings(settingsPromise) {
@@ -3283,61 +3283,36 @@ function renderScheduleMetrics(data) {
   const activeSlots = data.slots.filter(s => !s.skipped);
   if (!activeSlots.length) { el.style.display = 'none'; return; }
 
-  // Collect all groups across all dates
-  const allGroups = [];
-  activeSlots.forEach(s => (s.groups || []).forEach(g => allGroups.push(g)));
-
-  // --- 1. Match Competitiveness (team gap) ---
-  // For each group of 4, find the pairing that minimizes the team rating gap
-  // For groups of 3, use best 2v1 split
+  // Single pass: compute all metrics together
   const teamGaps = [];
-  const perDateGaps = []; // { date, avgGap }
+  const perDateGaps = [];
+  const spreads = [];
+  const monthPairs = {};
+  let totalPairs = 0;
 
   activeSlots.forEach(slot => {
     const dateGaps = [];
     (slot.groups || []).forEach(group => {
       const ratings = group.map(p => p.rating || 0);
+
+      // Competitiveness: team gap
       let bestGap = Infinity;
       if (ratings.length === 4) {
-        // 3 ways to split 4 players into two teams of 2
         const splits = [[0,1,2,3],[0,2,1,3],[0,3,1,2]];
         splits.forEach(([a,b,c,d]) => {
           const gap = Math.abs((ratings[a]+ratings[b]) - (ratings[c]+ratings[d])) / 2;
           if (gap < bestGap) bestGap = gap;
         });
       } else if (ratings.length === 3) {
-        // Best 2v1 isn't meaningful for competitiveness, use spread instead
         bestGap = (Math.max(...ratings) - Math.min(...ratings)) / 2;
       }
       teamGaps.push(bestGap);
       dateGaps.push(bestGap);
-    });
-    const avg = dateGaps.reduce((s,v) => s+v, 0) / (dateGaps.length || 1);
-    perDateGaps.push({ date: slot.date, avgGap: avg });
-  });
 
-  const avgTeamGap = teamGaps.reduce((s,v) => s+v, 0) / (teamGaps.length || 1);
-  const compLabel = avgTeamGap < 0.3 ? 'Excellent' : avgTeamGap < 0.6 ? 'Good' : 'Fair';
-  const compClass = compLabel.toLowerCase();
+      // Skill balance: spread
+      spreads.push(Math.max(...ratings) - Math.min(...ratings));
 
-  // --- 2. Skill Balance (within-group spread) ---
-  const spreads = allGroups.map(g => {
-    const r = g.map(p => p.rating || 0);
-    return Math.max(...r) - Math.min(...r);
-  });
-  const avgSpread = spreads.reduce((s,v) => s+v, 0) / (spreads.length || 1);
-  const spreadLabel = avgSpread < 1.0 ? 'Excellent' : avgSpread < 1.5 ? 'Good' : 'Fair';
-  const spreadClass = spreadLabel.toLowerCase();
-
-  // --- 3. Social Variety (new pairings) ---
-  const pairCounts = data.pairCounts || {};
-  let totalPairs = 0;
-  let newPairs = 0;
-  let repeatCount = 0;
-  // Count pairings within the generated schedule only
-  const monthPairs = {};
-  activeSlots.forEach(slot => {
-    (slot.groups || []).forEach(group => {
+      // Social variety: pair counting
       for (let i = 0; i < group.length; i++) {
         for (let j = i + 1; j < group.length; j++) {
           const a = group[i].email, b = group[j].email;
@@ -3347,7 +3322,20 @@ function renderScheduleMetrics(data) {
         }
       }
     });
+    const avg = dateGaps.reduce((s,v) => s+v, 0) / (dateGaps.length || 1);
+    perDateGaps.push({ date: slot.date, avgGap: avg });
   });
+
+  const avgTeamGap = teamGaps.reduce((s,v) => s+v, 0) / (teamGaps.length || 1);
+  const compLabel = avgTeamGap < 0.3 ? 'Excellent' : avgTeamGap < 0.6 ? 'Good' : 'Fair';
+  const compClass = compLabel.toLowerCase();
+
+  const avgSpread = spreads.reduce((s,v) => s+v, 0) / (spreads.length || 1);
+  const spreadLabel = avgSpread < 1.0 ? 'Excellent' : avgSpread < 1.5 ? 'Good' : 'Fair';
+  const spreadClass = spreadLabel.toLowerCase();
+
+  let newPairs = 0;
+  let repeatCount = 0;
   Object.values(monthPairs).forEach(count => {
     if (count === 1) newPairs++;
     else repeatCount += count;
@@ -3528,12 +3516,14 @@ async function publishScheduleToSheet() {
     if (!start.success) throw new Error(start.error || 'Could not clear existing data.');
 
     // Step 2: send one slot per date (each request is small enough for JSONP)
+    const results = await Promise.all(activeSlots.map(slot =>
+      apiPost({ action: 'publishScheduleSlot', month: scheduleData.month, slot: JSON.stringify(slot) })
+    ));
     let totalGroups = 0;
-    for (const slot of activeSlots) {
-      const res = await apiPost({ action: 'publishScheduleSlot', month: scheduleData.month, slot: JSON.stringify(slot) });
+    results.forEach(res => {
       if (!res.success) throw new Error(res.error || 'Slot write failed.');
       totalGroups += res.groupsWritten || 0;
-    }
+    });
 
     showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.');
     btn.textContent = 'Published ✓';
