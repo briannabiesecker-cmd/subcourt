@@ -3431,14 +3431,18 @@ function renderPublishedSchedule(filterEmail) {
         ? (filterLower && captain.email && captain.email.toLowerCase() === filterLower
             ? `<strong>${captain.name}</strong>` : captain.name)
         : '';
-      const sitOutName = g.sitOut ? g.sitOut.name : '';
       const rowClass = gi === 0 ? 'date-first' : '';
       html += `<tr class="${rowClass}">`;
-      if (gi === 0) html += `<td rowspan="${d.groups.length}" class="date-cell">${dateStr}</td>`;
+      if (gi === 0) {
+        html += `<td rowspan="${d.groups.length}" class="date-cell">${dateStr}</td>`;
+      }
       html += `<td style="font-weight:600;color:var(--court);">Group ${g.letter}</td>`;
       html += `<td><span class="captain-badge">C</span>${captainName}</td>`;
       html += `<td>${playerNames}</td>`;
-      html += `<td style="color:var(--ink-light);font-size:14px;">${sitOutName}</td>`;
+      if (gi === 0) {
+        const sitOutName = d.groups[0].sitOut ? d.groups[0].sitOut.name : '';
+        html += `<td rowspan="${d.groups.length}" style="color:var(--ink-light);font-size:14px;">${sitOutName}</td>`;
+      }
       html += '</tr>';
     });
   });

@@ -1826,7 +1826,9 @@ function getPublishedSchedule() {
   var dateMap = {}; // date → { letter → {players, sitOut} }
   rows.forEach(function(r) {
     if (normalizeMonth(r[1]) !== latestMonth) return;
-    var date   = r[2]  ? r[2].toString()  : '';
+    var date   = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
     var letter = r[3]  ? r[3].toString()  : '';
     var sitOutName  = r[12] ? r[12].toString() : '';
     var sitOutEmail = r[13] ? r[13].toString() : '';
