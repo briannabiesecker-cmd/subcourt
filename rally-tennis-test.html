@@ -1576,7 +1576,7 @@
 
         <div class="card">
 
-          <!-- Status badge -->
+          <!-- Status badge with month -->
           <div id="scheduler-status-badge" class="scheduler-status closed">
             <div class="scheduler-dot"></div>
             <div>
@@ -1585,20 +1585,12 @@
             </div>
           </div>
 
-          <!-- Scheduling for month -->
-          <div style="font-size:14px;color:var(--ink-light);margin-bottom:0.75rem;">
-            Scheduling for <strong id="sched-target-month-label" style="color:var(--ink);">—</strong>
-          </div>
-
           <!-- CLOSED state: form to open window -->
           <div id="window-closed-state">
-            <div style="background:var(--teal-light);border-radius:var(--radius);padding:10px 14px;font-size:13px;color:var(--court);margin-bottom:0.75rem;line-height:1.5;">
-              Set a close date and click <strong>Open Window</strong> to email all players. Reminders auto-send at T-2 and T-1 days.
-            </div>
-
             <div class="field" style="margin-bottom:0.75rem;">
               <label style="font-size:15px;font-weight:600;">Close date</label>
-              <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;margin-top:4px;" oninput="onCloseDateChange()" />
+              <div style="font-size:12px;color:var(--ink-light);margin:2px 0 4px;">Last day to submit. Players emailed on open; reminders at T-2 and T-1.</div>
+              <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;" oninput="onCloseDateChange()" />
               <div id="sched-close-date-display" style="font-size:14px;font-weight:600;color:var(--ink-mid);margin-top:4px;"></div>
               <div id="sched-close-date-warning" style="display:none;font-size:13px;color:var(--danger);margin-top:4px;">⚠ Date is in the past.</div>
             </div>
@@ -1623,12 +1615,14 @@
         </div>
 
         <!-- Generate Schedule card -->
-        <div class="card">
-          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
+        <div class="card" style="display:flex;flex-direction:column;">
+          <div id="sched-gen-badge" class="scheduler-status closed" style="margin-bottom:auto;">
+            <div style="font-size:16px;font-weight:700;color:var(--ink);">Generate Schedule</div>
+          </div>
           <div id="sched-gen-summary" class="sched-gen-summary">
             <div class="loading"><div class="spinner"></div>Loading…</div>
           </div>
-          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled>Generate</button>
+          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled style="width:100%;font-size:15px;padding:12px;">Generate</button>
         </div>
 
         </div>
@@ -3129,14 +3123,14 @@ async function loadScheduler() {
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
     const sub    = document.getElementById('scheduler-status-sub');
-    const monthLabel = document.getElementById('sched-target-month-label');
 
     const closedState = document.getElementById('window-closed-state');
     const openState   = document.getElementById('window-open-state');
+    const monthSuffix = config.targetMonthLabel ? ' — ' + config.targetMonthLabel : '';
 
     if (config.isOpen) {
       badge.className = 'scheduler-status open';
-      title.textContent = 'Window is OPEN';
+      title.textContent = 'Window is OPEN' + monthSuffix;
 
       // Days remaining
       if (config.closeDate) {
@@ -3154,7 +3148,7 @@ async function loadScheduler() {
       openState.style.display   = '';
     } else {
       badge.className = 'scheduler-status closed';
-      title.textContent = 'Window is CLOSED';
+      title.textContent = 'Window is CLOSED' + monthSuffix;
       sub.textContent = config.openDate
         ? 'Last opened ' + formatDateShort(config.openDate)
         : 'No window has been opened yet';
@@ -3162,8 +3156,6 @@ async function loadScheduler() {
       closedState.style.display = '';
       openState.style.display   = 'none';
     }
-
-    if (monthLabel && config.targetMonthLabel) monthLabel.textContent = config.targetMonthLabel;
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
   }
@@ -3175,13 +3167,12 @@ async function applySchedulerSettings(settingsPromise) {
   const genBtn    = document.getElementById('sched-gen-btn');
   try {
     const s = await settingsPromise;
-    const month = s.targetMonth || '—';
     const count = s.submissionCount || 0;
+    const monthLabel = s.targetMonthLabel || s.targetMonth || '—';
     summaryEl.innerHTML =
-      'Target month: <strong>' + (s.targetMonthLabel || month) + '</strong><br>' +
-      'Submissions received: <strong>' + count + ' player' + (count !== 1 ? 's' : '') + '</strong>';
+      '<strong>' + count + '</strong> player' + (count !== 1 ? 's' : '') + ' submitted for <strong>' + monthLabel + '</strong>';
     genBtn.disabled = count < 3;
-    if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 submissions to generate.</span>';
+    if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 to generate.</span>';
   } catch(e) {
     summaryEl.innerHTML = '<span style="color:var(--warn);">Could not load settings.</span>';
   }
