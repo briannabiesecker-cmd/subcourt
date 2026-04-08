@@ -1314,8 +1314,8 @@ function getSchedulerSettings() {
       weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
       weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,
       weightRecency:       isNaN(wRec)  ? 1.5 : wRec,
-      solverIterations:    isNaN(iters) ? 200  : iters,
-      solverRestarts:      isNaN(rests) ? 5    : rests
+      solverIterations:    isNaN(iters) ? 800  : iters,
+      solverRestarts:      isNaN(rests) ? 10   : rests
     };
 
     var availConfig = getAvailabilityConfig();
@@ -1354,8 +1354,8 @@ function getSchedulerSettings() {
       weightGroupVariance: 0.5,
       weightSocialVariety: 2.0,
       weightRecency:       1.5,
-      solverIterations:    200,
-      solverRestarts:      5,
+      solverIterations:    800,
+      solverRestarts:      10,
       targetMonth:         '',
       targetMonthLabel:    '',
       submissionCount:     0
@@ -1444,8 +1444,8 @@ function getSchedulerDashboard() {
       weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
       weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,
       weightRecency:       isNaN(wRec)  ? 1.5 : wRec,
-      solverIterations:    isNaN(iters) ? 200  : iters,
-      solverRestarts:      isNaN(rests) ? 5    : rests
+      solverIterations:    isNaN(iters) ? 800  : iters,
+      solverRestarts:      isNaN(rests) ? 10   : rests
     };
   } catch(e) {
     return { error: 'Could not load scheduler dashboard.' };
@@ -1631,8 +1631,8 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
     sitOutPlayer = pool.splice(sitOutIdx, 1)[0];
   }
 
-  var iters    = settings.solverIterations || 200;
-  var restarts = settings.solverRestarts   || 5;
+  var iters    = settings.solverIterations || 800;
+  var restarts = settings.solverRestarts   || 10;
   var wTV = settings.weightTeamVariance  || 1.0;
   var wGV = settings.weightGroupVariance || 0.5;
   var wSV = settings.weightSocialVariety || 2.0;
