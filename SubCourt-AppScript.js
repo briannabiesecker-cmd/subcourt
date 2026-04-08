@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════
 // SUBCOURT — Apps Script Web App
-// MTC Tennis Team
+// MWF Tennis League
 // ══════════════════════════════════════════════════
 
 const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
@@ -630,6 +630,7 @@ function sendAdminCode(params) {
   MailApp.sendEmail({
     to: email,
     subject: 'Rally — Your Admin Access Code',
+    name: 'MWF Tennis League',
     body: 'Your Rally admin access code is: ' + code +
           '\n\nThis code expires in 10 minutes.' +
           '\n\nIf you did not request this, please ignore this email.'
@@ -907,7 +908,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   groupPlayers = groupPlayers || [];
   const dateStr    = formatDate(data.matchDate);
   const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
-  const senderName = 'MTC Tennis Team';
+  const senderName = 'MWF Tennis League';
 
   // To: requestor + sub   CC: group partners
   const toAddresses = [data.requestorEmail, data.subEmail].filter(Boolean).join(', ');
@@ -915,7 +916,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   const ccAddresses = ccList.join(', ');
 
   const subject =
-    'MTC Tennis — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
+    'MWF Tennis League — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
 
   const body =
     'Hi team,\n\n' +
@@ -923,7 +924,7 @@ function sendConfirmationEmails(data, groupPlayers) {
     ' on ' + dateStr + ' at ' + timeStr + '.\n\n' +
     'No further action needed. Please plan to arrive at least 10 minutes early.\n\n' +
     'See you on the court!\n\n' +
-    'MTC Tennis Team';
+    'MWF Tennis League';
 
   var emailParams = {
     to:      toAddresses,
@@ -1083,12 +1084,12 @@ function checkAvailabilityWindow() {
     'Open the Rally app to submit:\n' +
     'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
     'See you on the court!\n' +
-    'MTC Tennis Team';
+    'MWF Tennis League';
 
   var emails = missing.map(function(p) { return p.email; }).filter(Boolean);
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + emails.length + ' player(s): ' + emails.join(', '));
   if (isEmailEnabled()) {
-    MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
+    MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
   }
 }
 
@@ -1121,8 +1122,8 @@ function openAvailabilityWindow(params) {
       'Open the Rally app to get started:\n' +
       'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
       'See you on the court!\n' +
-      'MTC Tennis Team';
-    if (isEmailEnabled()) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MTC Tennis Team' });
+      'MWF Tennis League';
+    if (isEmailEnabled()) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
   }
 
   return { success: true, playerCount: emails.length };
@@ -1220,9 +1221,9 @@ function submitAvailability(params) {
       (notes ? 'Notes: ' + notes + '\n\n' : '') +
       'If you need to make changes, you can re-submit before the window closes.\n\n' +
       'See you on the court!\n' +
-      'MTC Tennis Team';
+      'MWF Tennis League';
 
-    if (isEmailEnabled()) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MTC Tennis Team' });
+    if (isEmailEnabled()) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MWF Tennis League' });
   } catch(err) {
     Logger.log('Confirmation email failed: ' + err.message);
   }
