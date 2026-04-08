@@ -3077,9 +3077,7 @@ async function runGenerateSchedule() {
 function playerCell(p, isCaptain) {
   if (!p || !p.name) return '';
   const c = isCaptain ? '<span class="captain-badge">C</span>' : '';
-  const r = (p.rating != null && p.rating !== 0)
-    ? '<span class="player-rating">(' + Number(p.rating).toFixed(1) + ')</span>' : '';
-  return c + p.name + r;
+  return c + p.name;
 }
 
 function renderScheduleTable(slots) {
