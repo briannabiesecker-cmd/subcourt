@@ -3396,10 +3396,10 @@ function renderScheduleMetrics(data) {
   const spreadClass = spreadLabel.toLowerCase();
 
   let newPairs = 0;
-  let repeatCount = 0;
+  let repeatPairs = 0;
   Object.values(monthPairs).forEach(count => {
     if (count === 1) newPairs++;
-    else repeatCount += count;
+    else repeatPairs++;
   });
   const uniquePairings = Object.keys(monthPairs).length;
   const freshPct = uniquePairings > 0 ? Math.round((newPairs / uniquePairings) * 100) : 100;
@@ -3437,7 +3437,7 @@ function renderScheduleMetrics(data) {
         <div class="metric-value">${freshPct}%<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> unique</span>
           <span class="metric-badge ${socialClass}">${socialLabel}</span>
         </div>
-        <div class="metric-sub">${uniquePairings} pairings this month, ${newPairs} first-time.${repeatCount ? ' ' + repeatCount + ' repeat slots.' : ''}</div>
+        <div class="metric-sub">${newPairs} of ${uniquePairings} pairings are unique.${repeatPairs ? ' ' + repeatPairs + ' pair' + (repeatPairs !== 1 ? 's' : '') + ' repeat.' : ''}</div>
       </div>
     </div>`;
 }
