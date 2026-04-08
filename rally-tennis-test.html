@@ -1656,9 +1656,9 @@
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
             <div style="font-size:17px;font-weight:700;color:var(--ink);" id="sched-results-title">Schedule Preview</div>
             <div class="flex gap8">
-              <button class="btn btn-secondary" onclick="exportScheduleExcel()">Export to Excel</button>
-              <button class="btn btn-secondary" onclick="exportSchedulePDF()">Export to PDF</button>
               <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
+              <button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;cursor:not-allowed;">Export to Excel</button>
+              <button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;cursor:not-allowed;">Export to PDF</button>
             </div>
           </div>
           <!-- Optimization Metrics -->
@@ -3581,6 +3581,11 @@ async function publishScheduleToSheet() {
 
     showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.');
     btn.textContent = 'Published ✓';
+    // Unlock exports now that published version is in sync
+    const excelBtn = document.getElementById('sched-excel-btn');
+    const pdfBtn   = document.getElementById('sched-pdf-btn');
+    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.cursor = '';
+    pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.cursor = '';
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
