@@ -3415,7 +3415,7 @@ function renderScheduleMetrics(data) {
         <div class="metric-value">${avgTeamGap.toFixed(2)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> avg gap</span>
           <span class="metric-badge ${compClass}">${compLabel}</span>
         </div>
-        <div class="metric-sub">Avg rating difference between teams per court. Lower = closer matches.</div>
+        <div class="metric-sub">On average, the two teams on each court are ${avgTeamGap.toFixed(2)} rating points apart. Closer = tighter matches.</div>
         <div class="date-dots" title="Per-date competitiveness">
           ${perDateGaps.map(d => {
             const c = d.avgGap < 0.3 ? 'excellent' : d.avgGap < 0.6 ? 'good' : 'fair';
