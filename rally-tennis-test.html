@@ -1476,6 +1476,7 @@
         <button class="inner-tab active" onclick="showAdminTab('scheduler', this)">Scheduler</button>
         <button class="inner-tab" onclick="showAdminTab('players', this)">Player Profiles</button>
         <button class="inner-tab" onclick="showAdminTab('dispatch', this)">Dispatch</button>
+        <button class="inner-tab" onclick="showAdminTab('settings', this)">Settings</button>
       </div>
 
       <div id="admin-tab-players" style="display:none;">
@@ -1522,19 +1523,6 @@
           </div>
         </div>
 
-        <!-- Email notifications toggle card -->
-        <div class="card mt8" style="max-width:520px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-            <div>
-              <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:2px;">Email Notifications</div>
-              <div style="font-size:13px;color:var(--ink-light);">Controls all outbound player emails (availability window, reminders, confirmations). Admin OTP always sends.</div>
-            </div>
-            <div id="email-toggle-wrap" style="flex-shrink:0;">
-              <div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
-            </div>
-          </div>
-        </div>
-
         <!-- Generate Schedule card -->
         <div class="card mt8" style="max-width:520px;">
           <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
@@ -1556,6 +1544,30 @@
           </div>
           <div style="overflow-x:auto;">
             <table class="sched-table" id="sched-table"></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SETTINGS TAB ── -->
+      <div id="admin-tab-settings" style="display:none;">
+        <div id="settings-alert" class="hidden" style="margin-top:1rem;"></div>
+
+        <div class="card mt8" style="max-width:560px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+            <div style="flex:1;">
+              <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Email Notifications</div>
+              <div style="font-size:14px;color:var(--ink-mid);margin-bottom:12px;">Master on/off switch for all outbound player emails. Admin login codes always send regardless of this setting.</div>
+              <div style="font-size:13px;color:var(--ink-light);line-height:1.7;">
+                <div style="font-weight:600;color:var(--ink-mid);margin-bottom:4px;">Emails included:</div>
+                <div>📬 <strong>Availability window opens</strong> — sent to all players when you click Open Window</div>
+                <div>⏰ <strong>T-2 day reminder</strong> — sent to players who haven't submitted yet, 2 days before the window closes</div>
+                <div>🔔 <strong>T-1 day reminder</strong> — sent to players who still haven't submitted, 1 day before close</div>
+                <div>✅ <strong>Submission confirmation</strong> — sent to each player after they submit their availability</div>
+              </div>
+            </div>
+            <div id="email-toggle-wrap" style="flex-shrink:0;padding-top:4px;">
+              <div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2600,6 +2612,7 @@ function unlockAdmin(name) {
   document.getElementById('admin-tab-scheduler').style.display = '';
   document.getElementById('admin-tab-players').style.display   = 'none';
   document.getElementById('admin-tab-dispatch').style.display  = 'none';
+  document.getElementById('admin-tab-settings').style.display  = 'none';
   loadScheduler();
 }
 
@@ -2628,9 +2641,11 @@ function showAdminTab(tab, btn) {
   document.getElementById('admin-tab-dispatch').style.display  = tab === 'dispatch'  ? '' : 'none';
   document.getElementById('admin-tab-players').style.display   = tab === 'players'   ? '' : 'none';
   document.getElementById('admin-tab-scheduler').style.display = tab === 'scheduler' ? '' : 'none';
+  document.getElementById('admin-tab-settings').style.display  = tab === 'settings'  ? '' : 'none';
   if (tab === 'dispatch')  loadDispatch();
   if (tab === 'players')   loadCoordinatorRatings();
   if (tab === 'scheduler') loadScheduler();
+  if (tab === 'settings')  loadEmailToggle();
 }
 
 // ══════════════════════════════════════════════════
@@ -3011,7 +3026,6 @@ async function loadScheduler() {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
   }
   loadSchedulerSettings();
-  loadEmailToggle();
 }
 
 async function loadSchedulerSettings() {
