@@ -2814,9 +2814,12 @@ async function loadCoordinatorRatings(forceRefresh) {
     }
 
     playerRatings = (result.players || []).sort((a, b) => {
-      const ra = a.myRating !== '' ? parseFloat(a.myRating) : -1;
-      const rb = b.myRating !== '' ? parseFloat(b.myRating) : -1;
-      return rb - ra;
+      const aHas = a.myRating !== '' && a.myRating !== null;
+      const bHas = b.myRating !== '' && b.myRating !== null;
+      if (!aHas && bHas) return -1;
+      if (aHas && !bHas) return 1;
+      if (!aHas && !bHas) return 0;
+      return parseFloat(b.myRating) - parseFloat(a.myRating);
     });
     if (!playerRatings.length) {
       document.getElementById('players-grid').innerHTML =
