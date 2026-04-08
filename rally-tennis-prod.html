@@ -2955,7 +2955,7 @@ async function loadEmailToggle() {
     const s = await apiGetWithParams({ action: 'getEmailSettings' });
     renderEmailToggle(s.emailEnabled);
   } catch(e) {
-    wrap.innerHTML = '<span style="font-size:13px;color:var(--danger);">Could not load</span>';
+    wrap.innerHTML = '<span style="font-size:13px;color:var(--danger);">Error: ' + e.message + '</span>';
   }
 }
 
