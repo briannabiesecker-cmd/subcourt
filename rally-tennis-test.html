@@ -996,6 +996,14 @@
   .scheduler-status.closed .scheduler-status-title { color: var(--ink-mid); }
   .scheduler-status-sub { font-size: 13px; margin-top: 2px; color: var(--ink-light); }
 
+  .scheduler-row {
+    display: grid;
+    grid-template-columns: 55% 45%;
+    gap: 1rem;
+    align-items: start;
+  }
+  .scheduler-row > .card { max-width: none; }
+
   @media (max-width: 700px) {
     .home-title { font-size: 22px; }
     .home-subtitle { font-size: 14px; }
@@ -1004,6 +1012,7 @@
     .time-chip { width: 38px; height: 36px; font-size: 12px; }
     .avail-grid thead th { font-size: 11px; }
     .avail-grid tbody td:first-child { min-width: 90px; font-size: 14px; }
+    .scheduler-row { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -1502,7 +1511,9 @@
 
       <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
-        <div class="card mt8" style="max-width:520px;">
+        <div class="scheduler-row mt8">
+
+        <div class="card">
 
           <!-- Status badge -->
           <div id="scheduler-status-badge" class="scheduler-status closed">
@@ -1553,12 +1564,14 @@
         </div>
 
         <!-- Generate Schedule card -->
-        <div class="card mt8" style="max-width:520px;">
+        <div class="card">
           <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
           <div id="sched-gen-summary" class="sched-gen-summary">
             <div class="loading"><div class="spinner"></div>Loading…</div>
           </div>
           <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled>Generate</button>
+        </div>
+
         </div>
 
         <!-- Results -->
