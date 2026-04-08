@@ -3311,27 +3311,33 @@ async function publishScheduleToSheet() {
   const btn = document.getElementById('sched-save-btn');
   btn.disabled = true;
   btn.textContent = 'Publishing…';
-  try {
-    // Strip rating and other unused fields to keep the URL within JSONP limits
-    const slimSlots = scheduleData.slots
-      .filter(s => !s.skipped)
-      .map(s => ({
-        date:     s.date,
-        groups:   (s.groups || []).map(g => g.map(p => ({ name: p.name, email: p.email }))),
-        captains: s.captains || [],
-        sitOut:   s.sitOut ? { name: s.sitOut.name, email: s.sitOut.email } : null
-      }));
 
-    const result = await apiPost({
-      action: 'publishSchedule',
-      month:  scheduleData.month,
-      slots:  JSON.stringify(slimSlots)
-    });
-    if (!result.success) { showAlert('scheduler-alert', 'error', result.error || 'Publish failed.'); return; }
-    showAlert('scheduler-alert', 'success', 'Schedule published — ' + result.groupsPublished + ' group(s) visible on the Schedule tab.');
+  const activeSlots = scheduleData.slots
+    .filter(s => !s.skipped)
+    .map(s => ({
+      date:     s.date,
+      groups:   (s.groups || []).map(g => g.map(p => ({ name: p.name, email: p.email }))),
+      captains: s.captains || [],
+      sitOut:   s.sitOut ? { name: s.sitOut.name, email: s.sitOut.email } : null
+    }));
+
+  try {
+    // Step 1: clear existing rows for this month
+    const start = await apiPost({ action: 'publishScheduleStart', month: scheduleData.month });
+    if (!start.success) throw new Error(start.error || 'Could not clear existing data.');
+
+    // Step 2: send one slot per date (each request is small enough for JSONP)
+    let totalGroups = 0;
+    for (const slot of activeSlots) {
+      const res = await apiPost({ action: 'publishScheduleSlot', month: scheduleData.month, slot: JSON.stringify(slot) });
+      if (!res.success) throw new Error(res.error || 'Slot write failed.');
+      totalGroups += res.groupsWritten || 0;
+    }
+
+    showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.');
     btn.textContent = 'Published ✓';
   } catch(e) {
-    showAlert('scheduler-alert', 'error', 'Could not publish. Please try again.');
+    showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Publish';
   }

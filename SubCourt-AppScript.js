@@ -271,8 +271,10 @@ function doGet(e) {
     else if (action === 'generateSchedule')         result = generateSchedule(e.parameter);
     else if (action === 'saveSchedule')             result = saveSchedule(e.parameter);
     else if (action === 'publishSchedule')          result = publishSchedule(e.parameter);
+    else if (action === 'publishScheduleStart')     result = publishScheduleStart(e.parameter);
+    else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
-    else if (action === 'ping')            result = { version: 'V35', ts: new Date().toISOString() };
+    else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
       const reqs      = getRequests();
@@ -1758,6 +1760,49 @@ function publishSchedule(params) {
 
   Logger.log('publishSchedule: published ' + saved + ' group row(s) for ' + month);
   return { success: true, groupsPublished: saved };
+}
+
+// ── Chunked Publish Helpers ─────────────────────────
+// Step 1: clear existing rows for the month.
+function publishScheduleStart(params) {
+  var month = params.month || '';
+  if (!month) return { error: 'Month required.' };
+  var sheet = getOrCreateMatchGroupsSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var monthVals = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+    for (var i = monthVals.length - 1; i >= 0; i--) {
+      if (normalizeMonth(monthVals[i][0]) === month) sheet.deleteRow(i + 2);
+    }
+  }
+  return { success: true };
+}
+
+// Step 2: append one date's groups (called once per date slot).
+function publishScheduleSlot(params) {
+  var month = params.month || '';
+  var slot  = safeParseJSON(params.slot, null);
+  if (!slot || !slot.date) return { error: 'Invalid slot.' };
+  var sheet = getOrCreateMatchGroupsSheet();
+  var saved = 0;
+  var sitOutName  = slot.sitOut ? slot.sitOut.name  : '';
+  var sitOutEmail = slot.sitOut ? slot.sitOut.email : '';
+  (slot.groups || []).forEach(function(group, gi) {
+    var captainEmail = (slot.captains || [])[gi] || '';
+    var ordered = group.slice().sort(function(a, b) {
+      return a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0;
+    });
+    var p = ordered.concat([{name:'',email:''},{name:'',email:''},{name:'',email:''},{name:'',email:''}]);
+    sheet.appendRow([
+      new Date().toISOString(), month, slot.date,
+      String.fromCharCode(65 + gi),
+      p[0].name, p[0].email, p[1].name, p[1].email,
+      p[2].name, p[2].email, p[3].name, p[3].email,
+      sitOutName, sitOutEmail
+    ]);
+    saved++;
+  });
+  return { success: true, groupsWritten: saved };
 }
 
 // ── Get Published Schedule ──────────────────────────
