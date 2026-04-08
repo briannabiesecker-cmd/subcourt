@@ -1573,8 +1573,14 @@
       <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
 
+        <!-- Loading state -->
+        <div id="scheduler-loading" class="loading" style="margin:2rem 0;"><div class="spinner"></div>Loading scheduler…</div>
+
+        <!-- Content (hidden until loaded) -->
+        <div id="scheduler-content" style="display:none;">
+
         <!-- Month header -->
-        <div style="font-size:22px;font-weight:800;color:var(--ink);margin:1rem 0 0.5rem;" id="sched-month-header">Loading…</div>
+        <div style="font-size:22px;font-weight:800;color:var(--ink);margin:1rem 0 0.5rem;" id="sched-month-header"></div>
 
         <div class="alert alert-info" style="margin-bottom:1rem;">Open the availability window to collect player dates, then generate and publish the schedule.</div>
 
@@ -1582,10 +1588,16 @@
 
         <!-- Availability Window card -->
         <div class="card" id="sched-window-card" style="display:flex;flex-direction:column;">
-          <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Availability Window</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+            <div style="font-size:16px;font-weight:700;color:var(--ink);">Availability Window</div>
+            <div id="scheduler-status-badge" class="scheduler-status closed" style="margin:0;padding:4px 10px;border-radius:20px;">
+              <div class="scheduler-dot" style="width:10px;height:10px;"></div>
+              <div class="scheduler-status-title" id="scheduler-status-text" style="font-size:12px;"></div>
+            </div>
+          </div>
 
           <!-- CLOSED state: form to open window -->
-          <div id="window-closed-state" style="flex:1;display:flex;flex-direction:column;">
+          <div id="window-closed-state" style="display:none;flex:1;display:flex;flex-direction:column;">
             <div class="field" style="margin-bottom:0.75rem;flex:1;">
               <label style="font-size:15px;font-weight:600;">Close date</label>
               <div style="font-size:12px;color:var(--ink-light);margin:2px 0 4px;">Last day players can submit their availability.</div>
@@ -1614,17 +1626,10 @@
         <!-- Generate Schedule card -->
         <div class="card" style="display:flex;flex-direction:column;">
           <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Generate Schedule</div>
-          <div id="scheduler-status-badge" class="scheduler-status closed" style="margin-bottom:0.75rem;padding:8px 12px;">
-            <div class="scheduler-dot"></div>
-            <div>
-              <div class="scheduler-status-title" id="scheduler-status-text" style="font-size:13px;">Loading…</div>
-              <div class="scheduler-status-sub" id="scheduler-status-sub" style="font-size:11px;"></div>
-            </div>
-          </div>
-          <div id="sched-gen-summary" class="sched-gen-summary" style="flex:1;">
-            <div class="loading"><div class="spinner"></div>Loading…</div>
-          </div>
+          <div id="sched-gen-summary" class="sched-gen-summary" style="flex:1;"></div>
           <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled style="width:100%;font-size:15px;padding:12px;">Generate</button>
+        </div>
+
         </div>
 
         </div>
@@ -3116,67 +3121,66 @@ async function toggleEmail(enable) {
 }
 
 async function loadScheduler() {
-  // Fire both requests in parallel — cuts load time in half
+  const loadingEl = document.getElementById('scheduler-loading');
+  const contentEl = document.getElementById('scheduler-content');
+  loadingEl.style.display = '';
+  contentEl.style.display = 'none';
+
+  // Fire both requests in parallel
   const configP   = apiGetWithParams({ action: 'getAvailabilityConfig' });
   const settingsP = apiGetWithParams({ action: 'getSchedulerSettings' });
 
   try {
-    const config = await configP;
+    const [config, settings] = await Promise.all([configP, settingsP]);
+
+    // --- Populate config side ---
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
-    const sub    = document.getElementById('scheduler-status-sub');
     const monthHeader = document.getElementById('sched-month-header');
-
     const closedState = document.getElementById('window-closed-state');
     const openState   = document.getElementById('window-open-state');
 
-    // Month header
     if (config.targetMonthLabel) monthHeader.textContent = config.targetMonthLabel;
 
     if (config.isOpen) {
       badge.className = 'scheduler-status open';
-      title.textContent = 'Window Open';
+      badge.style.background = 'var(--success-bg)';
+      title.textContent = 'Open';
 
       if (config.closeDate) {
         const today = new Date(); today.setHours(0,0,0,0);
         const close = new Date(config.closeDate + 'T00:00:00');
         const days = Math.round((close - today) / 864e5);
-        sub.textContent = days === 0 ? 'Closes today' :
-                          days === 1 ? 'Closes tomorrow' :
-                          'Closes in ' + days + ' days';
         const closeLabel = document.getElementById('window-open-close-label');
         if (closeLabel) closeLabel.textContent = formatDateShort(config.closeDate);
       }
 
       closedState.style.display = 'none';
-      openState.style.display   = '';
+      openState.style.display   = 'flex';
     } else {
       badge.className = 'scheduler-status closed';
-      title.textContent = 'Window Closed';
-      sub.textContent = '';
+      title.textContent = 'Closed';
 
-      closedState.style.display = '';
+      closedState.style.display = 'flex';
       openState.style.display   = 'none';
     }
-  } catch(e) {
-    showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
-  }
-  applySchedulerSettings(settingsP).catch(() => {});
-}
 
-async function applySchedulerSettings(settingsPromise) {
-  const summaryEl = document.getElementById('sched-gen-summary');
-  const genBtn    = document.getElementById('sched-gen-btn');
-  try {
-    const s = await settingsPromise;
-    const count = s.submissionCount || 0;
-    const monthLabel = s.targetMonthLabel || s.targetMonth || '—';
+    // --- Populate settings side ---
+    const summaryEl = document.getElementById('sched-gen-summary');
+    const genBtn    = document.getElementById('sched-gen-btn');
+    const count = settings.submissionCount || 0;
+    const monthLabel = settings.targetMonthLabel || settings.targetMonth || '—';
     summaryEl.innerHTML =
       '<strong>' + count + '</strong> player' + (count !== 1 ? 's' : '') + ' submitted for <strong>' + monthLabel + '</strong>';
     genBtn.disabled = count < 3;
     if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 to generate.</span>';
+
+    // Reveal everything at once
+    loadingEl.style.display = 'none';
+    contentEl.style.display = '';
   } catch(e) {
-    summaryEl.innerHTML = '<span style="color:var(--warn);">Could not load settings.</span>';
+    loadingEl.style.display = 'none';
+    showAlert('scheduler-alert', 'error', 'Could not load scheduler. Please try again.');
   }
 }
 
