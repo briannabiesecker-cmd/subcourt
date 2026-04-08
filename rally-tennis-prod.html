@@ -1033,9 +1033,9 @@
     </div>
 
     <div class="home-actions">
-      <div id="home-avail-card" class="home-card home-card-avail"
+      <div id="home-avail-card" class="home-card home-card-avail home-card-avail-closed"
         onclick="showView('availability', document.querySelector('nav button:nth-child(5)'))">
-        <div class="home-card-icon">📅</div>
+        <div class="home-card-icon">📆</div>
         <div class="home-card-title">My availability</div>
         <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
         <button class="home-card-btn home-card-btn-avail">Submit</button>
@@ -1289,7 +1289,7 @@
     <!-- Window closed, no submission -->
     <div id="avail-closed-panel" style="display:none;">
       <div class="card" style="text-align:center;padding:2.5rem 2rem;">
-        <div style="font-size:48px;margin-bottom:1rem;">📅</div>
+        <div style="font-size:48px;margin-bottom:1rem;">📆</div>
         <div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Submissions are closed right now</div>
         <div id="avail-closed-msg" style="font-size:17px;color:var(--ink-mid);line-height:1.6;margin-bottom:1.5rem;">The coordinator will send you an email when the window opens. Check back then.</div>
         <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
@@ -2796,18 +2796,7 @@ function renderAvailabilityView() {
   document.getElementById('avail-open-panel').style.display     = 'none';
 
   // Update home card
-  const homeCard = document.getElementById('home-avail-card');
-  const homeDesc = document.getElementById('home-avail-desc');
-  if (isOpen) {
-    homeCard.classList.remove('home-card-avail-closed');
-    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(5)'));
-    const closeFmt = closeDate ? formatDateShort(closeDate) : '';
-    homeDesc.textContent = 'Submit your available dates for ' + (targetMonthLabel || 'next month') + (closeFmt ? '. Closes ' + closeFmt + '.' : '.');
-  } else {
-    homeCard.classList.add('home-card-avail-closed');
-    homeCard.onclick = null;
-    homeDesc.textContent = 'The coordinator will notify you when it\'s time to submit your availability.';
-  }
+  applyAvailConfigToHomeCard(availConfig);
 
   if (isOpen) {
     document.getElementById('avail-open-panel').style.display = 'block';
@@ -3518,14 +3507,31 @@ async function closeAvailWindow() {
 // INIT
 // ══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  // Pre-warm player cache so typeaheads feel instant
-  loadPlayerList().catch(() => {});
-  // Load availability config for home card state
-  apiGetWithParams({ action: 'getAvailabilityConfig' }).then(config => {
-    availConfig = config;
-    renderAvailabilityView();
+  // Single call returns players + availConfig — avoids two cold-start round trips
+  apiGetWithParams({ action: 'getHomeData' }).then(data => {
+    if (data.players)     playerList  = data.players;
+    if (data.availConfig) {
+      availConfig = data.availConfig;
+      applyAvailConfigToHomeCard(availConfig);
+    }
   }).catch(() => {});
 });
+
+function applyAvailConfigToHomeCard(config) {
+  const homeCard = document.getElementById('home-avail-card');
+  const homeDesc = document.getElementById('home-avail-desc');
+  if (!homeCard) return;
+  if (config.isOpen) {
+    homeCard.classList.remove('home-card-avail-closed');
+    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(5)'));
+    const closeFmt = config.closeDate ? formatDateShort(config.closeDate) : '';
+    homeDesc.textContent = 'Submit your available dates for ' + (config.targetMonthLabel || 'next month') + (closeFmt ? '. Closes ' + closeFmt + '.' : '.');
+  } else {
+    homeCard.classList.add('home-card-avail-closed');
+    homeCard.onclick = null;
+    homeDesc.textContent = 'The coordinator will notify you when it\'s time to submit your availability.';
+  }
+}
 
 
 </script>

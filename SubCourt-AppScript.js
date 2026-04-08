@@ -244,6 +244,7 @@ function doGet(e) {
     if (action === 'getRequests')          result = getRequests();
     else if (action === 'getVolunteers')   result = getVolunteers();
     else if (action === 'getPlayers')      result = getPlayers();
+    else if (action === 'getHomeData')     result = getHomeData();
     else if (action === 'getConfig')       result = getConfig();
     else if (action === 'submitRequest')   result = submitRequest(e.parameter);
     else if (action === 'submitVolunteer') result = submitVolunteer(e.parameter);
@@ -271,7 +272,7 @@ function doGet(e) {
     else if (action === 'saveSchedule')             result = saveSchedule(e.parameter);
     else if (action === 'publishSchedule')          result = publishSchedule(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
-    else if (action === 'ping')            result = { version: 'V34', ts: new Date().toISOString() };
+    else if (action === 'ping')            result = { version: 'V35', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
       const reqs      = getRequests();
@@ -449,6 +450,14 @@ function getPlayers() {
     email: (r[1] || '').toLowerCase()
     // rating intentionally excluded from public response
   }));
+}
+
+// Combined home-page bootstrap call — returns players + availConfig in one round trip.
+function getHomeData() {
+  return {
+    players:     getPlayers(),
+    availConfig: getAvailabilityConfig()
+  };
 }
 
 function getDispatchLog() {
