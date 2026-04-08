@@ -980,64 +980,64 @@
   .sched-gen-summary strong { color: var(--ink); }
 
   /* ── Optimization Metrics ── */
-  .metrics-grid {
+  .metrics-banner {
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    overflow: hidden;
   }
-  .metric-card {
-    background: white;
-    border-radius: var(--radius);
-    padding: 16px;
-    box-shadow: var(--shadow-sm);
-    border-left: 4px solid var(--court);
+  .metrics-banner .metric {
+    padding: 14px 18px;
+    border-right: 1px solid var(--line);
   }
-  .metric-card.excellent { border-left-color: var(--success); }
-  .metric-card.good { border-left-color: var(--court); }
-  .metric-card.fair { border-left-color: var(--warn); }
-  .metric-label {
+  .metrics-banner .metric:last-child { border-right: none; }
+  .metric-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .metric-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .metric-dot.excellent { background: var(--success); }
+  .metric-dot.good { background: var(--court); }
+  .metric-dot.fair { background: #D4A017; }
+  .metric-head .label {
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: var(--ink-light);
-    margin-bottom: 4px;
   }
-  .metric-value {
-    font-size: 24px;
+  .metric-num {
+    font-size: 22px;
     font-weight: 800;
     color: var(--ink);
     line-height: 1.2;
   }
-  .metric-sub {
-    font-size: 13px;
+  .metric-num span { font-size: 13px; font-weight: 500; color: var(--ink-light); }
+  .metric-desc {
+    font-size: 12px;
     color: var(--ink-light);
-    margin-top: 4px;
     line-height: 1.4;
+    margin-top: 2px;
   }
-  .metric-badge {
+  .date-quality-dot {
     display: inline-block;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-left: 6px;
-    vertical-align: middle;
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; vertical-align: middle;
   }
-  .metric-badge.excellent { background: var(--success-bg); color: var(--success); }
-  .metric-badge.good { background: var(--teal-light); color: var(--court); }
-  .metric-badge.fair { background: var(--warn-bg); color: var(--warn); }
-  .date-dots { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
-  .date-dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    title: attr(data-tip);
-  }
-  .date-dot.excellent { background: var(--success); }
-  .date-dot.good { background: var(--court); }
-  .date-dot.fair { background: #D4A017; }
+  .date-quality-dot.excellent { background: var(--success); }
+  .date-quality-dot.good { background: var(--court); }
+  .date-quality-dot.fair { background: #D4A017; }
 
   @media (max-width: 700px) {
-    .metrics-grid { grid-template-columns: 1fr; }
+    .metrics-banner { grid-template-columns: 1fr; }
+    .metrics-banner .metric { border-right: none; border-bottom: 1px solid var(--line); }
+    .metrics-banner .metric:last-child { border-bottom: none; }
   }
 
   /* ── Scheduler (admin) ── */
@@ -3304,6 +3304,10 @@ function renderScheduleTable(slots) {
   slots.forEach((slot, si) => {
     const dateLabel = fmt(slot.date);
     const isFirst   = si === 0 || slots[si - 1].date !== slot.date;
+    const dateGap   = window._dateGaps ? window._dateGaps[slot.date] : null;
+    const dotClass  = dateGap !== null && dateGap !== undefined
+      ? (dateGap < 0.3 ? 'excellent' : dateGap < 0.6 ? 'good' : 'fair') : '';
+    const dotHtml   = dotClass ? '<span class="date-quality-dot ' + dotClass + '" title="Team gap: ' + dateGap.toFixed(2) + '"></span>' : '';
 
     if (slot.skipped) {
       html += '<tr class="skipped-row' + (isFirst ? ' date-first' : '') + '">' +
@@ -3316,13 +3320,12 @@ function renderScheduleTable(slots) {
     slot.groups.forEach((group, gi) => {
       const firstRow     = gi === 0;
       const captainEmail = (slot.captains || [])[gi] || '';
-      // Captain always in Player 1 column
       const ordered = [...group].sort((a, b) =>
         a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0
       ).concat([{},{},{},{}]);
       const sitOut = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
       html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
-        '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
+        '<td class="date-cell">' + (firstRow ? dotHtml + dateLabel : '') + '</td>' +
         '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
         '<td>' + playerCell(ordered[0], ordered[0].email === captainEmail) + '</td>' +
         '<td>' + playerCell(ordered[1], ordered[1].email === captainEmail) + '</td>' +
@@ -3406,38 +3409,28 @@ function renderScheduleMetrics(data) {
   const socialLabel = freshPct >= 85 ? 'Excellent' : freshPct >= 70 ? 'Good' : 'Fair';
   const socialClass = socialLabel.toLowerCase();
 
+  // Store per-date gaps for schedule table dots
+  window._dateGaps = {};
+  perDateGaps.forEach(d => { window._dateGaps[d.date] = d.avgGap; });
+
   // --- Render ---
   el.style.display = '';
   el.innerHTML = `
-    <div class="metrics-grid">
-      <div class="metric-card ${compClass}">
-        <div class="metric-label">Match Competitiveness</div>
-        <div class="metric-value">${avgTeamGap.toFixed(2)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> avg gap</span>
-          <span class="metric-badge ${compClass}">${compLabel}</span>
-        </div>
-        <div class="metric-sub">On average, the two teams on each court are ${avgTeamGap.toFixed(2)} rating points apart. Closer = tighter matches.</div>
-        <div class="date-dots" title="Per-date competitiveness">
-          ${perDateGaps.map(d => {
-            const c = d.avgGap < 0.3 ? 'excellent' : d.avgGap < 0.6 ? 'good' : 'fair';
-            const [y,m,dy] = d.date.split('-').map(Number);
-            const label = new Date(y, m-1, dy).toLocaleDateString('en-US', {month:'short', day:'numeric'});
-            return `<div class="date-dot ${c}" title="${label}: ${d.avgGap.toFixed(2)} gap"></div>`;
-          }).join('')}
-        </div>
+    <div class="metrics-banner">
+      <div class="metric">
+        <div class="metric-head"><div class="metric-dot ${compClass}"></div><span class="label">Team Gap</span></div>
+        <div class="metric-num">${avgTeamGap.toFixed(2)} <span>pts</span></div>
+        <div class="metric-desc">Avg gap between teams per court. Closer = tighter matches.</div>
       </div>
-      <div class="metric-card ${spreadClass}">
-        <div class="metric-label">Skill Balance</div>
-        <div class="metric-value">${avgSpread.toFixed(1)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> pts apart</span>
-          <span class="metric-badge ${spreadClass}">${spreadLabel}</span>
-        </div>
-        <div class="metric-sub">On average, players on each court are ${avgSpread.toFixed(1)} rating points apart. Closer = better matched games.</div>
+      <div class="metric">
+        <div class="metric-head"><div class="metric-dot ${spreadClass}"></div><span class="label">Skill Spread</span></div>
+        <div class="metric-num">${avgSpread.toFixed(1)} <span>pts apart</span></div>
+        <div class="metric-desc">Avg rating range on each court. Closer = better matched.</div>
       </div>
-      <div class="metric-card ${socialClass}">
-        <div class="metric-label">Social Variety</div>
-        <div class="metric-value">${freshPct}%<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> unique</span>
-          <span class="metric-badge ${socialClass}">${socialLabel}</span>
-        </div>
-        <div class="metric-sub">${newPairs} of ${uniquePairings} pairings are unique.${repeatPairs ? ' ' + repeatPairs + ' pair' + (repeatPairs !== 1 ? 's' : '') + ' repeat.' : ''}</div>
+      <div class="metric">
+        <div class="metric-head"><div class="metric-dot ${socialClass}"></div><span class="label">Social Variety</span></div>
+        <div class="metric-num">${freshPct}% <span>unique</span></div>
+        <div class="metric-desc">${newPairs} of ${uniquePairings} unique.${repeatPairs ? ' ' + repeatPairs + ' repeat.' : ''}</div>
       </div>
     </div>`;
 }
