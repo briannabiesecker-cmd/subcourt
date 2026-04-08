@@ -1059,9 +1059,9 @@
 
   .scheduler-row {
     display: grid;
-    grid-template-columns: 55% 45%;
+    grid-template-columns: 1fr 1fr;
     gap: 1rem;
-    align-items: start;
+    align-items: stretch;
   }
   .scheduler-row > .card { max-width: none; padding: 1.25rem; margin-bottom: 0; }
 
@@ -1573,19 +1573,10 @@
       <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
 
-        <!-- Month header with status -->
-        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:1rem 0 0.5rem;">
-          <div style="font-size:22px;font-weight:800;color:var(--ink);" id="sched-month-header">Loading…</div>
-          <div id="scheduler-status-badge" class="scheduler-status closed" style="margin-bottom:0;padding:6px 12px;">
-            <div class="scheduler-dot"></div>
-            <div>
-              <div class="scheduler-status-title" id="scheduler-status-text" style="font-size:14px;">Loading…</div>
-              <div class="scheduler-status-sub" id="scheduler-status-sub" style="font-size:12px;"></div>
-            </div>
-          </div>
-        </div>
+        <!-- Month header -->
+        <div style="font-size:22px;font-weight:800;color:var(--ink);margin:1rem 0 0.5rem;" id="sched-month-header">Loading…</div>
 
-        <div class="alert alert-info" style="margin-bottom:1rem;">Each month, open the availability window to collect player dates, then generate and publish the schedule.</div>
+        <div class="alert alert-info" style="margin-bottom:1rem;">Open the availability window to collect player dates, then generate and publish the schedule.</div>
 
         <div class="scheduler-row">
 
@@ -1623,6 +1614,13 @@
         <!-- Generate Schedule card -->
         <div class="card" style="display:flex;flex-direction:column;">
           <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Generate Schedule</div>
+          <div id="scheduler-status-badge" class="scheduler-status closed" style="margin-bottom:0.75rem;padding:8px 12px;">
+            <div class="scheduler-dot"></div>
+            <div>
+              <div class="scheduler-status-title" id="scheduler-status-text" style="font-size:13px;">Loading…</div>
+              <div class="scheduler-status-sub" id="scheduler-status-sub" style="font-size:11px;"></div>
+            </div>
+          </div>
           <div id="sched-gen-summary" class="sched-gen-summary" style="flex:1;">
             <div class="loading"><div class="spinner"></div>Loading…</div>
           </div>
