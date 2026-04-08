@@ -1572,24 +1572,32 @@
 
       <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
-        <div class="scheduler-row mt8">
 
-        <div class="card">
-
-          <!-- Status badge with month -->
-          <div id="scheduler-status-badge" class="scheduler-status closed">
+        <!-- Month header with status -->
+        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:1rem 0 0.5rem;">
+          <div style="font-size:22px;font-weight:800;color:var(--ink);" id="sched-month-header">Loading…</div>
+          <div id="scheduler-status-badge" class="scheduler-status closed" style="margin-bottom:0;padding:6px 12px;">
             <div class="scheduler-dot"></div>
             <div>
-              <div class="scheduler-status-title" id="scheduler-status-text">Loading…</div>
-              <div class="scheduler-status-sub" id="scheduler-status-sub"></div>
+              <div class="scheduler-status-title" id="scheduler-status-text" style="font-size:14px;">Loading…</div>
+              <div class="scheduler-status-sub" id="scheduler-status-sub" style="font-size:12px;"></div>
             </div>
           </div>
+        </div>
+
+        <div class="alert alert-info" style="margin-bottom:1rem;">Each month, open the availability window to collect player dates, then generate and publish the schedule.</div>
+
+        <div class="scheduler-row">
+
+        <!-- Availability Window card -->
+        <div class="card" id="sched-window-card" style="display:flex;flex-direction:column;">
+          <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Availability Window</div>
 
           <!-- CLOSED state: form to open window -->
-          <div id="window-closed-state">
-            <div class="field" style="margin-bottom:0.75rem;">
+          <div id="window-closed-state" style="flex:1;display:flex;flex-direction:column;">
+            <div class="field" style="margin-bottom:0.75rem;flex:1;">
               <label style="font-size:15px;font-weight:600;">Close date</label>
-              <div style="font-size:12px;color:var(--ink-light);margin:2px 0 4px;">Last day to submit. Players emailed on open; reminders at T-2 and T-1.</div>
+              <div style="font-size:12px;color:var(--ink-light);margin:2px 0 4px;">Last day players can submit their availability.</div>
               <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;" oninput="onCloseDateChange()" />
               <div id="sched-close-date-display" style="font-size:14px;font-weight:600;color:var(--ink-mid);margin-top:4px;"></div>
               <div id="sched-close-date-warning" style="display:none;font-size:13px;color:var(--danger);margin-top:4px;">⚠ Date is in the past.</div>
@@ -1601,25 +1609,21 @@
           </div>
 
           <!-- OPEN state: summary + close early option -->
-          <div id="window-open-state" style="display:none;">
-            <div style="font-size:14px;color:var(--ink-mid);margin-bottom:0.75rem;line-height:1.5;">
+          <div id="window-open-state" style="display:none;flex:1;display:flex;flex-direction:column;">
+            <div style="font-size:14px;color:var(--ink-mid);margin-bottom:0.75rem;line-height:1.5;flex:1;">
               Players can submit until <strong id="window-open-close-label"></strong>. Reminders auto-send at T-2 and T-1 days.
             </div>
-            <div style="padding-top:0.75rem;border-top:1px solid var(--line);">
-              <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()" style="font-size:13px;">
-                Close window early
-              </button>
-            </div>
+            <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()" style="width:100%;font-size:14px;padding:10px;">
+              Close Window Early
+            </button>
           </div>
 
         </div>
 
         <!-- Generate Schedule card -->
         <div class="card" style="display:flex;flex-direction:column;">
-          <div id="sched-gen-badge" class="scheduler-status closed" style="margin-bottom:auto;">
-            <div style="font-size:16px;font-weight:700;color:var(--ink);">Generate Schedule</div>
-          </div>
-          <div id="sched-gen-summary" class="sched-gen-summary">
+          <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Generate Schedule</div>
+          <div id="sched-gen-summary" class="sched-gen-summary" style="flex:1;">
             <div class="loading"><div class="spinner"></div>Loading…</div>
           </div>
           <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled style="width:100%;font-size:15px;padding:12px;">Generate</button>
@@ -3123,23 +3127,25 @@ async function loadScheduler() {
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
     const sub    = document.getElementById('scheduler-status-sub');
+    const monthHeader = document.getElementById('sched-month-header');
 
     const closedState = document.getElementById('window-closed-state');
     const openState   = document.getElementById('window-open-state');
-    const monthSuffix = config.targetMonthLabel ? ' — ' + config.targetMonthLabel : '';
+
+    // Month header
+    if (config.targetMonthLabel) monthHeader.textContent = config.targetMonthLabel;
 
     if (config.isOpen) {
       badge.className = 'scheduler-status open';
-      title.textContent = 'Window is OPEN' + monthSuffix;
+      title.textContent = 'Window Open';
 
-      // Days remaining
       if (config.closeDate) {
         const today = new Date(); today.setHours(0,0,0,0);
         const close = new Date(config.closeDate + 'T00:00:00');
         const days = Math.round((close - today) / 864e5);
         sub.textContent = days === 0 ? 'Closes today' :
                           days === 1 ? 'Closes tomorrow' :
-                          'Closes in ' + days + ' days (' + formatDateShort(config.closeDate) + ')';
+                          'Closes in ' + days + ' days';
         const closeLabel = document.getElementById('window-open-close-label');
         if (closeLabel) closeLabel.textContent = formatDateShort(config.closeDate);
       }
@@ -3148,10 +3154,10 @@ async function loadScheduler() {
       openState.style.display   = '';
     } else {
       badge.className = 'scheduler-status closed';
-      title.textContent = 'Window is CLOSED' + monthSuffix;
+      title.textContent = 'Window Closed';
       sub.textContent = config.openDate
         ? 'Last opened ' + formatDateShort(config.openDate)
-        : 'No window has been opened yet';
+        : '';
 
       closedState.style.display = '';
       openState.style.display   = 'none';
