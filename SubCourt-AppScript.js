@@ -1311,9 +1311,17 @@ function getSchedulerSettings() {
         });
       }
     }
+    // Count total roster size
+    var playersSheet = ss.getSheetByName(TABS.players);
+    var rosterCount = 0;
+    if (playersSheet && playersSheet.getLastRow() >= 2) {
+      rosterCount = playersSheet.getLastRow() - 1;
+    }
+
     settings.targetMonth      = targetMonth;
     settings.targetMonthLabel = availConfig.targetMonthLabel;
     settings.submissionCount  = submissionCount;
+    settings.rosterCount      = rosterCount;
     return settings;
   } catch(e) {
     return {

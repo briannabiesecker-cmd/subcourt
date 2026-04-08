@@ -3172,11 +3172,18 @@ async function loadScheduler() {
     const summaryEl = document.getElementById('sched-gen-summary');
     const genBtn    = document.getElementById('sched-gen-btn');
     const count = settings.submissionCount || 0;
-    const monthLabel = settings.targetMonthLabel || settings.targetMonth || '—';
+    const roster = settings.rosterCount || 0;
+    const pct = roster > 0 ? Math.round((count / roster) * 100) : 0;
+    const barColor = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--court)' : 'var(--clay)';
     summaryEl.innerHTML =
-      '<strong>' + count + '</strong> player' + (count !== 1 ? 's' : '') + ' submitted for <strong>' + monthLabel + '</strong>';
+      '<div style="font-size:28px;font-weight:800;color:var(--ink);line-height:1.2;">' + count + ' <span style="font-size:16px;font-weight:500;color:var(--ink-light);">of ' + roster + '</span></div>' +
+      '<div style="font-size:13px;color:var(--ink-light);margin-bottom:10px;">players submitted</div>' +
+      '<div style="background:var(--chalk-dark);border-radius:6px;height:8px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:6px;transition:width 0.3s;"></div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--ink-light);margin-top:4px;text-align:right;">' + pct + '%</div>';
     genBtn.disabled = count < 3;
-    if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 to generate.</span>';
+    if (count < 3) summaryEl.innerHTML += '<div style="color:var(--warn);font-size:13px;margin-top:6px;">Need at least 3 to generate.</div>';
 
     // Reveal everything at once
     loadingEl.style.display = 'none';
