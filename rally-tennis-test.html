@@ -2813,7 +2813,11 @@ async function loadCoordinatorRatings(forceRefresh) {
       return;
     }
 
-    playerRatings = result.players || [];
+    playerRatings = (result.players || []).sort((a, b) => {
+      const ra = a.myRating !== '' ? parseFloat(a.myRating) : -1;
+      const rb = b.myRating !== '' ? parseFloat(b.myRating) : -1;
+      return rb - ra;
+    });
     if (!playerRatings.length) {
       document.getElementById('players-grid').innerHTML =
         '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
@@ -2832,7 +2836,8 @@ async function loadCoordinatorRatings(forceRefresh) {
               <td><input type="number" class="player-rating-input" id="pr-${i}"
                 min="1.0" max="5.0" step="0.5"
                 value="${p.myRating !== '' ? p.myRating : ''}"
-                placeholder="—" /></td>
+                placeholder="—"
+                onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
               <td><input type="checkbox" class="no8am-check" id="no8am-${i}"
                 ${p.no8am ? 'checked' : ''} /></td>
             </tr>
