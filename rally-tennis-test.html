@@ -3174,7 +3174,7 @@ async function loadScheduler() {
     const count = settings.submissionCount || 0;
     const roster = settings.rosterCount || 0;
     const pct = roster > 0 ? Math.round((count / roster) * 100) : 0;
-    const barColor = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--court)' : 'var(--clay)';
+    const barColor = pct >= 50 ? 'var(--success)' : 'var(--clay)';
     summaryEl.innerHTML =
       '<div style="font-size:28px;font-weight:800;color:var(--ink);line-height:1.2;">' + count + ' <span style="font-size:16px;font-weight:500;color:var(--ink-light);">of ' + roster + '</span></div>' +
       '<div style="font-size:13px;color:var(--ink-light);margin-bottom:10px;">players submitted</div>' +
