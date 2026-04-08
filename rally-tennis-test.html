@@ -1610,7 +1610,7 @@
           <div id="window-closed-state" style="display:none;flex:1;flex-direction:column;">
             <div class="field" style="margin-bottom:0.75rem;flex:1;">
               <label style="font-size:15px;font-weight:600;">Responses due by</label>
-              <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;margin-top:4px;" oninput="onCloseDateChange()" title="Players must submit by this date" />
+              <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;margin-top:4px;" oninput="onCloseDateChange()" />
               <div id="sched-close-date-display" style="font-size:14px;font-weight:600;color:var(--ink-mid);margin-top:4px;"></div>
               <div id="sched-close-date-warning" style="display:none;font-size:13px;color:var(--danger);margin-top:4px;">⚠ Date is in the past.</div>
               <div style="font-size:12px;color:var(--ink-light);margin-top:6px;line-height:1.5;">All players will be emailed when you open the window. Reminders sent 2 days and 1 day before the deadline.</div>
@@ -1637,7 +1637,7 @@
         <div class="card" style="display:flex;flex-direction:column;">
           <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Generate Schedule</div>
           <div id="sched-gen-summary" class="sched-gen-summary" style="flex:1;"></div>
-          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled style="width:100%;font-size:15px;padding:12px;" title="Build the monthly schedule from player availability">Generate</button>
+          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled style="width:100%;font-size:15px;padding:12px;">Generate</button>
         </div>
 
         </div>
@@ -1649,9 +1649,9 @@
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
             <div style="font-size:17px;font-weight:700;color:var(--ink);" id="sched-results-title">Schedule Preview</div>
             <div class="flex gap8">
-              <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()" title="Save the schedule and make it visible to all players">Publish</button>
-              <button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;cursor:not-allowed;" title="Publish the schedule first to enable export">Export to Excel</button>
-              <button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;cursor:not-allowed;" title="Publish the schedule first to enable export">Export to PDF</button>
+              <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
+              <span id="sched-excel-wrap" title="Publish the schedule first to enable export"><button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;pointer-events:none;">Export to Excel</button></span>
+              <span id="sched-pdf-wrap" title="Publish the schedule first to enable export"><button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;pointer-events:none;">Export to PDF</button></span>
             </div>
           </div>
           <!-- Optimization Metrics -->
@@ -2834,7 +2834,7 @@ async function loadCoordinatorRatings(forceRefresh) {
                 value="${p.myRating !== '' ? p.myRating : ''}"
                 placeholder="—"
                 onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
-              <td><input type="checkbox" class="no8am-check" id="no8am-${i}" title="Exclude this player from 8:00 AM time slots"
+              <td><input type="checkbox" class="no8am-check" id="no8am-${i}"
                 ${p.no8am ? 'checked' : ''} /></td>
             </tr>
           `).join('')}
@@ -3571,10 +3571,10 @@ async function publishScheduleToSheet() {
     // Unlock exports now that published version is in sync
     const excelBtn = document.getElementById('sched-excel-btn');
     const pdfBtn   = document.getElementById('sched-pdf-btn');
-    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.cursor = '';
-    excelBtn.title = 'Download the schedule as a spreadsheet';
-    pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.cursor = '';
-    pdfBtn.title = 'Download a printable version of the schedule';
+    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.pointerEvents = '';
+    pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.pointerEvents = '';
+    document.getElementById('sched-excel-wrap').title = '';
+    document.getElementById('sched-pdf-wrap').title = '';
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
