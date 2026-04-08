@@ -571,13 +571,13 @@ function testAdminAuth() {
   var lastCol = sheet.getLastColumn();
   Logger.log('lastRow=' + lastRow + ' lastCol=' + lastCol);
   // Read direct cell values
-  Logger.log('D1 direct: [' + sheet.getRange('D1').getValue() + '] type=' + typeof sheet.getRange('D1').getValue());
-  Logger.log('D2 direct: [' + sheet.getRange('D2').getValue() + '] type=' + typeof sheet.getRange('D2').getValue());
-  Logger.log('D3 direct: [' + sheet.getRange('D3').getValue() + '] type=' + typeof sheet.getRange('D3').getValue());
+  Logger.log('E1 direct: [' + sheet.getRange('E1').getValue() + '] type=' + typeof sheet.getRange('E1').getValue());
+  Logger.log('E2 direct: [' + sheet.getRange('E2').getValue() + '] type=' + typeof sheet.getRange('E2').getValue());
+  Logger.log('E3 direct: [' + sheet.getRange('E3').getValue() + '] type=' + typeof sheet.getRange('E3').getValue());
   // Also log what getLastColumn sees
-  var rows = sheet.getRange(1, 1, lastRow, 4).getValues();
+  var rows = sheet.getRange(1, 1, lastRow, 5).getValues();
   rows.forEach(function(r, i) {
-    Logger.log('Row ' + i + ': r[3]=[' + r[3] + '] type=' + typeof r[3]);
+    Logger.log('Row ' + i + ': r[4]=[' + r[4] + '] type=' + typeof r[4]);
   });
   Logger.log('isAdminEmail result: ' + isAdminEmail(testEmail));
 }
@@ -591,10 +591,10 @@ function debugAdmin(params) {
     totalRows: rows.length,
     rows: rows.map(function(r) {
       return {
-        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3],
-        col_D_type: typeof r[3],
+        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3], col_E: r[4],
+        col_E_type: typeof r[4],
         emailMatch: (r[1] || '').toLowerCase().trim() === email,
-        flagCheck: r[3] === true || String(r[3]).toUpperCase() === 'TRUE'
+        flagCheck: r[4] === true || String(r[4]).toUpperCase() === 'TRUE'
       };
     })
   };
@@ -604,12 +604,12 @@ function isAdminEmail(email) {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
-  // Read A:D explicitly — getDataRange() misses col D when booleans are stored as checkboxes
-  const rows = sheet.getRange(1, 1, lastRow, 4).getValues();
+  // Read A:E explicitly — getDataRange() misses col E when booleans are stored as checkboxes
+  const rows = sheet.getRange(1, 1, lastRow, 5).getValues();
   rows.shift(); // remove header
   return rows.some(function(r) {
     const rowEmail = (r[1] || '').toLowerCase().trim();
-    const flag     = r[3]; // column D = isAdmin
+    const flag     = r[4]; // column E = isAdmin
     return rowEmail === email.toLowerCase().trim() &&
            (flag === true || String(flag).toUpperCase() === 'TRUE');
   });
@@ -668,13 +668,13 @@ function getCoordinatorRatings(params) {
   var lastRow    = sheet.getLastRow();
   if (lastRow < 2) return { players: [] };
 
-  var lastCol  = Math.max(sheet.getLastColumn(), 10); // ensure we read through col J (No8am)
+  var lastCol  = Math.max(sheet.getLastColumn(), 10); // ensure we read through col J (coordinators)
   var allData  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers  = allData[0];
 
-  // Find this coordinator's column (cols E–I = index 4–8)
+  // Find this coordinator's column (cols F–J = index 5–9)
   var coordColIdx = -1;
-  for (var i = 4; i <= 8; i++) {
+  for (var i = 5; i <= 9; i++) {
     if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
       coordColIdx = i;
       break;
@@ -687,7 +687,7 @@ function getCoordinatorRatings(params) {
   for (var r = 1; r < allData.length; r++) {
     var row = allData[r];
     if (!row[0]) continue;
-    var no8amVal = row[9];
+    var no8amVal = row[3];
     players.push({
       name:     row[0] || '',
       email:    (row[1] || '').toLowerCase(),
@@ -707,9 +707,9 @@ function saveCoordinatorRatings(params) {
   var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers    = allData[0];
 
-  // Find coordinator column — must be pre-assigned in sheet header (cols E–I)
+  // Find coordinator column — must be pre-assigned in sheet header (cols F–J)
   var coordColIdx = -1;
-  for (var i = 4; i <= 8; i++) {
+  for (var i = 5; i <= 9; i++) {
     if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
       coordColIdx = i; break;
     }
@@ -736,7 +736,7 @@ function saveCoordinatorRatings(params) {
 
   // Find all coordinator columns with data for average calculation
   var coordCols = [];
-  for (var k = 4; k <= 8; k++) {
+  for (var k = 5; k <= 9; k++) {
     if (headers[k]) coordCols.push(k);
   }
 
@@ -745,7 +745,7 @@ function saveCoordinatorRatings(params) {
     var pe = (allData[row][1] || '').toLowerCase().trim();
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
-      allData[row][9] = no8amMap[pe] ? true : false;
+      allData[row][3] = no8amMap[pe] ? true : false;
     }
     // Recalculate average from all coordinator columns
     if (!allData[row][0]) continue;
@@ -766,13 +766,12 @@ function saveCoordinatorRatings(params) {
   var avgsCol = allData.slice(1).map(function(r) { return [r[2]]; });
   sheet.getRange(2, 3, avgsCol.length, 1).setValues(avgsCol);
 
-  // Batch write: No 8am column (J)
-  // Ensure header exists
-  if (!headers[9] || headers[9].toString() !== 'No8am') {
-    sheet.getRange(1, 10).setValue('No8am');
+  // Batch write: No 8am column (D)
+  if (!headers[3] || headers[3].toString() !== 'No8am') {
+    sheet.getRange(1, 4).setValue('No8am');
   }
-  var no8amCol = allData.slice(1).map(function(r) { return [r[9] === true]; });
-  sheet.getRange(2, 10, no8amCol.length, 1).setValues(no8amCol);
+  var no8amCol = allData.slice(1).map(function(r) { return [r[3] === true]; });
+  sheet.getRange(2, 4, no8amCol.length, 1).setValues(no8amCol);
 
   return { success: true };
 }
