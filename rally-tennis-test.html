@@ -969,29 +969,32 @@
   .scheduler-status {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 18px;
+    gap: 14px;
+    padding: 18px 20px;
     border-radius: var(--radius);
-    font-size: 17px;
-    font-weight: 600;
     margin-bottom: 1.5rem;
+    border: 2px solid transparent;
   }
   .scheduler-status.open {
     background: var(--success-bg);
-    color: var(--success);
+    border-color: var(--success);
   }
   .scheduler-status.closed {
     background: var(--chalk-dark);
-    color: var(--ink-mid);
+    border-color: var(--chalk-dark);
   }
   .scheduler-dot {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     flex-shrink: 0;
   }
   .scheduler-status.open  .scheduler-dot { background: var(--success); }
   .scheduler-status.closed .scheduler-dot { background: var(--ink-light); }
+  .scheduler-status-title { font-size: 18px; font-weight: 700; line-height: 1.3; }
+  .scheduler-status.open  .scheduler-status-title { color: var(--success); }
+  .scheduler-status.closed .scheduler-status-title { color: var(--ink-mid); }
+  .scheduler-status-sub { font-size: 13px; margin-top: 2px; color: var(--ink-light); }
 
   @media (max-width: 700px) {
     .home-title { font-size: 22px; }
@@ -1500,27 +1503,53 @@
       <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
         <div class="card mt8" style="max-width:520px;">
+
+          <!-- Status badge -->
           <div id="scheduler-status-badge" class="scheduler-status closed">
             <div class="scheduler-dot"></div>
-            <span id="scheduler-status-text">Loading…</span>
+            <div>
+              <div class="scheduler-status-title" id="scheduler-status-text">Loading…</div>
+              <div class="scheduler-status-sub" id="scheduler-status-sub"></div>
+            </div>
           </div>
 
-          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1.25rem;">Set the submission window</div>
-
-          <div class="field" style="max-width:220px;margin-bottom:1.5rem;">
-            <label style="font-size:16px;">Close date</label>
-            <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The last day players can submit.</div>
-            <input type="date" id="sched-close-date" style="font-size:16px;" />
+          <!-- Scheduling for month -->
+          <div style="font-size:15px;color:var(--ink-light);margin-bottom:1.5rem;">
+            Scheduling availability for <strong id="sched-target-month-label" style="color:var(--ink);">—</strong>
           </div>
 
-          <div style="background:var(--teal-light);border-radius:var(--radius);padding:12px 16px;font-size:14px;color:var(--court);margin-bottom:1.5rem;line-height:1.6;">
-            Clicking <strong>Open Window</strong> will open the window today and automatically close it on the close date. All players will be notified by email.
+          <!-- CLOSED state: form to open window -->
+          <div id="window-closed-state">
+            <div style="background:var(--teal-light);border-radius:var(--radius);padding:14px 18px;font-size:15px;color:var(--court);margin-bottom:1.5rem;line-height:1.65;">
+              Set a close date below, then click <strong>Open Window</strong>. Players will receive an email invitation immediately, with automatic reminders 2 days and 1 day before the window closes.
+            </div>
+
+            <div class="field" style="margin-bottom:1.5rem;">
+              <label style="font-size:16px;font-weight:600;">Close date</label>
+              <div style="font-size:14px;color:var(--ink-light);margin-bottom:8px;">The last day players can submit availability.</div>
+              <input type="date" id="sched-close-date" style="font-size:17px;padding:10px 14px;" oninput="onCloseDateChange()" />
+              <div id="sched-close-date-display" style="font-size:15px;font-weight:600;color:var(--ink-mid);margin-top:8px;"></div>
+              <div id="sched-close-date-warning" style="display:none;font-size:14px;color:var(--danger);margin-top:6px;">⚠ This date is in the past — please choose a future date.</div>
+            </div>
+
+            <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()" style="width:100%;font-size:16px;padding:14px;">
+              Open Window &amp; Notify Players
+            </button>
           </div>
 
-          <div class="flex gap8">
-            <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()">Open Window &amp; Notify Players</button>
-            <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()">Close Window</button>
+          <!-- OPEN state: summary + close early option -->
+          <div id="window-open-state" style="display:none;">
+            <div style="font-size:15px;color:var(--ink-mid);margin-bottom:1.5rem;line-height:1.65;">
+              Players can submit availability until <strong id="window-open-close-label"></strong>. Reminder emails will be sent automatically at T-2 and T-1 days.
+            </div>
+            <div style="padding-top:1rem;border-top:1px solid var(--line);">
+              <div style="font-size:13px;color:var(--ink-light);margin-bottom:8px;">Need to close the window early?</div>
+              <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()" style="font-size:14px;">
+                Close window now
+              </button>
+            </div>
           </div>
+
         </div>
 
         <!-- Generate Schedule card -->
@@ -1596,6 +1625,23 @@
       </div>
     </div>
   </div>
+
+<!-- Availability window confirmation modal -->
+<div id="avail-open-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:12px;padding:28px 28px 24px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.22);">
+    <div style="font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;">Open availability window?</div>
+    <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:6px;">
+      This will open the window for <strong id="modal-month-label">—</strong> and email all players to submit their available dates.
+    </div>
+    <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:20px;">
+      Window will close on <strong id="modal-close-date-label">—</strong>.
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="cancelOpenAvailWindow()" style="font-size:15px;padding:10px 20px;">Cancel</button>
+      <button class="btn btn-primary" id="modal-confirm-btn" onclick="confirmOpenAvailWindow()" style="font-size:15px;padding:10px 24px;">Yes, Open Window</button>
+    </div>
+  </div>
+</div>
 
 </main>
 
@@ -3009,19 +3055,43 @@ async function loadScheduler() {
   try {
     const config = await apiGetWithParams({ action: 'getAvailabilityConfig' });
     const badge  = document.getElementById('scheduler-status-badge');
-    const text   = document.getElementById('scheduler-status-text');
+    const title  = document.getElementById('scheduler-status-text');
+    const sub    = document.getElementById('scheduler-status-sub');
+    const monthLabel = document.getElementById('sched-target-month-label');
+
+    const closedState = document.getElementById('window-closed-state');
+    const openState   = document.getElementById('window-open-state');
 
     if (config.isOpen) {
       badge.className = 'scheduler-status open';
-      text.textContent = 'Window is OPEN — closes ' + formatDateShort(config.closeDate);
+      title.textContent = 'Window is OPEN';
+
+      // Days remaining
+      if (config.closeDate) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const close = new Date(config.closeDate + 'T00:00:00');
+        const days = Math.round((close - today) / 864e5);
+        sub.textContent = days === 0 ? 'Closes today' :
+                          days === 1 ? 'Closes tomorrow' :
+                          'Closes in ' + days + ' days (' + formatDateShort(config.closeDate) + ')';
+        const closeLabel = document.getElementById('window-open-close-label');
+        if (closeLabel) closeLabel.textContent = formatDateShort(config.closeDate);
+      }
+
+      closedState.style.display = 'none';
+      openState.style.display   = '';
     } else {
       badge.className = 'scheduler-status closed';
-      text.textContent = config.openDate
-        ? 'Window is CLOSED (last opened ' + formatDateShort(config.openDate) + ')'
-        : 'Window is CLOSED — no dates set yet';
+      title.textContent = 'Window is CLOSED';
+      sub.textContent = config.openDate
+        ? 'Last opened ' + formatDateShort(config.openDate)
+        : 'No window has been opened yet';
+
+      closedState.style.display = '';
+      openState.style.display   = 'none';
     }
 
-    if (config.closeDate) document.getElementById('sched-close-date').value = config.closeDate;
+    if (monthLabel && config.targetMonthLabel) monthLabel.textContent = config.targetMonthLabel;
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
   }
@@ -3362,37 +3432,66 @@ function renderPublishedSchedule(filterEmail) {
   tbl.innerHTML = html;
 }
 
-async function openAvailWindow() {
+function onCloseDateChange() {
+  const val = document.getElementById('sched-close-date').value;
+  const display = document.getElementById('sched-close-date-display');
+  const warning = document.getElementById('sched-close-date-warning');
+  if (!val) { display.textContent = ''; warning.style.display = 'none'; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const chosen = new Date(val + 'T00:00:00');
+  display.textContent = chosen.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  warning.style.display = chosen <= today ? '' : 'none';
+}
+
+function openAvailWindow() {
   const closeDate = document.getElementById('sched-close-date').value;
   if (!closeDate) {
     showAlert('scheduler-alert', 'error', 'Please set a close date before opening the window.');
     return;
   }
-  const today = new Date().toISOString().slice(0, 10);
-  if (closeDate <= today) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const chosen = new Date(closeDate + 'T00:00:00');
+  if (chosen <= today) {
     showAlert('scheduler-alert', 'error', 'Close date must be in the future.');
     return;
   }
 
-  const btn = document.getElementById('sched-open-btn');
-  btn.disabled = true;
-  btn.textContent = 'Opening…';
+  // Populate modal and show it
+  const monthLabel = document.getElementById('sched-target-month-label');
+  document.getElementById('modal-month-label').textContent = monthLabel ? monthLabel.textContent : '—';
+  document.getElementById('modal-close-date-label').textContent =
+    chosen.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const modal = document.getElementById('avail-open-modal');
+  modal.style.display = 'flex';
+}
+
+function cancelOpenAvailWindow() {
+  document.getElementById('avail-open-modal').style.display = 'none';
+}
+
+async function confirmOpenAvailWindow() {
+  const closeDate = document.getElementById('sched-close-date').value;
+  const confirmBtn = document.getElementById('modal-confirm-btn');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Opening…';
 
   try {
     const result = await apiPost({ action: 'openAvailabilityWindow', closeDate });
+    document.getElementById('avail-open-modal').style.display = 'none';
     if (!result.success) {
       showAlert('scheduler-alert', 'error', result.error || 'Failed to open window.');
       return;
     }
     showAlert('scheduler-alert', 'success',
       'Window is now open. ' + (result.playerCount || 0) + ' players have been notified by email.');
-    availConfig = null; // reset cache
+    availConfig = null;
     await loadScheduler();
   } catch(e) {
+    document.getElementById('avail-open-modal').style.display = 'none';
     showAlert('scheduler-alert', 'error', 'Could not open the window. Please try again.');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Open Window & Notify Players';
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Yes, Open Window';
   }
 }
 
@@ -3410,7 +3509,7 @@ async function closeAvailWindow() {
     showAlert('scheduler-alert', 'error', 'Could not close the window. Please try again.');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Close Window';
+    btn.textContent = 'Close window now';
   }
 }
 
