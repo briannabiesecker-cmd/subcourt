@@ -952,7 +952,7 @@
   .sched-table .team-header-a { text-align: center; color: var(--court); border-bottom: 2px solid var(--court); }
   .sched-table .team-header-b { text-align: center; color: var(--clay);  border-bottom: 2px solid var(--clay);  }
   .sched-table .player-rating { font-size: 11px; color: var(--ink-light); margin-left: 4px; }
-  .sched-table .sit-out-cell  { color: var(--ink-light); font-style: italic; }
+  .sched-table .alternate-cell  { color: var(--ink-light); font-style: italic; }
   .captain-badge {
     display: inline-block;
     font-size: 10px;
@@ -3298,7 +3298,7 @@ function renderScheduleTable(slots) {
   let html = '<thead><tr>' +
     '<th>Date</th><th>Group</th>' +
     '<th>Player 1</th><th>Player 2</th><th>Player 3</th><th>Player 4</th>' +
-    '<th>Sit Out</th>' +
+    '<th>Alternate</th>' +
     '</tr></thead><tbody>';
 
   slots.forEach((slot, si) => {
@@ -3540,7 +3540,7 @@ function exportSchedulePDF() {
     .captain-badge { background: #c96048; color: #fff; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 700; margin-right: 5px; }
     .group-badge   { background: #e8f4ef; color: #2a7a5a; border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
     .player-rating { color: #999; font-size: 10px; margin-left: 4px; }
-    .sit-out-cell  { color: #aaa; font-style: italic; }
+    .alternate-cell  { color: #aaa; font-style: italic; }
     .date-cell     { font-weight: 600; white-space: nowrap; }
     @media print { body { margin: 12px; } }
   </style></head><body>
@@ -3659,7 +3659,7 @@ function renderPublishedSchedule(filterEmail) {
   empty.style.display = 'none';
   wrap.style.display  = '';
 
-  let html = '<thead><tr><th>Date</th><th>Group</th><th>Captain</th><th>Players</th><th>Sit Out</th></tr></thead><tbody>';
+  let html = '<thead><tr><th>Date</th><th>Group</th><th>Captain</th><th>Players</th><th>Alternate</th></tr></thead><tbody>';
   dates.forEach(d => {
     const dateStr = formatDateShort(d.date);
     d.groups.forEach((g, gi) => {
