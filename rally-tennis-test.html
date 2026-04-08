@@ -1575,11 +1575,11 @@
         <div id="players-list" style="display:none;">
           <div style="margin:1.25rem 0 0.75rem;display:flex;justify-content:space-between;align-items:center;">
             <div style="font-size:13px;color:var(--ink-light);">Rate each player 1.0 – 5.0. Leave blank if unknown.</div>
-            <button class="btn btn-clay btn-sm" onclick="saveAllRatings()">Save all ratings</button>
+            <button class="btn btn-clay btn-sm" id="save-ratings-top" onclick="saveAllRatings()">Save all ratings</button>
           </div>
           <div id="players-grid"></div>
           <div style="margin-top:1rem;text-align:right;">
-            <button class="btn btn-clay" onclick="saveAllRatings()">Save all ratings</button>
+            <button class="btn btn-clay" id="save-ratings-bottom" onclick="saveAllRatings()">Save all ratings</button>
           </div>
         </div>
       </div>
@@ -2875,15 +2875,20 @@ async function saveAllRatings() {
     return;
   }
 
+  const saveBtns = ['save-ratings-top', 'save-ratings-bottom'];
+  saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Saving…'; } });
+
   try {
     const result = await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
     if (!result.success) {
       showAlert('players-alert', 'error', result.error === 'not_assigned'
         ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns F–J in the Players sheet.'
         : (result.error || 'Failed to save.'));
+      saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } });
       return;
     }
-    showAlert('players-alert', 'success', 'Ratings saved successfully.');
+    saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.textContent = 'Saved ✓'; } });
+    setTimeout(() => { saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } }); }, 2000);
     // Update local cache with saved values (no need to re-fetch)
     ratings.forEach(r => {
       const p = playerRatings.find(p => p.email === r.playerEmail);
@@ -2891,6 +2896,7 @@ async function saveAllRatings() {
     });
   } catch(e) {
     showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
+    saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } });
   }
 }
 
