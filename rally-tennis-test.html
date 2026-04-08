@@ -1599,11 +1599,11 @@
           <!-- CLOSED state: form to open window -->
           <div id="window-closed-state" style="display:none;flex:1;flex-direction:column;">
             <div class="field" style="margin-bottom:0.75rem;flex:1;">
-              <label style="font-size:15px;font-weight:600;">Close date</label>
-              <div style="font-size:12px;color:var(--ink-light);margin:2px 0 4px;">Last day players can submit their availability.</div>
-              <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;" oninput="onCloseDateChange()" />
+              <label style="font-size:15px;font-weight:600;">Responses due by</label>
+              <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;margin-top:4px;" oninput="onCloseDateChange()" />
               <div id="sched-close-date-display" style="font-size:14px;font-weight:600;color:var(--ink-mid);margin-top:4px;"></div>
               <div id="sched-close-date-warning" style="display:none;font-size:13px;color:var(--danger);margin-top:4px;">⚠ Date is in the past.</div>
+              <div style="font-size:12px;color:var(--ink-light);margin-top:6px;line-height:1.5;">All players will be emailed when you open the window. Reminders sent 2 days and 1 day before the deadline.</div>
             </div>
 
             <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()" style="width:100%;font-size:15px;padding:12px;">
