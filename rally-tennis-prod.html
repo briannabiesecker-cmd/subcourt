@@ -657,49 +657,63 @@
   .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; }
 
   /* ── Player rating grid ── */
-  .player-rating-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
+  .players-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
     background: white;
-    border-radius: var(--radius);
-    margin-bottom: 6px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    gap: 12px;
+    overflow: hidden;
   }
-  .player-rating-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--ink);
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .player-rating-email {
+  .players-table th {
     font-size: 12px;
-    font-weight: 400;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--ink-light);
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--chalk);
+    border-bottom: 1.5px solid var(--line);
   }
+  .players-table th:nth-child(3),
+  .players-table th:nth-child(4) { text-align: center; }
+  .players-table td {
+    padding: 8px 14px;
+    font-size: 14px;
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+  .players-table tr:last-child td { border-bottom: none; }
+  .players-table td:nth-child(3),
+  .players-table td:nth-child(4) { text-align: center; }
+  .players-table .player-name { font-weight: 600; font-size: 15px; }
+  .players-table .player-email { color: var(--ink-light); font-size: 13px; }
   .player-rating-input {
-    width: 80px;
+    width: 70px;
     text-align: center;
     font-size: 16px;
     font-weight: 700;
-    padding: 8px 10px;
+    padding: 6px 8px;
     border: 1.5px solid var(--line);
     border-radius: var(--radius);
     font-family: inherit;
     color: var(--ink);
     background: white;
     transition: border-color 0.15s, box-shadow 0.15s;
-    flex-shrink: 0;
   }
   .player-rating-input:focus {
     outline: none;
     border-color: var(--clay);
     box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
+  }
+  .no8am-check {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--clay);
   }
 
   /* ── Home page ── */
@@ -1059,9 +1073,9 @@
 
   .scheduler-row {
     display: grid;
-    grid-template-columns: 55% 45%;
+    grid-template-columns: 1fr 1fr;
     gap: 1rem;
-    align-items: start;
+    align-items: stretch;
   }
   .scheduler-row > .card { max-width: none; padding: 1.25rem; margin-bottom: 0; }
 
@@ -1086,7 +1100,7 @@
     <button onclick="showView('schedule', this)">Schedule</button>
     <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Request Sub</button>
     <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Volunteer</button>
-    <button onclick="showView('availability', this)">Availability</button>
+    <button onclick="showView('availability', this)">My Availability</button>
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -1556,46 +1570,54 @@
         <div id="players-list" style="display:none;">
           <div style="margin:1.25rem 0 0.75rem;display:flex;justify-content:space-between;align-items:center;">
             <div style="font-size:13px;color:var(--ink-light);">Rate each player 1.0 – 5.0. Leave blank if unknown.</div>
-            <button class="btn btn-clay btn-sm" onclick="saveAllRatings()">Save all ratings</button>
+            <button class="btn btn-clay btn-sm" id="save-ratings-top" onclick="saveAllRatings()">Save all ratings</button>
           </div>
           <div id="players-grid"></div>
           <div style="margin-top:1rem;text-align:right;">
-            <button class="btn btn-clay" onclick="saveAllRatings()">Save all ratings</button>
+            <button class="btn btn-clay" id="save-ratings-bottom" onclick="saveAllRatings()">Save all ratings</button>
           </div>
         </div>
       </div>
 
       <div id="admin-tab-scheduler">
         <div id="scheduler-alert" class="hidden" style="margin-top:1rem;"></div>
-        <div class="scheduler-row mt8">
 
-        <div class="card">
+        <div class="card mt8" style="padding:1rem 1.5rem;">
+          <p style="font-size:14px;color:var(--ink-mid);margin-bottom:0;">Open the availability window to collect player dates, then <strong>generate</strong> and <strong>publish</strong> the schedule.</p>
+        </div>
 
-          <!-- Status badge -->
-          <div id="scheduler-status-badge" class="scheduler-status closed">
-            <div class="scheduler-dot"></div>
-            <div>
-              <div class="scheduler-status-title" id="scheduler-status-text">Loading…</div>
-              <div class="scheduler-status-sub" id="scheduler-status-sub"></div>
+        <!-- Loading state -->
+        <div id="scheduler-loading" class="loading" style="margin:2rem 0;"><div class="spinner"></div>Loading scheduler…</div>
+
+        <!-- Content (hidden until loaded) -->
+        <div id="scheduler-content" style="display:none;">
+
+        <!-- Month header -->
+        <div style="margin:1rem 0 0.5rem;">
+          <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-light);">Scheduling for</div>
+          <div style="font-size:24px;font-weight:800;color:var(--ink);margin-top:2px;" id="sched-month-header"></div>
+        </div>
+
+        <div class="scheduler-row">
+
+        <!-- Availability Window card -->
+        <div class="card" id="sched-window-card" style="display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+            <div style="font-size:16px;font-weight:700;color:var(--ink);">Availability Window</div>
+            <div id="scheduler-status-badge" class="scheduler-status closed" style="margin:0;padding:4px 10px;border-radius:20px;">
+              <div class="scheduler-dot" style="width:10px;height:10px;"></div>
+              <div class="scheduler-status-title" id="scheduler-status-text" style="font-size:12px;"></div>
             </div>
-          </div>
-
-          <!-- Scheduling for month -->
-          <div style="font-size:14px;color:var(--ink-light);margin-bottom:0.75rem;">
-            Scheduling for <strong id="sched-target-month-label" style="color:var(--ink);">—</strong>
           </div>
 
           <!-- CLOSED state: form to open window -->
-          <div id="window-closed-state">
-            <div style="background:var(--teal-light);border-radius:var(--radius);padding:10px 14px;font-size:13px;color:var(--court);margin-bottom:0.75rem;line-height:1.5;">
-              Set a close date and click <strong>Open Window</strong> to email all players. Reminders auto-send at T-2 and T-1 days.
-            </div>
-
-            <div class="field" style="margin-bottom:0.75rem;">
-              <label style="font-size:15px;font-weight:600;">Close date</label>
+          <div id="window-closed-state" style="display:none;flex:1;flex-direction:column;">
+            <div class="field" style="margin-bottom:0.75rem;flex:1;">
+              <label style="font-size:15px;font-weight:600;">Responses due by</label>
               <input type="date" id="sched-close-date" style="font-size:16px;padding:8px 12px;margin-top:4px;" oninput="onCloseDateChange()" />
               <div id="sched-close-date-display" style="font-size:14px;font-weight:600;color:var(--ink-mid);margin-top:4px;"></div>
               <div id="sched-close-date-warning" style="display:none;font-size:13px;color:var(--danger);margin-top:4px;">⚠ Date is in the past.</div>
+              <div style="font-size:12px;color:var(--ink-light);margin-top:6px;line-height:1.5;">All players will be emailed when you open the window. Reminders sent 2 days and 1 day before the deadline.</div>
             </div>
 
             <button class="btn btn-primary" id="sched-open-btn" onclick="openAvailWindow()" style="width:100%;font-size:15px;padding:12px;">
@@ -1604,26 +1626,24 @@
           </div>
 
           <!-- OPEN state: summary + close early option -->
-          <div id="window-open-state" style="display:none;">
-            <div style="font-size:14px;color:var(--ink-mid);margin-bottom:0.75rem;line-height:1.5;">
+          <div id="window-open-state" style="display:none;flex:1;flex-direction:column;">
+            <div style="font-size:14px;color:var(--ink-mid);margin-bottom:0.75rem;line-height:1.5;flex:1;">
               Players can submit until <strong id="window-open-close-label"></strong>. Reminders auto-send at T-2 and T-1 days.
             </div>
-            <div style="padding-top:0.75rem;border-top:1px solid var(--line);">
-              <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()" style="font-size:13px;">
-                Close window early
-              </button>
-            </div>
+            <button class="btn btn-secondary" id="sched-close-btn" onclick="closeAvailWindow()" style="width:100%;font-size:14px;padding:10px;">
+              Close Window Early
+            </button>
           </div>
 
         </div>
 
         <!-- Generate Schedule card -->
-        <div class="card">
-          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:1rem;">Generate Schedule</div>
-          <div id="sched-gen-summary" class="sched-gen-summary">
-            <div class="loading"><div class="spinner"></div>Loading…</div>
-          </div>
-          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled>Generate</button>
+        <div class="card" style="display:flex;flex-direction:column;">
+          <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.75rem;">Generate Schedule</div>
+          <div id="sched-gen-summary" class="sched-gen-summary" style="flex:1;"></div>
+          <button class="btn btn-primary" id="sched-gen-btn" onclick="runGenerateSchedule()" disabled style="width:100%;font-size:15px;padding:12px;">Generate</button>
+        </div>
+
         </div>
 
         </div>
@@ -1633,9 +1653,9 @@
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
             <div style="font-size:17px;font-weight:700;color:var(--ink);" id="sched-results-title">Schedule Preview</div>
             <div class="flex gap8">
-              <button class="btn btn-secondary" onclick="exportScheduleExcel()">Export to Excel</button>
-              <button class="btn btn-secondary" onclick="exportSchedulePDF()">Export to PDF</button>
               <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
+              <button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;cursor:not-allowed;">Export to Excel</button>
+              <button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;cursor:not-allowed;">Export to PDF</button>
             </div>
           </div>
           <!-- Optimization Metrics -->
@@ -2769,9 +2789,14 @@ function showAdminTab(tab, btn) {
 // ══════════════════════════════════════════════════
 let playerRatings = []; // current loaded player list with coordinator's ratings
 
-async function loadCoordinatorRatings() {
+async function loadCoordinatorRatings(forceRefresh) {
   const email = sessionStorage.getItem('adminEmail');
   if (!email) return;
+  // Use cache if available and not forced
+  if (!forceRefresh && playerRatings.length) {
+    document.getElementById('players-list').style.display = 'block';
+    return;
+  }
   document.getElementById('players-loading').classList.remove('hidden');
   document.getElementById('players-list').style.display = 'none';
   document.getElementById('players-alert').classList.add('hidden');
@@ -2781,11 +2806,18 @@ async function loadCoordinatorRatings() {
     document.getElementById('players-loading').classList.add('hidden');
 
     if (result.notAssigned) {
-      showAlert('players-alert', 'error', 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns E–I in the Players sheet.');
+      showAlert('players-alert', 'error', 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns F–J in the Players sheet.');
       return;
     }
 
-    playerRatings = result.players || [];
+    playerRatings = (result.players || []).sort((a, b) => {
+      const aHas = a.myRating !== '' && a.myRating !== null;
+      const bHas = b.myRating !== '' && b.myRating !== null;
+      if (!aHas && bHas) return -1;
+      if (aHas && !bHas) return 1;
+      if (!aHas && !bHas) return 0;
+      return parseFloat(b.myRating) - parseFloat(a.myRating);
+    });
     if (!playerRatings.length) {
       document.getElementById('players-grid').innerHTML =
         '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
@@ -2793,15 +2825,25 @@ async function loadCoordinatorRatings() {
       return;
     }
 
-    document.getElementById('players-grid').innerHTML = playerRatings.map((p, i) => `
-      <div class="player-rating-row">
-        <div class="player-rating-name">${p.name}<span class="player-rating-email">${p.email}</span></div>
-        <input type="number" class="player-rating-input" id="pr-${i}"
-          min="1.0" max="5.0" step="0.5"
-          value="${p.myRating !== '' ? p.myRating : ''}"
-          placeholder="—" />
-      </div>
-    `).join('');
+    document.getElementById('players-grid').innerHTML = `
+      <table class="players-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Rating</th><th>No 8am</th></tr></thead>
+        <tbody>
+          ${playerRatings.map((p, i) => `
+            <tr>
+              <td class="player-name">${p.name}</td>
+              <td class="player-email">${p.email}</td>
+              <td><input type="number" class="player-rating-input" id="pr-${i}"
+                min="1.0" max="5.0" step="0.5"
+                value="${p.myRating !== '' ? p.myRating : ''}"
+                placeholder="—"
+                onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
+              <td><input type="checkbox" class="no8am-check" id="no8am-${i}"
+                ${p.no8am ? 'checked' : ''} /></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
 
     document.getElementById('players-list').style.display = 'block';
   } catch(e) {
@@ -2816,8 +2858,9 @@ async function saveAllRatings() {
 
   const ratings = playerRatings.map((p, i) => {
     const input = document.getElementById(`pr-${i}`);
+    const no8am = document.getElementById(`no8am-${i}`);
     const val   = input ? input.value.trim() : '';
-    return { playerEmail: p.email, rating: val !== '' ? parseFloat(val) : '' };
+    return { playerEmail: p.email, rating: val !== '' ? parseFloat(val) : '', no8am: no8am ? no8am.checked : false };
   });
 
   // Validate range
@@ -2827,18 +2870,28 @@ async function saveAllRatings() {
     return;
   }
 
+  const saveBtns = ['save-ratings-top', 'save-ratings-bottom'];
+  saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Saving…'; } });
+
   try {
     const result = await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
     if (!result.success) {
       showAlert('players-alert', 'error', result.error === 'not_assigned'
-        ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns E–I in the Players sheet.'
+        ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns F–J in the Players sheet.'
         : (result.error || 'Failed to save.'));
+      saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } });
       return;
     }
-    showAlert('players-alert', 'success', 'Ratings saved successfully.');
-    await loadCoordinatorRatings();
+    saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.textContent = 'Saved ✓'; } });
+    setTimeout(() => { saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } }); }, 2000);
+    // Update local cache with saved values (no need to re-fetch)
+    ratings.forEach(r => {
+      const p = playerRatings.find(p => p.email === r.playerEmail);
+      if (p) { p.myRating = r.rating; p.no8am = r.no8am; }
+    });
   } catch(e) {
     showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
+    saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } });
   }
 }
 
@@ -3114,69 +3167,71 @@ async function toggleEmail(enable) {
 }
 
 async function loadScheduler() {
-  // Fire both requests in parallel — cuts load time in half
-  const configP   = apiGetWithParams({ action: 'getAvailabilityConfig' });
-  const settingsP = apiGetWithParams({ action: 'getSchedulerSettings' });
+  const loadingEl = document.getElementById('scheduler-loading');
+  const contentEl = document.getElementById('scheduler-content');
+  loadingEl.style.display = '';
+  contentEl.style.display = 'none';
 
   try {
-    const config = await configP;
+    // Single API call replaces two parallel calls
+    const config = await apiGetWithParams({ action: 'getSchedulerDashboard' });
+    const settings = config; // same object has both config and settings data
+
+    // --- Populate config side ---
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
-    const sub    = document.getElementById('scheduler-status-sub');
-    const monthLabel = document.getElementById('sched-target-month-label');
-
+    const monthHeader = document.getElementById('sched-month-header');
     const closedState = document.getElementById('window-closed-state');
     const openState   = document.getElementById('window-open-state');
 
+    if (config.targetMonthLabel) monthHeader.textContent = config.targetMonthLabel;
+
     if (config.isOpen) {
       badge.className = 'scheduler-status open';
-      title.textContent = 'Window is OPEN';
+      badge.style.background = 'var(--success-bg)';
+      title.textContent = 'Open';
 
       if (config.closeDate) {
         const today = new Date(); today.setHours(0,0,0,0);
         const close = new Date(config.closeDate + 'T00:00:00');
         const days = Math.round((close - today) / 864e5);
-        sub.textContent = days === 0 ? 'Closes today' :
-                          days === 1 ? 'Closes tomorrow' :
-                          'Closes in ' + days + ' days (' + formatDateShort(config.closeDate) + ')';
         const closeLabel = document.getElementById('window-open-close-label');
         if (closeLabel) closeLabel.textContent = formatDateShort(config.closeDate);
       }
 
       closedState.style.display = 'none';
-      openState.style.display   = '';
+      openState.style.display   = 'flex';
     } else {
       badge.className = 'scheduler-status closed';
-      title.textContent = 'Window is CLOSED';
-      sub.textContent = config.openDate
-        ? 'Last opened ' + formatDateShort(config.openDate)
-        : 'No window has been opened yet';
+      title.textContent = 'Closed';
 
-      closedState.style.display = '';
+      closedState.style.display = 'flex';
       openState.style.display   = 'none';
     }
 
-    if (monthLabel && config.targetMonthLabel) monthLabel.textContent = config.targetMonthLabel;
-  } catch(e) {
-    showAlert('scheduler-alert', 'error', 'Could not load scheduler status.');
-  }
-  applySchedulerSettings(settingsP).catch(() => {});
-}
-
-async function applySchedulerSettings(settingsPromise) {
-  const summaryEl = document.getElementById('sched-gen-summary');
-  const genBtn    = document.getElementById('sched-gen-btn');
-  try {
-    const s = await settingsPromise;
-    const month = s.targetMonth || '—';
-    const count = s.submissionCount || 0;
+    // --- Populate settings side ---
+    const summaryEl = document.getElementById('sched-gen-summary');
+    const genBtn    = document.getElementById('sched-gen-btn');
+    const count = settings.submissionCount || 0;
+    const roster = settings.rosterCount || 0;
+    const pct = roster > 0 ? Math.round((count / roster) * 100) : 0;
+    const barColor = pct >= 50 ? 'var(--success)' : 'var(--clay)';
     summaryEl.innerHTML =
-      'Target month: <strong>' + (s.targetMonthLabel || month) + '</strong><br>' +
-      'Submissions received: <strong>' + count + ' player' + (count !== 1 ? 's' : '') + '</strong>';
+      '<div style="font-size:28px;font-weight:800;color:var(--ink);line-height:1.2;">' + count + ' <span style="font-size:16px;font-weight:500;color:var(--ink-light);">of ' + roster + '</span></div>' +
+      '<div style="font-size:13px;color:var(--ink-light);margin-bottom:10px;">players submitted</div>' +
+      '<div style="background:var(--chalk-dark);border-radius:6px;height:8px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:6px;transition:width 0.3s;"></div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--ink-light);margin-top:4px;text-align:right;">' + pct + '%</div>';
     genBtn.disabled = count < 3;
-    if (count < 3) summaryEl.innerHTML += '<br><span style="color:var(--warn);">Need at least 3 submissions to generate.</span>';
+    if (count < 3) summaryEl.innerHTML += '<div style="color:var(--warn);font-size:13px;margin-top:6px;">Need at least 3 to generate.</div>';
+
+    // Reveal everything at once
+    loadingEl.style.display = 'none';
+    contentEl.style.display = '';
   } catch(e) {
-    summaryEl.innerHTML = '<span style="color:var(--warn);">Could not load settings.</span>';
+    loadingEl.style.display = 'none';
+    showAlert('scheduler-alert', 'error', 'Could not load scheduler. Please try again.');
   }
 }
 
@@ -3215,10 +3270,17 @@ async function runGenerateSchedule() {
   }
 }
 
+function isNo8am(email) {
+  if (!email || !playerRatings.length) return false;
+  const p = playerRatings.find(r => r.email === email.toLowerCase());
+  return p && p.no8am;
+}
+
 function playerCell(p, isCaptain) {
   if (!p || !p.name) return '';
   const c = isCaptain ? '<span class="captain-badge">C</span>' : '';
-  return c + p.name;
+  const star = isNo8am(p.email) ? '<span style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">*</span>' : '';
+  return c + p.name + star;
 }
 
 function renderScheduleTable(slots) {
@@ -3328,10 +3390,10 @@ function renderScheduleMetrics(data) {
   const spreadClass = spreadLabel.toLowerCase();
 
   let newPairs = 0;
-  let repeatCount = 0;
+  let repeatPairs = 0;
   Object.values(monthPairs).forEach(count => {
     if (count === 1) newPairs++;
-    else repeatCount += count;
+    else repeatPairs++;
   });
   const uniquePairings = Object.keys(monthPairs).length;
   const freshPct = uniquePairings > 0 ? Math.round((newPairs / uniquePairings) * 100) : 100;
@@ -3347,7 +3409,7 @@ function renderScheduleMetrics(data) {
         <div class="metric-value">${avgTeamGap.toFixed(2)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> avg gap</span>
           <span class="metric-badge ${compClass}">${compLabel}</span>
         </div>
-        <div class="metric-sub">Avg rating difference between teams per court. Lower = closer matches.</div>
+        <div class="metric-sub">On average, the two teams on each court are ${avgTeamGap.toFixed(2)} rating points apart. Closer = tighter matches.</div>
         <div class="date-dots" title="Per-date competitiveness">
           ${perDateGaps.map(d => {
             const c = d.avgGap < 0.3 ? 'excellent' : d.avgGap < 0.6 ? 'good' : 'fair';
@@ -3359,17 +3421,17 @@ function renderScheduleMetrics(data) {
       </div>
       <div class="metric-card ${spreadClass}">
         <div class="metric-label">Skill Balance</div>
-        <div class="metric-value">${avgSpread.toFixed(1)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> avg spread</span>
+        <div class="metric-value">${avgSpread.toFixed(1)}<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> pts apart</span>
           <span class="metric-badge ${spreadClass}">${spreadLabel}</span>
         </div>
-        <div class="metric-sub">Avg rating range within each court. Lower = more evenly matched rallies.</div>
+        <div class="metric-sub">On average, players on each court are ${avgSpread.toFixed(1)} rating points apart. Closer = better matched games.</div>
       </div>
       <div class="metric-card ${socialClass}">
         <div class="metric-label">Social Variety</div>
         <div class="metric-value">${freshPct}%<span style="font-size:14px;font-weight:500;color:var(--ink-light);"> unique</span>
           <span class="metric-badge ${socialClass}">${socialLabel}</span>
         </div>
-        <div class="metric-sub">${uniquePairings} pairings this month, ${newPairs} first-time.${repeatCount ? ' ' + repeatCount + ' repeat slots.' : ''}</div>
+        <div class="metric-sub">${newPairs} of ${uniquePairings} pairings are unique.${repeatPairs ? ' ' + repeatPairs + ' pair' + (repeatPairs !== 1 ? 's' : '') + ' repeat.' : ''}</div>
       </div>
     </div>`;
 }
@@ -3427,7 +3489,8 @@ async function exportScheduleExcel() {
 
   // Data rows with alternating shading
   players.forEach(([email, name], i) => {
-    const values = [name].concat(dates.map(d => (cellData[email] || {})[d] || ''));
+    const displayName = name + (isNo8am(email) ? '*' : '');
+    const values = [displayName].concat(dates.map(d => (cellData[email] || {})[d] || ''));
     const row = ws.addRow(values);
     row.height = 18;
     const bg = i % 2 === 0 ? 'FFFFFFFF' : 'FFF0F5F2';
@@ -3508,7 +3571,7 @@ async function publishScheduleToSheet() {
     const start = await apiPost({ action: 'publishScheduleStart', month: scheduleData.month });
     if (!start.success) throw new Error(start.error || 'Could not clear existing data.');
 
-    // Step 2: send all slots in parallel
+    // Step 2: send one slot per date (each request is small enough for JSONP)
     const results = await Promise.all(activeSlots.map(slot =>
       apiPost({ action: 'publishScheduleSlot', month: scheduleData.month, slot: JSON.stringify(slot) })
     ));
@@ -3520,6 +3583,11 @@ async function publishScheduleToSheet() {
 
     showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.');
     btn.textContent = 'Published ✓';
+    // Unlock exports now that published version is in sync
+    const excelBtn = document.getElementById('sched-excel-btn');
+    const pdfBtn   = document.getElementById('sched-pdf-btn');
+    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.cursor = '';
+    pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.cursor = '';
   } catch(e) {
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
@@ -3569,6 +3637,8 @@ function renderPublishedSchedule(filterEmail) {
   if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) return;
 
   const filterLower = filterEmail ? filterEmail.toLowerCase().trim() : null;
+  const no8amList = (publishedSchedule.no8amEmails || []).map(e => e.toLowerCase());
+  const starHtml = '<span style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">*</span>';
 
   let dates = publishedSchedule.dates;
   if (filterLower) {
@@ -3598,11 +3668,14 @@ function renderPublishedSchedule(filterEmail) {
       const others  = g.players.filter(p => !p.isCaptain);
       const playerNames = others.map(p => {
         const isMe = filterLower && p.email && p.email.toLowerCase() === filterLower;
-        return isMe ? `<strong>${p.name}</strong>` : p.name;
+        const star = p.email && no8amList.includes(p.email.toLowerCase()) ? starHtml : '';
+        const name = p.name + star;
+        return isMe ? `<strong>${name}</strong>` : name;
       }).filter(Boolean).join(', ');
+      const captainStar = captain && captain.email && no8amList.includes(captain.email.toLowerCase()) ? starHtml : '';
       const captainName = captain
         ? (filterLower && captain.email && captain.email.toLowerCase() === filterLower
-            ? `<strong>${captain.name}</strong>` : captain.name)
+            ? `<strong>${captain.name}${captainStar}</strong>` : captain.name + captainStar)
         : '';
       const rowClass = gi === 0 ? 'date-first' : '';
       html += `<tr class="${rowClass}">`;
