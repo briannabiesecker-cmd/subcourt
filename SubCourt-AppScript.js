@@ -1082,7 +1082,7 @@ function checkAvailabilityWindow() {
     'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes ' + urgency + ' (' + closeDateLabel + ').\n\n' +
     'We haven\'t received your availability yet. Please submit before the window closes so we can include you in the schedule.\n\n' +
     'Open the Rally app to submit:\n' +
-    'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
+    'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
     'See you on the court!\n' +
     'MWF Tennis League';
 
@@ -1120,7 +1120,7 @@ function openAvailabilityWindow(params) {
       'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
       'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
       'Open the Rally app to get started:\n' +
-      'https://briannabiesecker-cmd.github.io/subcourt/tennis-sub-manager.html\n\n' +
+      'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
       'See you on the court!\n' +
       'MWF Tennis League';
     if (isEmailEnabled()) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
