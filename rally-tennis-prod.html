@@ -1836,7 +1836,9 @@ function onTypeaheadBlur(prefix) {
 
 async function showTypeaheadDropdown(prefix, val) {
   const dd = document.getElementById(prefix + '-dropdown');
-  const players = await loadPlayerList();
+  let players = await loadPlayerList();
+  // Admin typeahead: only show players with isAdmin flag
+  if (prefix === 'adm') players = players.filter(p => p.isAdmin);
   const matches = val.trim()
     ? players.filter(p => p.name.toLowerCase().includes(val.toLowerCase()))
     : players;

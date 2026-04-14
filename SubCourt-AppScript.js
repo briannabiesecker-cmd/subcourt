@@ -447,8 +447,9 @@ function getPlayers() {
   const rows  = sheet.getDataRange().getValues();
   rows.shift();
   return rows.map(r => ({
-    name:  r[0] || '',
-    email: (r[1] || '').toLowerCase()
+    name:    r[0] || '',
+    email:   (r[1] || '').toLowerCase(),
+    isAdmin: r[4] === true || String(r[4]).toUpperCase() === 'TRUE'
     // rating intentionally excluded from public response
   }));
 }
@@ -1091,6 +1092,22 @@ function checkAvailabilityWindow() {
   if (isEmailEnabled()) {
     MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
   }
+}
+
+function testAvailabilityEmail() {
+  var config = getAvailabilityConfig();
+  var closeDateLabel = 'Friday, April 25';
+  var subject = '[TEST] MWF League - Submit your availability for ' + config.targetMonthLabel;
+  var body =
+    'Hi,\n\n' +
+    'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
+    'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
+    'Open the Rally app to get started:\n' +
+    'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
+    'See you on the court!\n' +
+    'MWF Tennis League';
+  MailApp.sendEmail({ to: 'brianna.biesecker@gmail.com, marobria@gmail.com', subject: subject, body: body, name: 'MWF Tennis League' });
+  return { success: true, sent: 'brianna.biesecker@gmail.com, marobria@gmail.com' };
 }
 
 function openAvailabilityWindow(params) {
