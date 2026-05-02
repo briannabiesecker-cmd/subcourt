@@ -1,0 +1,16 @@
+{
+  "scriptId": "1eSjMqsbLquKowkSPe1O-KIkG0YXP2lAojDqKYm_3tVOBSgOBZYJH8Iki",
+  "rootDir": "",
+  "scriptExtensions": [
+    ".js",
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": ["SubCourt-AppScript.js"],
+  "skipSubdirectories": false
+}
