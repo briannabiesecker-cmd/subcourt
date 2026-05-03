@@ -3,7 +3,7 @@
 // MWF Tennis League
 // ══════════════════════════════════════════════════
 
-const SHEET_ID = '1GLWl0a6lRgHsrpG5sZ3S8LtY7HJUGJplNCiPUHIuyIw';
+const SHEET_ID = '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE';
 
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
