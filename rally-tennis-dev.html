@@ -981,9 +981,11 @@
 
   /* ── Directory Table ── */
   .dir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  .dir-table th { background: var(--chalk-dark); color: var(--ink); padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--line); }
-  .dir-table td { padding: 8px 12px; border-bottom: 1px solid var(--chalk); vertical-align: middle; }
-  .dir-table tr:nth-child(even) { background: var(--chalk); }
+  .dir-table th { background: var(--ink-mid); color: white; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink); }
+  .dir-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .dir-table tbody tr:nth-child(odd) { background: white; }
+  .dir-table tbody tr:nth-child(even) { background: var(--chalk); }
+  .dir-table tbody tr:hover { background: var(--chalk-dark); }
 
   /* ── Optimization Metrics ── */
   .metrics-banner {
