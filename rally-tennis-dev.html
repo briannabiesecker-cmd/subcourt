@@ -979,6 +979,12 @@
   }
   .sched-gen-summary strong { color: var(--ink); }
 
+  /* ── Directory Table ── */
+  .dir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .dir-table th { background: var(--chalk-dark); color: var(--ink); padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--line); }
+  .dir-table td { padding: 8px 12px; border-bottom: 1px solid var(--chalk); vertical-align: middle; }
+  .dir-table tr:nth-child(even) { background: var(--chalk); }
+
   /* ── Optimization Metrics ── */
   .metrics-banner {
     background: white;
@@ -1090,6 +1096,7 @@
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
     <button onclick="showView('schedule', this)">Schedule</button>
+    <button onclick="showView('directory', this)">Directory</button>
     <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Request Sub</button>
     <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Volunteer</button>
     <button onclick="showView('availability', this)">My Availability</button>
@@ -1447,6 +1454,19 @@
     </div>
   </div>
 
+  <!-- ── DIRECTORY VIEW ── -->
+  <div id="view-directory" class="view">
+    <div class="section-header">
+      <div class="section-title">Player Directory</div>
+    </div>
+
+    <div id="dir-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading directory…</div>
+    <div id="dir-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No players found.</div>
+    <div id="dir-table-wrap" style="display:none;overflow-x:auto;">
+      <table class="dir-table" id="dir-table"></table>
+    </div>
+  </div>
+
   <!-- ── SCHEDULE VIEW ── -->
   <div id="view-schedule" class="view">
     <div class="section-header">
@@ -1747,6 +1767,7 @@ function showView(name, btn) {
   if (name === 'volunteer') buildCalendar();
   if (name === 'availability') loadAvailabilityView();
   if (name === 'schedule') loadScheduleView();
+  if (name === 'directory') loadDirectoryView();
   if (name === 'admin') {
     if (sessionStorage.getItem('adminAuthenticated') === 'true') {
       unlockAdmin(sessionStorage.getItem('adminName') || '');
@@ -3618,6 +3639,39 @@ async function loadScheduleView() {
     empty.textContent = 'Could not load schedule. Please try again.';
     document.getElementById('sch-debug-info').textContent =
       'Error loading published schedule — try refreshing the page.';
+  }
+}
+
+async function loadDirectoryView() {
+  const loading = document.getElementById('dir-loading');
+  const empty   = document.getElementById('dir-empty');
+  const wrap    = document.getElementById('dir-table-wrap');
+  const tbl     = document.getElementById('dir-table');
+
+  loading.style.display = '';
+  empty.style.display   = 'none';
+  wrap.style.display    = 'none';
+
+  try {
+    const players = await apiGet('getPlayers');
+    loading.style.display = 'none';
+    if (!players || !players.length) {
+      empty.style.display = '';
+      return;
+    }
+    // Sort by name
+    players.sort((a, b) => a.name.localeCompare(b.name));
+    let html = '<thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>';
+    for (const p of players) {
+      html += `<tr><td>${p.name}</td><td>${p.email}</td><td>${p.phone}</td></tr>`;
+    }
+    html += '</tbody>';
+    tbl.innerHTML = html;
+    wrap.style.display = '';
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display = '';
+    empty.textContent = 'Could not load directory. Please try again.';
   }
 }
 
