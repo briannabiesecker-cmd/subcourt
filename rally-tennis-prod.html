@@ -3555,15 +3555,13 @@ async function publishScheduleToSheet() {
     const start = await apiPost({ action: 'publishScheduleStart', month: scheduleData.month });
     if (!start.success) throw new Error(start.error || 'Could not clear existing data.');
 
-    // Step 2: send one slot per date (each request is small enough for JSONP)
-    const results = await Promise.all(activeSlots.map(slot =>
-      apiPost({ action: 'publishScheduleSlot', month: scheduleData.month, slot: JSON.stringify(slot) })
-    ));
+    // Step 2: send one slot per date sequentially to avoid concurrent writes on the same sheet.
     let totalGroups = 0;
-    results.forEach(res => {
+    for (const slot of activeSlots) {
+      const res = await apiPost({ action: 'publishScheduleSlot', month: scheduleData.month, slot: JSON.stringify(slot) });
       if (!res.success) throw new Error(res.error || 'Slot write failed.');
       totalGroups += res.groupsWritten || 0;
-    });
+    }
 
     showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.');
     btn.textContent = 'Published ✓';
