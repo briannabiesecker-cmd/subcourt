@@ -1097,11 +1097,11 @@
   <div class="logo">Ral<span>ly</span></div>
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
-    <button onclick="showView('schedule', this)">Schedule</button>
+    <button onclick="showView('schedule', this)">View<br>Schedule</button>
     <button onclick="showView('directory', this)">Directory</button>
     <button onclick="showView('request', this)">Request Sub</button>
     <button onclick="showView('volunteer', this)">Volunteer</button>
-    <button onclick="showView('availability', this)">My Availability</button>
+    <button onclick="showView('availability', this)">My<br>Availability</button>
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -1122,7 +1122,7 @@
         onclick="showView('availability', document.querySelector('nav button:nth-child(5)'))">
         <div class="home-card-icon">🗓️</div>
         <div class="home-card-title">My availability</div>
-        <div style="font-size:13px;color:var(--ink-light);margin-top:-6px;">for next month</div>
+        <div style="font-size:14px;color:var(--ink-light);margin-top:-10px;">for next month</div>
         <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
         <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
