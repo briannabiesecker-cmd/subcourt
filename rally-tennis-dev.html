@@ -1126,18 +1126,18 @@
         <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
 
-      <div class="home-card" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
+      <div class="home-card" onclick="showView('request', document.querySelector('nav button:nth-child(3)'))">
         <div class="home-card-icon">🎾</div>
         <div class="home-card-title">I need a sub</div>
         <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
-        <button class="home-card-btn" disabled>Request a Sub</button>
+        <button class="home-card-btn">Request a Sub</button>
       </div>
 
-      <div class="home-card home-card-alt" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
+      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(4)'))">
         <div class="home-card-icon">🙋</div>
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
-        <button class="home-card-btn home-card-btn-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(4)'))">Volunteer to Sub</button>
+        <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
       </div>
     </div>
   </div>
