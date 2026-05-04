@@ -449,7 +449,8 @@ function getPlayers() {
   return rows.map(r => ({
     name:    r[0] || '',
     email:   (r[1] || '').toLowerCase(),
-    isAdmin: r[4] === true || String(r[4]).toUpperCase() === 'TRUE'
+    phone:   r[2] || '',
+    isAdmin: r[5] === true || String(r[5]).toUpperCase() === 'TRUE'
     // rating intentionally excluded from public response
   }));
 }
@@ -592,10 +593,10 @@ function debugAdmin(params) {
     totalRows: rows.length,
     rows: rows.map(function(r) {
       return {
-        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3], col_E: r[4],
-        col_E_type: typeof r[4],
+        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3], col_E: r[4], col_F: r[5],
+        col_F_type: typeof r[5],
         emailMatch: (r[1] || '').toLowerCase().trim() === email,
-        flagCheck: r[4] === true || String(r[4]).toUpperCase() === 'TRUE'
+        flagCheck: r[5] === true || String(r[5]).toUpperCase() === 'TRUE'
       };
     })
   };
@@ -610,7 +611,7 @@ function isAdminEmail(email) {
   rows.shift(); // remove header
   return rows.some(function(r) {
     const rowEmail = (r[1] || '').toLowerCase().trim();
-    const flag     = r[4]; // column E = isAdmin
+    const flag     = r[5]; // column F = isAdmin
     return rowEmail === email.toLowerCase().trim() &&
            (flag === true || String(flag).toUpperCase() === 'TRUE');
   });
