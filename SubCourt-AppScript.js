@@ -606,8 +606,8 @@ function isAdminEmail(email) {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
-  // Read A:E explicitly — getDataRange() misses col E when booleans are stored as checkboxes
-  const rows = sheet.getRange(1, 1, lastRow, 5).getValues();
+  // Read A:F explicitly — getDataRange() misses col F when booleans are stored as checkboxes
+  const rows = sheet.getRange(1, 1, lastRow, 6).getValues();
   rows.shift(); // remove header
   return rows.some(function(r) {
     const rowEmail = (r[1] || '').toLowerCase().trim();
