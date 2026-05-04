@@ -3663,9 +3663,9 @@ async function loadDirectoryView() {
     }
     // Sort by name
     players.sort((a, b) => a.name.localeCompare(b.name));
-    let html = '<thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>';
+    let html = '<thead><tr><th>Name</th><th>Email</th></tr></thead><tbody>';
     for (const p of players) {
-      html += `<tr><td>${p.name}</td><td>${p.email}</td><td>${p.phone}</td></tr>`;
+      html += `<tr><td>${p.name}</td><td>${p.email}</td></tr>`;
     }
     html += '</tbody>';
     tbl.innerHTML = html;

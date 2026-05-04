@@ -449,8 +449,7 @@ function getPlayers() {
   return rows.map(r => ({
     name:    r[0] || '',
     email:   (r[1] || '').toLowerCase(),
-    phone:   r[2] || '',
-    isAdmin: r[5] === true || String(r[5]).toUpperCase() === 'TRUE'
+    isAdmin: r[4] === true || String(r[4]).toUpperCase() === 'TRUE'
     // rating intentionally excluded from public response
   }));
 }
