@@ -2459,6 +2459,30 @@ async function expireTodayRecords() {
   }
 }
 
+function retireButtonHTML(requestId) {
+  return `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-sm" id="retire-btn-${requestId}"
+        style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;"
+        onclick="retireRequest('${requestId}')">Retire — No sub found</button>
+      <span style="font-size:12px;color:var(--ink-light);">Sets request to expired and notifies the group by email.</span>
+    </div>`;
+}
+
+async function retireRequest(requestId) {
+  if (!confirm('Retire this request? The requestor and group will be emailed that no sub was found.')) return;
+  const btn = document.getElementById(`retire-btn-${requestId}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Retiring…'; }
+  try {
+    const result = await apiPost({ action: 'retireRequest', requestId });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    loadDispatch();
+  } catch(e) {
+    alert('Could not retire request: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Retire — No sub found'; }
+  }
+}
+
 async function loadDispatch() {
   document.getElementById('dispatch-status-content').innerHTML =
     '<div class="loading"><div class="spinner"></div>Loading status…</div>';
@@ -2585,6 +2609,7 @@ async function runMatch(requestId) {
         <div class="match-panel">
           <div class="match-panel-title">Matching engine results</div>
           <div class="alert alert-error">No eligible candidates found. Criteria: ${phaseDesc}.</div>
+          ${result.phase === 'last-minute' ? retireButtonHTML(requestId) : ''}
         </div>`;
       return;
     }
@@ -2622,6 +2647,7 @@ async function runMatch(requestId) {
           Candidates — ${result.candidates.length} found · ${phaseLabel} · ${availLabel}
         </div>
         ${cHTML}
+        ${result.phase === 'last-minute' ? retireButtonHTML(requestId) : ''}
       </div>`;
   } catch(e) {
     container.innerHTML = `<div class="alert alert-error">Matching engine error: ${e.message}</div>`;

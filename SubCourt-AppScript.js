@@ -254,6 +254,7 @@ function doGet(e) {
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
     else if (action === 'expireToday')       result = expireToday();
+    else if (action === 'retireRequest')     result = retireRequest(e.parameter);
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -975,6 +976,36 @@ function sendConfirmationEmails(data, groupPlayers) {
   if (ccAddresses) emailParams.cc = ccAddresses;
 
   if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+}
+
+function retireRequest(params) {
+  var requests = getRequests();
+  var req = requests.find(function(r) { return r.id === params.requestId; });
+  if (!req) return { success: false, error: 'Request not found' };
+
+  // Mark expired in SubRequests sheet
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('expired');
+
+  // Email requestor + CC group players
+  var dateStr  = formatDate(req.matchDate);
+  var timeStr  = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
+  var subject  = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
+  var body =
+    'Hi ' + req.name + ',\n\n' +
+    'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
+    '  Date: ' + dateStr + '\n' +
+    '  Time: ' + timeStr + '\n\n' +
+    'Please contact the league coordinator directly if you need further assistance.\n\n' +
+    'MWF Tennis League';
+
+  var groupPlayers = req.groupPlayers || [];
+  var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+  var emailParams = { to: req.email, subject: subject, body: body, name: 'MWF Tennis League' };
+  if (ccList.length) emailParams.cc = ccList.join(', ');
+  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+
+  return { success: true };
 }
 
 // ──────────────────────────────────────────────────
