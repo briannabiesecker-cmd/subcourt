@@ -217,8 +217,6 @@ function runAutoDispatch() {
   Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
   if (!open.length) return { dispatched: 0 };
 
-  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
-
   open.forEach(function(req) {
     try {
       var result = runMatch({ requestId: req.id });
@@ -239,12 +237,11 @@ function runAutoDispatch() {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
-        // No match found — retire if within 24 hours
+        // No match found — notify requestor if within 24 hours
         if (isLastMinute(req, config.lastMinuteThresholdHrs)) {
-          reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('expired');
           sendRetirementEmail(req);
-          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'retired', '', '', 'no candidates, last-minute']);
-          Logger.log('Auto-retired (last-minute, no candidates): ' + req.name);
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'notified — last-minute, no candidates']);
+          Logger.log('No candidates (last-minute, notified): ' + req.name);
         } else {
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
           Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');

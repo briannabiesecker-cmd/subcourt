@@ -2643,7 +2643,9 @@ function renderDispatchFilled(log) {
 }
 
 function renderDispatchOpen(requests, log) {
-  const open = requests.filter(r => r.status === 'open');
+  const open = requests
+    .filter(r => r.status !== 'expired' && r.status !== 'filled')
+    .sort((a, b) => (a.matchDate || '').localeCompare(b.matchDate || ''));
   const noCandidate = new Set((log || []).filter(e => e.result === 'no_candidates').map(e => e.requestId));
 
   if (!open.length) {
