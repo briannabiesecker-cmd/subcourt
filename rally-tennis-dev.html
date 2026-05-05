@@ -2584,9 +2584,8 @@ async function saveAutoDispatchSettings(enabled) {
   try {
     const result = await apiPost({ action: 'saveAutoDispatchSettings', enabled: String(enabled), time });
     if (!result.success) throw new Error(result.error || 'Failed');
-    const config = await getAppConfig();
-    renderDispatchStatus(config, null);
-    loadDispatch();
+    configCache = null;
+    await loadDispatch();
   } catch(e) {
     if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
     [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
@@ -2644,8 +2643,8 @@ async function saveMatchTimeReminderSettings(enabled) {
   try {
     const result = await apiPost({ action: 'saveMatchTimeReminderSettings', enabled: String(enabled), time });
     if (!result.success) throw new Error(result.error || 'Failed');
-    const config = await getAppConfig();
-    renderReminderStatus(config);
+    configCache = null;
+    await loadDispatch();
   } catch(e) {
     if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
     [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });

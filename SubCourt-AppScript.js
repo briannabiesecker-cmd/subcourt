@@ -1023,7 +1023,7 @@ function saveMatchTimeReminderSettings(params) {
   timeCell.setValue(time);
   SpreadsheetApp.flush();
 
-  updateMatchTimeReminderTrigger(enabled, time);
+  try { updateMatchTimeReminderTrigger(enabled, time); } catch(e) { Logger.log('updateMatchTimeReminderTrigger error: ' + e.message); }
 
   return { success: true, matchTimeReminderEnabled: enabled, matchTimeReminderTimeET: time };
 }
@@ -1107,9 +1107,9 @@ function saveAutoDispatchSettings(params) {
   var timeCell = sheet.getRange('B14');
   timeCell.setNumberFormat('@');
   timeCell.setValue(time);
-  SpreadsheetApp.flush(); // commit writes before trigger reads them back
+  SpreadsheetApp.flush();
 
-  updateDispatchTrigger(enabled, time); // pass values directly to avoid stale cache
+  try { updateDispatchTrigger(enabled, time); } catch(e) { Logger.log('updateDispatchTrigger error: ' + e.message); }
 
   return { success: true, autoDispatchEnabled: enabled, autoDispatchTimeET: time };
 }

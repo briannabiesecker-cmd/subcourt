@@ -1485,7 +1485,6 @@
     <div class="section-header">
       <div class="section-title">Match Schedule</div>
       <span class="section-sub" id="sch-month-label"></span>
-
     </div>
 
     <div class="card" style="margin-bottom:1.25rem;">
@@ -2584,9 +2583,8 @@ async function saveAutoDispatchSettings(enabled) {
   try {
     const result = await apiPost({ action: 'saveAutoDispatchSettings', enabled: String(enabled), time });
     if (!result.success) throw new Error(result.error || 'Failed');
-    const config = await getAppConfig();
-    renderDispatchStatus(config, null);
-    loadDispatch();
+    configCache = null;
+    await loadDispatch();
   } catch(e) {
     if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
     [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
@@ -2644,8 +2642,8 @@ async function saveMatchTimeReminderSettings(enabled) {
   try {
     const result = await apiPost({ action: 'saveMatchTimeReminderSettings', enabled: String(enabled), time });
     if (!result.success) throw new Error(result.error || 'Failed');
-    const config = await getAppConfig();
-    renderReminderStatus(config);
+    configCache = null;
+    await loadDispatch();
   } catch(e) {
     if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
     [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
@@ -3795,6 +3793,7 @@ async function publishScheduleToSheet() {
     document.getElementById('sched-excel-wrap').title = '';
     document.getElementById('sched-pdf-wrap').title = '';
   } catch(e) {
+      'Publish failed — refresh and retry.';
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Publish';
@@ -3832,6 +3831,7 @@ async function loadScheduleView() {
     loading.style.display = 'none';
     empty.style.display = '';
     empty.textContent = 'Could not load schedule. Please try again.';
+      'Error loading published schedule — try refreshing the page.';
   }
 }
 
