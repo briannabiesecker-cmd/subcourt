@@ -292,15 +292,16 @@ function doGet(e) {
         const lastMinute      = isLastMinute(req, config.lastMinuteThresholdHrs);
         const urgent          = isUrgent(req, config.preScheduleThresholdHrs);
         const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
-        const requireAllTimes = !lastMinute && (!matchTime || !urgent);
+        const hasTBDTime      = !matchTime;
+        const effectiveTime   = (matchTime || '08:00').trim();
+        const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
-          const reqTime      = matchTime ? matchTime.trim() : '';
           const dateMatch    = v.date.trim() === matchDate.trim();
           const notRequestor = v.email.toLowerCase() !== req.email.toLowerCase();
           const timeMatch    = requireAllTimes
                                  ? TIMES.every(t => volTimes.includes(t))
-                                 : (!!reqTime && volTimes.includes(reqTime));
+                                 : volTimes.includes(effectiveTime);
           const skillOk      = skillWindow === Infinity ? true : (() => {
             const p = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
             return p ? Math.abs(p.rating - reqRating) <= skillWindow : false;
@@ -869,21 +870,21 @@ function runMatch(params) {
   const matchTime    = req.matchTime;
   const lastMinute   = isLastMinute(req, config.lastMinuteThresholdHrs);
   const urgent       = isUrgent(req, config.preScheduleThresholdHrs);
-  const hasTBDTime   = !matchTime;
+  const hasTBDTime      = !matchTime;
+  const effectiveTime   = (matchTime || '08:00').trim();
 
   const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
-  const requireAllTimes = !lastMinute && (hasTBDTime || !urgent);
+  const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
   const phase           = lastMinute ? 'last-minute' : (!urgent ? 'pre-schedule' : 'post-schedule');
 
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
     if (v.email.toLowerCase() === req.email.toLowerCase()) return false;
     const volTimes = v.times.map(t => t.trim());
-    const reqTime  = matchTime ? matchTime.trim() : '';
     if (requireAllTimes) {
       if (!TIMES.every(t => volTimes.includes(t))) return false;
     } else {
-      if (!reqTime || !volTimes.includes(reqTime)) return false;
+      if (!volTimes.includes(effectiveTime)) return false;
     }
     if (skillWindow !== Infinity) {
       const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
@@ -983,7 +984,7 @@ function sendConfirmationEmails(data, groupPlayers) {
 function isUrgent(req, thresholdHrs) {
   if (!req.matchDate) return false;
   const hrs     = thresholdHrs || 48;
-  const timeStr = req.matchTime || '00:00'; // TBD: use start of day (conservative)
+  const timeStr = req.matchTime || '08:00'; // TBD: treat as 8:00 AM
   const matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   const now     = new Date();
   const diffHrs = (matchDT - now) / 36e5;
@@ -993,7 +994,7 @@ function isUrgent(req, thresholdHrs) {
 function isLastMinute(req, thresholdHrs) {
   if (!req.matchDate) return false;
   const hrs     = thresholdHrs || 24;
-  const timeStr = req.matchTime || '00:00'; // TBD: use start of day (conservative)
+  const timeStr = req.matchTime || '08:00'; // TBD: treat as 8:00 AM
   const matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   const now     = new Date();
   const diffHrs = (matchDT - now) / 36e5;
