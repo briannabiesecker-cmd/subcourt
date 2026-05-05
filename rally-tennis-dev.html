@@ -2071,7 +2071,7 @@ function clearRequestForm() {
   document.getElementById('req-time').value = '';
 }
 
-async function loadMyRequests(email) {
+async function loadMyRequests(email) { // v2
   const el      = document.getElementById('my-req-list');
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
