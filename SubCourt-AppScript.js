@@ -977,7 +977,7 @@ function sendConfirmationEmails(data, groupPlayers) {
     'Hi team,\n\n' +
     data.subName + ' will be substituting for ' + data.requestorName +
     ' on ' + dateStr + ' at ' + timeStr + '.\n\n' +
-    'No further action needed. Please plan to arrive at least 10 minutes early.\n\n' +
+    'Make updates in Chelsea as required.\n\n' +
     'See you on the court!\n\n' +
     'MWF Tennis League';
 
@@ -1021,17 +1021,25 @@ function retireRequest(params) {
   var dateStr  = formatDate(req.matchDate);
   var timeStr  = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
   var subject  = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
+  var directoryUrl = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#directory';
   var body =
     'Hi ' + req.name + ',\n\n' +
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
     '  Date: ' + dateStr + '\n' +
     '  Time: ' + timeStr + '\n\n' +
-    'Please contact the league coordinator directly if you need further assistance.\n\n' +
+    'Player email addresses and phone numbers can be found on the Directory page: ' + directoryUrl + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi ' + req.name + ',<br><br>' +
+    'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
+    '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
+    '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
+    'Player email addresses and phone numbers can be found on the <a href="' + directoryUrl + '">Directory</a> page.<br><br>' +
     'MWF Tennis League';
 
   var groupPlayers = req.groupPlayers || [];
   var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
-  var emailParams = { to: req.email, subject: subject, body: body, name: 'MWF Tennis League' };
+  var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) MailApp.sendEmail(emailParams);
 

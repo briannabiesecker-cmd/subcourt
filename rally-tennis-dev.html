@@ -3974,6 +3974,14 @@ async function closeAvailWindow() {
 // INIT
 // ══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  // Navigate to view specified in URL hash (e.g. #directory from email links)
+  const hash = location.hash.slice(1);
+  if (hash && document.getElementById('view-' + hash)) {
+    const btn = Array.from(document.querySelectorAll('nav button'))
+      .find(b => (b.getAttribute('onclick') || '').includes("'" + hash + "'"));
+    showView(hash, btn || null);
+  }
+
   // Single call returns players + availConfig — avoids two cold-start round trips
   apiGetWithParams({ action: 'getHomeData' }).then(data => {
     if (data.players)     playerList  = data.players;
