@@ -253,6 +253,7 @@ function doGet(e) {
     else if (action === 'updateVolunteer')  result = updateVolunteer(e.parameter);
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
+    else if (action === 'expireToday')       result = expireToday();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -481,6 +482,42 @@ function getDispatchLog() {
       notes:         r[8] || ''
     };
   });
+}
+
+function expireToday() {
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var today = formatSheetDate(new Date());
+  var expired = { requests: 0, volunteers: 0 };
+
+  // Expire open sub requests for today
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  if (reqSheet && reqSheet.getLastRow() >= 2) {
+    var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < reqRows.length; i++) {
+      var matchDate = formatSheetDate(reqRows[i][4]);
+      var status    = (reqRows[i][6] || '').toString();
+      if (matchDate === today && status === 'open') {
+        reqSheet.getRange(i + 2, 7).setValue('expired');
+        expired.requests++;
+      }
+    }
+  }
+
+  // Expire pending volunteer records for today
+  var volSheet = ss.getSheetByName(TABS.volunteers);
+  if (volSheet && volSheet.getLastRow() >= 2) {
+    var volRows = volSheet.getRange(2, 1, volSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < volRows.length; i++) {
+      var volDate = formatSheetDate(volRows[i][4]);
+      var status  = (volRows[i][6] || '').toString();
+      if (volDate === today && status === 'pending') {
+        volSheet.getRange(i + 2, 7).setValue('expired');
+        expired.volunteers++;
+      }
+    }
+  }
+
+  return { success: true, expired: expired };
 }
 
 function getPlayersWithRatings() {

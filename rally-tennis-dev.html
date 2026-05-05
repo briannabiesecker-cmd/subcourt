@@ -1720,6 +1720,11 @@
           <div id="dispatch-filled-list"></div>
           <hr class="divider" />
         </div>
+        <div style="margin-top:1.5rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="expire-today-btn" onclick="expireTodayRecords()">Expire Today's Records</button>
+          <div id="expire-today-alert"></div>
+        </div>
+
         <div style="margin-top:1.5rem;">
           <div class="section-header">
             <div class="section-title" style="font-size:17px;">Needs Attention</div>
@@ -2434,6 +2439,26 @@ let currentFilter = 'all';
 // ══════════════════════════════════════════════════
 // DISPATCH (matching engine)
 // ══════════════════════════════════════════════════
+async function expireTodayRecords() {
+  const btn = document.getElementById('expire-today-btn');
+  const alertEl = document.getElementById('expire-today-alert');
+  btn.disabled = true;
+  btn.textContent = 'Expiring…';
+  alertEl.innerHTML = '';
+  try {
+    const result = await apiPost({ action: 'expireToday' });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const { requests, volunteers } = result.expired;
+    alertEl.innerHTML = `<span style="color:var(--ink-mid);font-size:13px;">Expired ${requests} request(s) and ${volunteers} volunteer record(s).</span>`;
+    loadDispatch();
+  } catch(e) {
+    alertEl.innerHTML = `<span style="color:var(--warn);font-size:13px;">Error: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Expire Today's Records";
+  }
+}
+
 async function loadDispatch() {
   document.getElementById('dispatch-status-content').innerHTML =
     '<div class="loading"><div class="spinner"></div>Loading status…</div>';
