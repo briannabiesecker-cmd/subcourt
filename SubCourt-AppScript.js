@@ -491,7 +491,7 @@ function getPlayersWithRatings() {
   return rows.map(r => ({
     name:   r[0] || '',
     email:  (r[1] || '').toLowerCase(),
-    rating: parseFloat(r[2]) || 0
+    rating: parseFloat(r[3]) || 0
   }));
 }
 
@@ -690,7 +690,7 @@ function getCoordinatorRatings(params) {
   for (var r = 1; r < allData.length; r++) {
     var row = allData[r];
     if (!row[0]) continue;
-    var no8amVal = row[3];
+    var no8amVal = row[4];
     players.push({
       name:     row[0] || '',
       email:    (row[1] || '').toLowerCase(),
@@ -748,7 +748,7 @@ function saveCoordinatorRatings(params) {
     var pe = (allData[row][1] || '').toLowerCase().trim();
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
-      allData[row][3] = no8amMap[pe] ? true : false;
+      allData[row][4] = no8amMap[pe] ? true : false;
     }
     // Recalculate average from all coordinator columns
     if (!allData[row][0]) continue;
@@ -756,7 +756,7 @@ function saveCoordinatorRatings(params) {
       var v = allData[row][ci];
       return (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
     }).filter(function(v) { return v !== null; });
-    allData[row][2] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
+    allData[row][3] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
   }
 
   // Batch write: ratings column
@@ -765,16 +765,16 @@ function saveCoordinatorRatings(params) {
   ratingRange.setNumberFormat('0.0');
   ratingRange.setValues(ratingsCol);
 
-  // Batch write: averages column (C)
-  var avgsCol = allData.slice(1).map(function(r) { return [r[2]]; });
-  sheet.getRange(2, 3, avgsCol.length, 1).setValues(avgsCol);
+  // Batch write: averages column (D)
+  var avgsCol = allData.slice(1).map(function(r) { return [r[3]]; });
+  sheet.getRange(2, 4, avgsCol.length, 1).setValues(avgsCol);
 
-  // Batch write: No 8am column (D)
-  if (!headers[3] || headers[3].toString() !== 'No8am') {
-    sheet.getRange(1, 4).setValue('No8am');
+  // Batch write: No 8am column (E)
+  if (!headers[4] || headers[4].toString() !== 'No8am') {
+    sheet.getRange(1, 5).setValue('No8am');
   }
-  var no8amCol = allData.slice(1).map(function(r) { return [r[3] === true]; });
-  sheet.getRange(2, 4, no8amCol.length, 1).setValues(no8amCol);
+  var no8amCol = allData.slice(1).map(function(r) { return [r[4] === true]; });
+  sheet.getRange(2, 5, no8amCol.length, 1).setValues(no8amCol);
 
   return { success: true };
 }
@@ -1453,10 +1453,10 @@ function getSchedulerDashboard() {
     var no8amEmails = [];
     if (playersSheet && playersSheet.getLastRow() >= 2) {
       rosterCount = playersSheet.getLastRow() - 1;
-      var pRows = playersSheet.getRange(2, 1, rosterCount, 4).getValues();
+      var pRows = playersSheet.getRange(2, 1, rosterCount, 5).getValues();
       pRows.forEach(function(r) {
         var email = (r[1] || '').toLowerCase().trim();
-        var flag  = r[3];
+        var flag  = r[4];
         if (email && (flag === true || (flag && flag.toString().toUpperCase() === 'TRUE'))) {
           no8amEmails.push(email);
         }
@@ -1827,14 +1827,14 @@ function getPublishedSchedule() {
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { month: null, dates: [] };
 
-  // Load no8am flags from Players sheet (column D = index 3)
+  // Load no8am flags from Players sheet (column E = index 4)
   var no8amEmails = [];
   var playersSheet = ss.getSheetByName(TABS.players);
   if (playersSheet && playersSheet.getLastRow() >= 2) {
-    var pRows = playersSheet.getRange(2, 1, playersSheet.getLastRow() - 1, 4).getValues();
+    var pRows = playersSheet.getRange(2, 1, playersSheet.getLastRow() - 1, 5).getValues();
     pRows.forEach(function(r) {
       var email = (r[1] || '').toLowerCase().trim();
-      var flag  = r[3];
+      var flag  = r[4];
       if (email && (flag === true || (flag && flag.toString().toUpperCase() === 'TRUE'))) {
         no8amEmails.push(email);
       }
