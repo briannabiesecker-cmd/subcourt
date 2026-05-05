@@ -222,11 +222,24 @@ function runAutoDispatch() {
   Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
   if (!open.length) return { dispatched: 0 };
 
+  // Track volunteers assigned during this run to prevent double-booking
+  // (sheet-read cache within one execution can return stale data after confirmSub writes)
+  var assignedThisRun = {}; // key: email|matchDate → true
+
   open.forEach(function(req) {
     try {
       var result = runMatch({ requestId: req.id });
       if (result.candidates && result.candidates.length > 0) {
-        var best = result.candidates[0];
+        // Filter out anyone already assigned in this run
+        var eligible = result.candidates.filter(function(c) {
+          return !assignedThisRun[c.email.toLowerCase() + '|' + req.matchDate];
+        });
+        if (!eligible.length) {
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'all candidates already assigned this run']);
+          Logger.log('No eligible candidates (all assigned this run): ' + req.name);
+          return;
+        }
+        var best = eligible[0];
         confirmSub({
           requestId:         req.id,
           requestRowIndex:   req.rowIndex,
@@ -239,6 +252,7 @@ function runAutoDispatch() {
           volunteerRowIndex: best.rowIndex || null,
           groupPlayers:      JSON.stringify(req.groupPlayers || [])
         });
+        assignedThisRun[best.email.toLowerCase() + '|' + req.matchDate] = true;
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
@@ -915,6 +929,7 @@ function runMatch(params) {
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
     if (v.email.toLowerCase() === req.email.toLowerCase()) return false;
+    if (v.status === 'matched' || v.status === 'cancelled' || v.status === 'expired') return false;
     const volTimes = v.times.map(t => t.trim());
     if (requireAllTimes) {
       if (!TIMES.every(t => volTimes.includes(t))) return false;
