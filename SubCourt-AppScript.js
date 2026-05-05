@@ -944,18 +944,20 @@ function sendConfirmationEmails(data, groupPlayers) {
 // ──────────────────────────────────────────────────
 
 function isUrgent(req, thresholdHrs) {
-  if (!req.matchDate || !req.matchTime) return false;
+  if (!req.matchDate) return false;
   const hrs     = thresholdHrs || 48;
-  const matchDT = new Date(req.matchDate + 'T' + req.matchTime + ':00');
+  const timeStr = req.matchTime || '00:00'; // TBD: use start of day (conservative)
+  const matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   const now     = new Date();
   const diffHrs = (matchDT - now) / 36e5;
   return diffHrs <= hrs && diffHrs > 0;
 }
 
 function isLastMinute(req, thresholdHrs) {
-  if (!req.matchDate || !req.matchTime) return false;
+  if (!req.matchDate) return false;
   const hrs     = thresholdHrs || 24;
-  const matchDT = new Date(req.matchDate + 'T' + req.matchTime + ':00');
+  const timeStr = req.matchTime || '00:00'; // TBD: use start of day (conservative)
+  const matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   const now     = new Date();
   const diffHrs = (matchDT - now) / 36e5;
   // Past matches (diffHrs <= 0) are treated as last-minute so open requests
