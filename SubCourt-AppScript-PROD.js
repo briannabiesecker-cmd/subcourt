@@ -58,9 +58,12 @@ function getConfig() {
       lastMinuteThresholdHrs:   parseInt(sheet.getRange('B7').getValue())    || 24,
       // Volunteer calendar — row 10
       calendarLookaheadDays:    parseInt(sheet.getRange('B10').getValue())   || 30,
-      // Dispatch automation — rows 13–15
+      // Dispatch automation — rows 13–14
       autoDispatchEnabled:      (function() { var v = sheet.getRange('B13').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B14').getValue()) || '08:00',
+      // Match time reminder — rows 28–29
+      matchTimeReminderEnabled: (function() { var v = sheet.getRange('B28').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
+      matchTimeReminderTimeET:  formatSheetTime(sheet.getRange('B29').getValue()) || '10:00',
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -74,8 +77,10 @@ function getConfig() {
       preScheduleThresholdHrs: 48,
       lastMinuteThresholdHrs:  24,
       calendarLookaheadDays:   30,
-      autoDispatchEnabled:     false,
-      autoDispatchTimeET:      '08:00',
+      autoDispatchEnabled:      false,
+      autoDispatchTimeET:       '08:00',
+      matchTimeReminderEnabled: false,
+      matchTimeReminderTimeET:  '10:00',
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -156,8 +161,16 @@ function getOrCreateDispatchLog() {
   return sheet;
 }
 
-function updateDispatchTrigger() {
-  const config = getConfig();
+function updateDispatchTrigger(enabledOverride, timeOverride) {
+  var enabled, timeET;
+  if (enabledOverride !== undefined && timeOverride !== undefined) {
+    enabled = enabledOverride;
+    timeET  = timeOverride;
+  } else {
+    var config = getConfig();
+    enabled = config.autoDispatchEnabled;
+    timeET  = config.autoDispatchTimeET;
+  }
 
   // Delete any existing dispatch triggers
   ScriptApp.getProjectTriggers().forEach(trigger => {
@@ -166,13 +179,13 @@ function updateDispatchTrigger() {
     }
   });
 
-  if (!config.autoDispatchEnabled) {
+  if (!enabled) {
     Logger.log('Auto-dispatch is disabled. No trigger set.');
     return;
   }
 
   // Parse the ET time string (HH:MM)
-  const parts = config.autoDispatchTimeET.split(':');
+  const parts = timeET.split(':');
   const hourET = parseInt(parts[0]);
   const minET  = parseInt(parts[1]) || 0;
 
@@ -191,15 +204,23 @@ function updateDispatchTrigger() {
 }
 
 function runAutoDispatch() {
-  // Dispatch is currently disabled — remove this line to re-enable
-  return;
   var config = getConfig();
-  if (!config.autoDispatchEnabled) return;
+  if (!config.autoDispatchEnabled) {
+    Logger.log('runAutoDispatch: disabled, exiting.');
+    return { skipped: 'disabled' };
+  }
 
+  // Step 1: expire all sub requests and volunteer records on or before today
+  expireUpToToday();
+
+  // Step 2: fetch open requests (after expiry, so already-expired ones are excluded)
   var requests  = getRequests();
   var open      = requests.filter(function(r) { return r.status === 'open'; });
   var logSheet  = getOrCreateDispatchLog();
   var timestamp = new Date().toISOString();
+
+  Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
+  if (!open.length) return { dispatched: 0 };
 
   open.forEach(function(req) {
     try {
@@ -221,14 +242,23 @@ function runAutoDispatch() {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
-        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
-        Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
+        // No match found — notify requestor if within 24 hours
+        if (isLastMinute(req, config.lastMinuteThresholdHrs)) {
+          sendRetirementEmail(req);
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'notified — last-minute, no candidates']);
+          Logger.log('No candidates (last-minute, notified): ' + req.name);
+        } else {
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
+          Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
+        }
       }
     } catch(err) {
       logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'error', '', '', err.message]);
       Logger.log('Auto-dispatch error for ' + req.id + ': ' + err.message);
     }
   });
+
+  return { dispatched: open.length };
 }
 
 // ──────────────────────────────────────────────────
@@ -253,6 +283,12 @@ function doGet(e) {
     else if (action === 'updateVolunteer')  result = updateVolunteer(e.parameter);
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
+    else if (action === 'expireToday')       result = expireToday();
+    else if (action === 'retireRequest')          result = retireRequest(e.parameter);
+    else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
+    else if (action === 'runAutoDispatchNow')             result = runAutoDispatch();
+    else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
+    else if (action === 'runMatchTimeReminderNow')        result = runMatchTimeReminder();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -291,15 +327,16 @@ function doGet(e) {
         const lastMinute      = isLastMinute(req, config.lastMinuteThresholdHrs);
         const urgent          = isUrgent(req, config.preScheduleThresholdHrs);
         const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
-        const requireAllTimes = !lastMinute && (!matchTime || !urgent);
+        const hasTBDTime      = !matchTime;
+        const effectiveTime   = (matchTime || '08:00').trim();
+        const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
-          const reqTime      = matchTime ? matchTime.trim() : '';
           const dateMatch    = v.date.trim() === matchDate.trim();
           const notRequestor = v.email.toLowerCase() !== req.email.toLowerCase();
           const timeMatch    = requireAllTimes
                                  ? TIMES.every(t => volTimes.includes(t))
-                                 : (!!reqTime && volTimes.includes(reqTime));
+                                 : volTimes.includes(effectiveTime);
           const skillOk      = skillWindow === Infinity ? true : (() => {
             const p = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
             return p ? Math.abs(p.rating - reqRating) <= skillWindow : false;
@@ -483,6 +520,42 @@ function getDispatchLog() {
   });
 }
 
+function expireToday() {
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var today = formatSheetDate(new Date());
+  var expired = { requests: 0, volunteers: 0 };
+
+  // Expire open sub requests for today
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  if (reqSheet && reqSheet.getLastRow() >= 2) {
+    var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < reqRows.length; i++) {
+      var matchDate = formatSheetDate(reqRows[i][4]);
+      var status    = (reqRows[i][6] || '').toString();
+      if (matchDate === today && status === 'open') {
+        reqSheet.getRange(i + 2, 7).setValue('expired');
+        expired.requests++;
+      }
+    }
+  }
+
+  // Expire pending volunteer records for today
+  var volSheet = ss.getSheetByName(TABS.volunteers);
+  if (volSheet && volSheet.getLastRow() >= 2) {
+    var volRows = volSheet.getRange(2, 1, volSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < volRows.length; i++) {
+      var volDate = formatSheetDate(volRows[i][4]);
+      var status  = (volRows[i][6] || '').toString();
+      if (volDate === today && status === 'pending') {
+        volSheet.getRange(i + 2, 7).setValue('expired');
+        expired.volunteers++;
+      }
+    }
+  }
+
+  return { success: true, expired: expired };
+}
+
 function getPlayersWithRatings() {
   // Internal use only — never sent to browser
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
@@ -491,7 +564,7 @@ function getPlayersWithRatings() {
   return rows.map(r => ({
     name:   r[0] || '',
     email:  (r[1] || '').toLowerCase(),
-    rating: parseFloat(r[2]) || 0
+    rating: parseFloat(r[3]) || 0
   }));
 }
 
@@ -593,10 +666,10 @@ function debugAdmin(params) {
     totalRows: rows.length,
     rows: rows.map(function(r) {
       return {
-        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3], col_E: r[4],
-        col_E_type: typeof r[4],
+        col_A: r[0], col_B: r[1], col_C: r[2], col_D: r[3], col_E: r[4], col_F: r[5],
+        col_F_type: typeof r[5],
         emailMatch: (r[1] || '').toLowerCase().trim() === email,
-        flagCheck: r[4] === true || String(r[4]).toUpperCase() === 'TRUE'
+        flagCheck: r[5] === true || String(r[5]).toUpperCase() === 'TRUE'
       };
     })
   };
@@ -606,12 +679,12 @@ function isAdminEmail(email) {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
-  // Read A:E explicitly — getDataRange() misses col E when booleans are stored as checkboxes
-  const rows = sheet.getRange(1, 1, lastRow, 5).getValues();
+  // Read A:F explicitly — getDataRange() misses col F when booleans are stored as checkboxes
+  const rows = sheet.getRange(1, 1, lastRow, 6).getValues();
   rows.shift(); // remove header
   return rows.some(function(r) {
     const rowEmail = (r[1] || '').toLowerCase().trim();
-    const flag     = r[4]; // column E = isAdmin
+    const flag     = r[5]; // column F = isAdmin
     return rowEmail === email.toLowerCase().trim() &&
            (flag === true || String(flag).toUpperCase() === 'TRUE');
   });
@@ -690,7 +763,7 @@ function getCoordinatorRatings(params) {
   for (var r = 1; r < allData.length; r++) {
     var row = allData[r];
     if (!row[0]) continue;
-    var no8amVal = row[3];
+    var no8amVal = row[4];
     players.push({
       name:     row[0] || '',
       email:    (row[1] || '').toLowerCase(),
@@ -748,7 +821,7 @@ function saveCoordinatorRatings(params) {
     var pe = (allData[row][1] || '').toLowerCase().trim();
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
-      allData[row][3] = no8amMap[pe] ? true : false;
+      allData[row][4] = no8amMap[pe] ? true : false;
     }
     // Recalculate average from all coordinator columns
     if (!allData[row][0]) continue;
@@ -756,7 +829,7 @@ function saveCoordinatorRatings(params) {
       var v = allData[row][ci];
       return (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
     }).filter(function(v) { return v !== null; });
-    allData[row][2] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
+    allData[row][3] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
   }
 
   // Batch write: ratings column
@@ -765,16 +838,16 @@ function saveCoordinatorRatings(params) {
   ratingRange.setNumberFormat('0.0');
   ratingRange.setValues(ratingsCol);
 
-  // Batch write: averages column (C)
-  var avgsCol = allData.slice(1).map(function(r) { return [r[2]]; });
-  sheet.getRange(2, 3, avgsCol.length, 1).setValues(avgsCol);
+  // Batch write: averages column (D)
+  var avgsCol = allData.slice(1).map(function(r) { return [r[3]]; });
+  sheet.getRange(2, 4, avgsCol.length, 1).setValues(avgsCol);
 
-  // Batch write: No 8am column (D)
-  if (!headers[3] || headers[3].toString() !== 'No8am') {
-    sheet.getRange(1, 4).setValue('No8am');
+  // Batch write: No 8am column (E)
+  if (!headers[4] || headers[4].toString() !== 'No8am') {
+    sheet.getRange(1, 5).setValue('No8am');
   }
-  var no8amCol = allData.slice(1).map(function(r) { return [r[3] === true]; });
-  sheet.getRange(2, 4, no8amCol.length, 1).setValues(no8amCol);
+  var no8amCol = allData.slice(1).map(function(r) { return [r[4] === true]; });
+  sheet.getRange(2, 5, no8amCol.length, 1).setValues(no8amCol);
 
   return { success: true };
 }
@@ -832,21 +905,21 @@ function runMatch(params) {
   const matchTime    = req.matchTime;
   const lastMinute   = isLastMinute(req, config.lastMinuteThresholdHrs);
   const urgent       = isUrgent(req, config.preScheduleThresholdHrs);
-  const hasTBDTime   = !matchTime;
+  const hasTBDTime      = !matchTime;
+  const effectiveTime   = (matchTime || '08:00').trim();
 
   const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
-  const requireAllTimes = !lastMinute && (hasTBDTime || !urgent);
+  const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
   const phase           = lastMinute ? 'last-minute' : (!urgent ? 'pre-schedule' : 'post-schedule');
 
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
     if (v.email.toLowerCase() === req.email.toLowerCase()) return false;
     const volTimes = v.times.map(t => t.trim());
-    const reqTime  = matchTime ? matchTime.trim() : '';
     if (requireAllTimes) {
       if (!TIMES.every(t => volTimes.includes(t))) return false;
     } else {
-      if (!reqTime || !volTimes.includes(reqTime)) return false;
+      if (!volTimes.includes(effectiveTime)) return false;
     }
     if (skillWindow !== Infinity) {
       const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
@@ -924,7 +997,7 @@ function sendConfirmationEmails(data, groupPlayers) {
     'Hi team,\n\n' +
     data.subName + ' will be substituting for ' + data.requestorName +
     ' on ' + dateStr + ' at ' + timeStr + '.\n\n' +
-    'No further action needed. Please plan to arrive at least 10 minutes early.\n\n' +
+    'Make updates in Chelsea as required.\n\n' +
     'See you on the court!\n\n' +
     'MWF Tennis League';
 
@@ -939,23 +1012,194 @@ function sendConfirmationEmails(data, groupPlayers) {
   if (isEmailEnabled()) MailApp.sendEmail(emailParams);
 }
 
+function saveMatchTimeReminderSettings(params) {
+  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  var enabled = params.enabled === 'true' || params.enabled === true;
+  var time    = (params.time || '10:00').trim();
+
+  sheet.getRange('B28').setValue(enabled);
+  var timeCell = sheet.getRange('B29');
+  timeCell.setNumberFormat('@');
+  timeCell.setValue(time);
+  SpreadsheetApp.flush();
+
+  updateMatchTimeReminderTrigger(enabled, time);
+
+  return { success: true, matchTimeReminderEnabled: enabled, matchTimeReminderTimeET: time };
+}
+
+function updateMatchTimeReminderTrigger(enabled, time) {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'runMatchTimeReminder') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  if (!enabled) return;
+  var parts  = time.split(':');
+  var hourET = parseInt(parts[0]);
+  var minET  = parseInt(parts[1]) || 0;
+  ScriptApp.newTrigger('runMatchTimeReminder')
+    .timeBased().atHour(hourET).nearMinute(minET).everyDays(1)
+    .inTimezone('America/New_York').create();
+}
+
+function runMatchTimeReminder() {
+  var config = getConfig();
+  if (!config.matchTimeReminderEnabled) return { skipped: 'disabled' };
+
+  var requests = getRequests();
+  var now      = new Date();
+  var siteUrl  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#request';
+  var notified = 0;
+
+  requests.forEach(function(req) {
+    if (req.status !== 'open') return;
+    if (req.matchTime) return; // already has a time
+
+    // Check if match date is within 60 hours (use 8:00 AM for TBD times)
+    var matchDT = new Date(req.matchDate + 'T08:00:00');
+    var diffHrs = (matchDT - now) / 36e5;
+    if (diffHrs <= 0 || diffHrs > 60) return;
+
+    var dateStr = formatDate(req.matchDate);
+    var subject = 'MWF Tennis League — Court time needed for your sub request: ' + dateStr;
+
+    var body =
+      'Hi ' + req.name + ',\n\n' +
+      'You have an open sub request for ' + dateStr + ' and no court time has been assigned yet.\n\n' +
+      'Once Chelsea has scheduled a court, please add the court time to your request at:\n' + siteUrl + '\n\n' +
+      'If you are on Overflow, do nothing. Rally will still try to find a sub.\n\n' +
+      'Note: Non 8am players are ineligible to fill a sub request without a court time assigned.\n\n' +
+      'MWF Tennis League';
+
+    var htmlBody =
+      'Hi ' + req.name + ',<br><br>' +
+      'You have an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
+      'Once Chelsea has scheduled a court, please <a href="' + siteUrl + '">add the court time to your request</a>.<br><br>' +
+      '<em>If you are on Overflow, do nothing. Rally will still try to find a sub.</em><br><br>' +
+      '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
+      'MWF Tennis League';
+
+    var groupPlayers = req.groupPlayers || [];
+    var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+    var emailParams = {
+      to:       req.email,
+      subject:  subject,
+      body:     body,
+      htmlBody: htmlBody,
+      name:     'MWF Tennis League'
+    };
+    if (ccList.length) emailParams.cc = ccList.join(', ');
+    if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+    notified++;
+  });
+
+  Logger.log('runMatchTimeReminder: notified ' + notified + ' requestor(s).');
+  return { success: true, notified: notified };
+}
+
+function saveAutoDispatchSettings(params) {
+  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  var enabled = params.enabled === 'true' || params.enabled === true;
+  var time    = (params.time || '08:00').trim();
+
+  sheet.getRange('B13').setValue(enabled);
+  var timeCell = sheet.getRange('B14');
+  timeCell.setNumberFormat('@');
+  timeCell.setValue(time);
+  SpreadsheetApp.flush(); // commit writes before trigger reads them back
+
+  updateDispatchTrigger(enabled, time); // pass values directly to avoid stale cache
+
+  return { success: true, autoDispatchEnabled: enabled, autoDispatchTimeET: time };
+}
+
+function sendRetirementEmail(req) {
+  var dateStr      = formatDate(req.matchDate);
+  var timeStr      = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
+  var subject      = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
+  var directoryUrl = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#directory';
+  var body =
+    'Hi ' + req.name + ',\n\n' +
+    'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
+    '  Date: ' + dateStr + '\n' +
+    '  Time: ' + timeStr + '\n\n' +
+    'Player email addresses and phone numbers can be found on the Directory page: ' + directoryUrl + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi ' + req.name + ',<br><br>' +
+    'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
+    '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
+    '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
+    'Player email addresses and phone numbers can be found on the <a href="' + directoryUrl + '">Directory</a> page.<br><br>' +
+    'MWF Tennis League';
+  var groupPlayers = req.groupPlayers || [];
+  var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+  var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  if (ccList.length) emailParams.cc = ccList.join(', ');
+  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+}
+
+function retireRequest(params) {
+  var requests = getRequests();
+  var req = requests.find(function(r) { return r.id === params.requestId; });
+  if (!req) return { success: false, error: 'Request not found' };
+
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('expired');
+  sendRetirementEmail(req);
+
+  return { success: true };
+}
+
+function expireUpToToday() {
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var today = formatSheetDate(new Date());
+
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  if (reqSheet && reqSheet.getLastRow() >= 2) {
+    var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < reqRows.length; i++) {
+      var matchDate = formatSheetDate(reqRows[i][4]);
+      var status    = (reqRows[i][6] || '').toString();
+      if (matchDate && matchDate <= today && status === 'open') {
+        reqSheet.getRange(i + 2, 7).setValue('expired');
+      }
+    }
+  }
+
+  var volSheet = ss.getSheetByName(TABS.volunteers);
+  if (volSheet && volSheet.getLastRow() >= 2) {
+    var volRows = volSheet.getRange(2, 1, volSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < volRows.length; i++) {
+      var volDate = formatSheetDate(volRows[i][4]);
+      var status  = (volRows[i][6] || '').toString();
+      if (volDate && volDate <= today && status === 'pending') {
+        volSheet.getRange(i + 2, 7).setValue('expired');
+      }
+    }
+  }
+}
+
 // ──────────────────────────────────────────────────
 // HELPERS
 // ──────────────────────────────────────────────────
 
 function isUrgent(req, thresholdHrs) {
-  if (!req.matchDate || !req.matchTime) return false;
+  if (!req.matchDate) return false;
   const hrs     = thresholdHrs || 48;
-  const matchDT = new Date(req.matchDate + 'T' + req.matchTime + ':00');
+  const timeStr = req.matchTime || '08:00'; // TBD: treat as 8:00 AM
+  const matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   const now     = new Date();
   const diffHrs = (matchDT - now) / 36e5;
   return diffHrs <= hrs && diffHrs > 0;
 }
 
 function isLastMinute(req, thresholdHrs) {
-  if (!req.matchDate || !req.matchTime) return false;
+  if (!req.matchDate) return false;
   const hrs     = thresholdHrs || 24;
-  const matchDT = new Date(req.matchDate + 'T' + req.matchTime + ':00');
+  const timeStr = req.matchTime || '08:00'; // TBD: treat as 8:00 AM
+  const matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   const now     = new Date();
   const diffHrs = (matchDT - now) / 36e5;
   // Past matches (diffHrs <= 0) are treated as last-minute so open requests
@@ -1453,10 +1697,10 @@ function getSchedulerDashboard() {
     var no8amEmails = [];
     if (playersSheet && playersSheet.getLastRow() >= 2) {
       rosterCount = playersSheet.getLastRow() - 1;
-      var pRows = playersSheet.getRange(2, 1, rosterCount, 4).getValues();
+      var pRows = playersSheet.getRange(2, 1, rosterCount, 5).getValues();
       pRows.forEach(function(r) {
         var email = (r[1] || '').toLowerCase().trim();
-        var flag  = r[3];
+        var flag  = r[4];
         if (email && (flag === true || (flag && flag.toString().toUpperCase() === 'TRUE'))) {
           no8amEmails.push(email);
         }
@@ -1827,14 +2071,14 @@ function getPublishedSchedule() {
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { month: null, dates: [] };
 
-  // Load no8am flags from Players sheet (column D = index 3)
+  // Load no8am flags from Players sheet (column E = index 4)
   var no8amEmails = [];
   var playersSheet = ss.getSheetByName(TABS.players);
   if (playersSheet && playersSheet.getLastRow() >= 2) {
-    var pRows = playersSheet.getRange(2, 1, playersSheet.getLastRow() - 1, 4).getValues();
+    var pRows = playersSheet.getRange(2, 1, playersSheet.getLastRow() - 1, 5).getValues();
     pRows.forEach(function(r) {
       var email = (r[1] || '').toLowerCase().trim();
-      var flag  = r[3];
+      var flag  = r[4];
       if (email && (flag === true || (flag && flag.toString().toUpperCase() === 'TRUE'))) {
         no8amEmails.push(email);
       }
