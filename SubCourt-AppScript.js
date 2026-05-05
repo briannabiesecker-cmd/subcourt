@@ -191,8 +191,6 @@ function updateDispatchTrigger() {
 }
 
 function runAutoDispatch() {
-  // Dispatch is currently disabled — remove this line to re-enable
-  return;
   var config = getConfig();
   if (!config.autoDispatchEnabled) return;
 
