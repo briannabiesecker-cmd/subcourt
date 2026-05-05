@@ -1155,25 +1155,11 @@
       <div class="section-title">Request a Substitute</div>
     </div>
 
-    <div id="my-req-section" style="display:none;">
-      <div class="section-header">
-        <div class="section-title" style="font-size:18px;">Your Upcoming Requests</div>
-      </div>
-      <div id="my-req-list"></div>
-      <hr class="divider" />
-    </div>
-
-    <div class="alert alert-info" style="margin-bottom:1.25rem;">
-      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
-    </div>
-
-    <div class="card">
-      <div id="req-alert" class="hidden"></div>
-
-      <div class="form-grid">
-        <div class="field">
+    <!-- Name / email at the top -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:start;">
+        <div class="field" style="margin:0;">
           <label>Your name</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Start typing your name and select it from the list. Already submitted a request? Select your name to see it here.</div>
           <div class="typeahead-wrap">
             <div id="req-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -1192,11 +1178,29 @@
             </div>
           </div>
         </div>
-        <div class="field">
+        <div class="field" style="margin:0;">
           <label>Your email</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">This will be filled in automatically.</div>
           <input type="email" id="req-email" placeholder="Auto-filled on selection" disabled />
         </div>
+      </div>
+    </div>
+
+    <div id="my-req-section" style="display:none;">
+      <div class="section-header">
+        <div class="section-title" style="font-size:18px;">Your Upcoming Requests</div>
+      </div>
+      <div id="my-req-list"></div>
+      <hr class="divider" />
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1.25rem;">
+      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
+    </div>
+
+    <div class="card">
+      <div id="req-alert" class="hidden"></div>
+
+      <div class="form-grid">
         <div class="field">
           <label>Match date</label>
           <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The date of the match you need covered.</div>
