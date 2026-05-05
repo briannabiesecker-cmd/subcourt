@@ -1783,7 +1783,7 @@ function showView(name, btn) {
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   if (name === 'request') prefillIdentity('req');
-  if (name === 'volunteer') { buildCalendar(); prefillIdentity('vol'); }
+  if (name === 'volunteer') { buildCalendar().then(() => prefillIdentity('vol')); }
   if (name === 'availability') { loadAvailabilityView(); prefillIdentity('av'); }
   if (name === 'schedule') loadScheduleView();
   if (name === 'directory') loadDirectoryView();
@@ -2163,7 +2163,8 @@ async function saveRequestTime(rowIndex) {
 // ══════════════════════════════════════════════════
 // VOLUNTEERS
 // ══════════════════════════════════════════════════
-let volSelections = {};
+let volSelections   = {};
+let myVolunteerMap  = {}; // date → {rowIndex, status, times} for pre-existing submissions
 
 async function buildCalendar() {
   try {
@@ -2290,33 +2291,32 @@ async function submitVolunteer() {
   btn.textContent = 'Submitting…';
 
   try {
-    const existing = await getVolunteers();
-    const duplicates = entries
-      .map(([date]) => date)
-      .filter(date => existing.some(v =>
-        v.email.toLowerCase() === email.toLowerCase() &&
-        v.date === date &&
-        v.status !== 'cancelled'
-      ));
-    if (duplicates.length) {
-      showAlert('vol-alert', 'error',
-        'You already have a submission for: ' + duplicates.map(d => formatDate(d)).join(', ') +
-        '. Remove the existing entry first if you want to change it.'
-      );
-      return;
+    const toUpdate = [];
+    const toCreate = [];
+    for (const [date, times] of entries) {
+      const ex = myVolunteerMap[date];
+      if (ex && ex.status === 'matched') continue;       // skip matched
+      if (ex && ex.status === 'pending') toUpdate.push({ rowIndex: ex.rowIndex, times });
+      else toCreate.push({ date, times });
     }
-
-    await apiPost({
-      action: 'submitVolunteer',
-      name,
-      email,
-      entries: entries.map(([date, times]) => ({ date, times: times.map(t => t.replace(':', '_')) }))
-    });
-    showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
+    // Update existing pending records
+    for (const u of toUpdate) {
+      await apiPost({ action: 'updateVolunteer', rowIndex: u.rowIndex, times: JSON.stringify(u.times) });
+    }
+    // Create new records
+    if (toCreate.length) {
+      await apiPost({
+        action: 'submitVolunteer',
+        name,
+        email,
+        entries: toCreate.map(({ date, times }) => ({ date, times: times.map(t => t.replace(':', '_')) }))
+      });
+    }
+    const total = toUpdate.length + toCreate.length;
+    showAlert('vol-alert', 'success', `Availability saved for ${total} date(s). Thank you!`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    buildCalendar();
+    buildCalendar().then(() => loadMySubmissions(email));
     clearCache();
-    await loadMySubmissions(email);
   } catch(e) {
     showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
   } finally {
@@ -2326,78 +2326,60 @@ async function submitVolunteer() {
 }
 
 function clearVolForm() {
+  myVolunteerMap = {};
   clearTypeahead('vol');
   document.getElementById('vol-summary').classList.add('hidden');
   buildCalendar();
 }
 
 async function loadMySubmissions(email) {
-  const el      = document.getElementById('my-vol-list');
-  const section = document.getElementById('my-vol-section');
-  volEditSelections = {};
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
-  section.style.display = 'block';
-
+  myVolunteerMap = {};
   try {
     volunteerCache = null;
     const vols = await getVolunteers();
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const todayStr = new Date().toISOString().slice(0, 10);
     const mine = vols.filter(v =>
       v.email.toLowerCase() === email.toLowerCase() &&
       v.status !== 'cancelled' &&
-      new Date(v.date + 'T23:59:59') >= cutoff
+      v.date > todayStr
     );
-    if (!mine.length) {
-      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found.</div>';
-      return;
-    }
-    mine.forEach(v => { volEditSelections[v.rowIndex] = [...v.times]; });
 
-    el.innerHTML = mine.map(v => {
-      const isPending = v.status === 'pending';
-      const timesText = v.times.length === 4
-        ? 'All 4 times ✓'
-        : v.times.map(t => TIME_LABELS[t] || t).join(' · ');
+    mine.forEach(v => {
+      myVolunteerMap[v.date] = { rowIndex: v.rowIndex, status: v.status, times: [...v.times] };
+    });
 
-      if (isPending) {
-        return `
-          <div class="vol-card" id="vol-card-${v.rowIndex}">
-            <div class="vol-header">
-              <div>
-                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
-              </div>
-              <span class="badge badge-pending">pending</span>
-            </div>
-            <div class="time-chips" style="margin-top:10px;">
-              ${TIMES.map(t => `
-                <button class="time-chip-btn${v.times.includes(t) ? ' on' : ''}"
-                  id="edit-chip-${v.rowIndex}-${t}"
-                  onclick="toggleEditChip(${v.rowIndex}, '${t}')">${TIME_LABELS[t]}</button>
-              `).join('')}
-            </div>
-            <div class="flex gap8 mt12">
-              <button class="btn btn-clay btn-sm" onclick="saveVolunteerEdit(${v.rowIndex})">Save changes</button>
-              <button class="btn btn-secondary btn-sm" onclick="removeVolunteer(${v.rowIndex})">Remove</button>
-            </div>
-          </div>`;
-      } else {
-        return `
-          <div class="vol-card">
-            <div class="vol-header">
-              <div>
-                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
-              </div>
-              <span class="badge badge-matched">${v.status}</span>
-            </div>
-            <div class="times-list" style="margin-top:8px;">
-              ${v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
-            </div>
-            <div style="font-size:11px; color:var(--ink-light); margin-top:6px;">Already matched — cannot edit</div>
-          </div>`;
-      }
-    }).join('');
+    // Pre-populate calendar chips for each existing submission
+    mine.forEach(v => {
+      if (!volSelections.hasOwnProperty(v.date)) return; // date not in visible calendar
+      volSelections[v.date] = [...v.times];
+      refreshDateRow(v.date);
+      if (v.status === 'matched') lockDateRow(v.date);
+    });
+    updateVolSummary();
   } catch(e) {
-    el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+    console.error('loadMySubmissions error:', e);
+  }
+}
+
+function lockDateRow(k) {
+  const row = document.getElementById('daterow-' + k);
+  if (!row) return;
+  // Disable chips and checkbox
+  TIMES.forEach(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
+  });
+  const allChk = document.getElementById('allchk-' + k);
+  if (allChk) allChk.disabled = true;
+  const saw = row.querySelector('.select-all-wrap');
+  if (saw) saw.style.pointerEvents = 'none';
+  // Add note if not already present
+  if (!row.querySelector('.matched-note')) {
+    const note = document.createElement('div');
+    note.className = 'matched-note';
+    note.style.cssText = 'font-size:12px;color:var(--ink-light);font-style:italic;margin-top:4px;width:100%;';
+    note.textContent = 'Already matched — cannot edit';
+    row.appendChild(note);
   }
 }
 
