@@ -1772,8 +1772,9 @@ function showView(name, btn) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
-  if (name === 'volunteer') buildCalendar();
-  if (name === 'availability') loadAvailabilityView();
+  if (name === 'request') prefillIdentity('req');
+  if (name === 'volunteer') { buildCalendar(); prefillIdentity('vol'); }
+  if (name === 'availability') { loadAvailabilityView(); prefillIdentity('av'); }
   if (name === 'schedule') loadScheduleView();
   if (name === 'directory') loadDirectoryView();
   if (name === 'admin') {
@@ -1903,11 +1904,22 @@ function selectTypeaheadPlayer(prefix, name, email) {
   document.getElementById(prefix + '-selected-name').textContent = name;
   document.getElementById(prefix + '-email').value = email;
   document.getElementById(prefix + '-dropdown').style.display = 'none';
+  if (['req', 'vol', 'av'].includes(prefix)) {
+    try { localStorage.setItem('rally_user_identity', JSON.stringify({ name, email })); } catch(e) {}
+  }
   if (prefix === 'vol') loadMySubmissions(email);
   if (prefix === 'req') loadMyRequests(email);
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email);
+}
+
+function prefillIdentity(prefix) {
+  try {
+    const id = JSON.parse(localStorage.getItem('rally_user_identity'));
+    if (!id || !id.email || document.getElementById(prefix + '-email').value) return;
+    selectTypeaheadPlayer(prefix, id.name, id.email);
+  } catch(e) {}
 }
 
 function clearTypeahead(prefix) {
