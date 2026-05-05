@@ -979,6 +979,12 @@
   }
   .sched-gen-summary strong { color: var(--ink); }
 
+  /* ── Dispatch Table ── */
+  .dispatch-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+  .dispatch-table th { background: var(--ink-mid); color: white; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink); white-space: nowrap; }
+  .dispatch-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .dispatch-table tbody tr.data-row:hover { background: var(--chalk); }
+
   /* ── Directory Table ── */
   .dir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .dir-table th { background: var(--ink-mid); color: white; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink); }
@@ -2619,18 +2625,21 @@ function renderDispatchFilled(log) {
   if (!matched.length) return;
 
   document.getElementById('dispatch-filled-section').style.display = '';
-  document.getElementById('dispatch-filled-list').innerHTML = matched.map(e => `
-    <div class="request-card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">${e.requestorName}</div>
-          <div class="card-meta">${formatDate(e.matchDate)}${e.matchTime ? ' · ' + formatTime(e.matchTime) : ''} · Sub: <strong>${e.subName}</strong> (${e.subEmail})</div>
-        </div>
-        <span class="badge badge-matched">Auto-matched</span>
-      </div>
-      <div style="font-size:12px;color:#999;margin-top:4px;">Dispatched ${formatTS(e.timestamp)}</div>
-    </div>
-  `).join('');
+  document.getElementById('dispatch-filled-list').innerHTML = `
+    <table class="dispatch-table">
+      <thead><tr>
+        <th>Requestor</th><th>Date</th><th>Time</th><th>Sub Assigned</th><th>Dispatched</th>
+      </tr></thead>
+      <tbody>
+        ${matched.map(e => `<tr class="data-row">
+          <td style="font-weight:600;">${e.requestorName}</td>
+          <td style="white-space:nowrap;">${formatDate(e.matchDate)}</td>
+          <td style="white-space:nowrap;">${e.matchTime ? formatTime(e.matchTime) : '—'}</td>
+          <td>${e.subName} <span style="color:var(--ink-light);font-size:12px;">(${e.subEmail})</span></td>
+          <td style="font-size:12px;color:var(--ink-light);white-space:nowrap;">${formatTS(e.timestamp)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 function renderDispatchOpen(requests, log) {
@@ -2643,33 +2652,45 @@ function renderDispatchOpen(requests, log) {
     return;
   }
 
-  document.getElementById('dispatch-list').innerHTML = open.map(r => `
-    <div class="request-card" id="dr-${r.id}">
-      <div class="request-row">
-        <div class="request-info">
-          <div class="card-header" style="margin-bottom:6px;">
-            <div>
-              <div class="card-title">${r.name}</div>
-              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + formatTime(r.matchTime) : '· <span class="badge badge-tbd">TBD</span>'}</div>
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;">
-              ${noCandidate.has(r.id) ? '<span class="badge" style="background:#FEF3C7;color:#92400E;">No candidates</span>' : ''}
-              ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
-            </div>
-          </div>
-        </div>
-        <div class="request-actions">
-          <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
-        </div>
-      </div>
-      <div id="match-result-${r.id}"></div>
-    </div>
-  `).join('');
+  document.getElementById('dispatch-list').innerHTML = `
+    <table class="dispatch-table">
+      <thead><tr>
+        <th>Requestor</th><th>Date</th><th>Time</th><th>Status</th><th style="text-align:right;">Action</th>
+      </tr></thead>
+      <tbody>
+        ${open.map(r => `
+          <tr class="data-row" id="dr-${r.id}">
+            <td>
+              <div style="font-weight:600;">${r.name}</div>
+              <div style="font-size:12px;color:var(--ink-light);">${r.email}</div>
+            </td>
+            <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
+            <td style="white-space:nowrap;">${r.matchTime ? formatTime(r.matchTime) : '<span class="badge badge-tbd">TBD</span>'}</td>
+            <td>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                ${noCandidate.has(r.id) ? '<span class="badge" style="background:#FEF3C7;color:#92400E;">No candidates</span>' : ''}
+                ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+              </div>
+            </td>
+            <td style="text-align:right;white-space:nowrap;">
+              <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
+            </td>
+          </tr>
+          <tr id="dr-result-row-${r.id}" style="display:none;">
+            <td colspan="5" style="padding:0 12px 12px;background:var(--chalk);border-bottom:2px solid var(--line);">
+              <div id="match-result-${r.id}"></div>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
 }
 
 async function runMatch(requestId) {
   const container = document.getElementById(`match-result-${requestId}`);
-  container.innerHTML = '<div class="loading"><div class="spinner"></div>Running matching engine…</div>';
+  const resultRow = document.getElementById(`dr-result-row-${requestId}`);
+  if (resultRow) resultRow.style.display = '';
+  container.innerHTML = '<div class="loading" style="padding:12px 0;"><div class="spinner"></div>Running matching engine…</div>';
 
   try {
     const result = await apiPost({ action: 'runMatch', requestId });
