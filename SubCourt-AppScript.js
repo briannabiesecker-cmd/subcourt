@@ -254,7 +254,8 @@ function doGet(e) {
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
     else if (action === 'expireToday')       result = expireToday();
-    else if (action === 'retireRequest')     result = retireRequest(e.parameter);
+    else if (action === 'retireRequest')          result = retireRequest(e.parameter);
+    else if (action === 'saveAutoDispatchSettings') result = saveAutoDispatchSettings(e.parameter);
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -976,6 +977,21 @@ function sendConfirmationEmails(data, groupPlayers) {
   if (ccAddresses) emailParams.cc = ccAddresses;
 
   if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+}
+
+function saveAutoDispatchSettings(params) {
+  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  var enabled = params.enabled === 'true' || params.enabled === true;
+  var time    = (params.time || '08:00').trim();
+
+  sheet.getRange('B13').setValue(enabled);
+  var timeCell = sheet.getRange('B14');
+  timeCell.setNumberFormat('@');
+  timeCell.setValue(time);
+
+  updateDispatchTrigger();
+
+  return { success: true, autoDispatchEnabled: enabled, autoDispatchTimeET: time };
 }
 
 function retireRequest(params) {

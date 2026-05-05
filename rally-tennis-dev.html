@@ -2524,10 +2524,10 @@ async function loadDispatch() {
 }
 
 function renderDispatchStatus(config, log) {
-  const enabled = config && config.autoDispatchEnabled;
-  const time = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '—';
+  const enabled   = config && config.autoDispatchEnabled;
+  const time      = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '08:00';
   const lastEntry = log && log.length ? log[0] : null;
-  const lastRun = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
+  const lastRun   = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
   const lastResult = lastEntry
     ? (lastEntry.result === 'matched'
         ? `<span style="color:#2E7D32;">matched ${lastEntry.subName}</span>`
@@ -2537,19 +2537,57 @@ function renderDispatchStatus(config, log) {
     : '—';
 
   document.getElementById('dispatch-status-content').innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;"></span>
-        <span style="font-weight:600;font-size:15px;">${enabled ? 'Auto-Dispatch Enabled' : 'Auto-Dispatch Disabled'}</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;flex-shrink:0;"></span>
+          <span style="font-weight:600;font-size:15px;">Auto-Dispatch ${enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+        <div style="font-size:13px;color:#666;display:flex;gap:20px;flex-wrap:wrap;">
+          <span>Last run: <strong>${lastRun}</strong></span>
+          <span>Last result: <strong>${lastResult}</strong></span>
+        </div>
       </div>
-      ${enabled ? `<span class="badge badge-matched" style="font-size:12px;">Runs daily at ${time} ET</span>` : ''}
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:13px;font-weight:600;white-space:nowrap;">Daily time (ET):</label>
+          <input type="time" id="autodispatch-time" value="${time}"
+            style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:110px;">
+        </div>
+        <button class="btn btn-sm ${enabled ? 'btn-secondary' : 'btn-primary'}" id="autodispatch-toggle-btn"
+          onclick="saveAutoDispatchSettings(${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+        <button class="btn btn-sm btn-primary" id="autodispatch-save-btn"
+          onclick="saveAutoDispatchSettings(${enabled})">
+          Save time
+        </button>
+      </div>
     </div>
-    <div style="margin-top:10px;font-size:13px;color:#666;display:flex;gap:24px;flex-wrap:wrap;">
-      <span>Last run: <strong>${lastRun}</strong></span>
-      <span>Last result: <strong>${lastResult}</strong></span>
-    </div>
-    <div style="margin-top:8px;font-size:12px;color:#999;">To change schedule or toggle, edit the Config tab in the Google Sheet, then run <code>setupTriggers()</code> from the Apps Script editor.</div>
+    <div id="autodispatch-alert" style="margin-top:8px;"></div>
   `;
+}
+
+async function saveAutoDispatchSettings(enabled) {
+  const timeInput = document.getElementById('autodispatch-time');
+  const alertEl   = document.getElementById('autodispatch-alert');
+  const toggleBtn = document.getElementById('autodispatch-toggle-btn');
+  const saveBtn   = document.getElementById('autodispatch-save-btn');
+  const time = timeInput ? timeInput.value || '08:00' : '08:00';
+
+  [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = true; });
+  if (alertEl) alertEl.innerHTML = '';
+
+  try {
+    const result = await apiPost({ action: 'saveAutoDispatchSettings', enabled: String(enabled), time });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const config = await getAppConfig();
+    renderDispatchStatus(config, null);
+    loadDispatch();
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+    [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
+  }
 }
 
 function renderDispatchFilled(log) {
