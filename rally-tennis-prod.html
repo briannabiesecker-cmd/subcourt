@@ -979,6 +979,12 @@
   }
   .sched-gen-summary strong { color: var(--ink); }
 
+  /* ── Dispatch Table ── */
+  .dispatch-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+  .dispatch-table th { background: var(--ink-mid); color: white; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink); white-space: nowrap; }
+  .dispatch-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .dispatch-table tbody tr.data-row:hover { background: var(--chalk); }
+
   /* ── Directory Table ── */
   .dir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .dir-table th { background: var(--ink-mid); color: white; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink); }
@@ -1097,11 +1103,11 @@
   <div class="logo">Ral<span>ly</span></div>
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
-    <button onclick="showView('schedule', this)">Schedule</button>
+    <button onclick="showView('schedule', this)">View<br>Schedule</button>
     <button onclick="showView('directory', this)">Directory</button>
-    <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Request Sub</button>
-    <button disabled style="opacity:0.35;cursor:not-allowed;pointer-events:none;">Volunteer</button>
-    <button onclick="showView('availability', this)">My Availability</button>
+    <button onclick="showView('request', this)">Request Sub</button>
+    <button onclick="showView('volunteer', this)">Volunteer</button>
+    <button onclick="showView('availability', this)">My<br>Availability</button>
     <button onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -1122,22 +1128,23 @@
         onclick="showView('availability', document.querySelector('nav button:nth-child(5)'))">
         <div class="home-card-icon">🗓️</div>
         <div class="home-card-title">My availability</div>
+        <div style="font-size:14px;color:var(--ink-light);margin-top:-10px;">for next month</div>
         <div class="home-card-desc" id="home-avail-desc">Submit your available days for next month's schedule.</div>
         <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
 
-      <div class="home-card" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
+      <div class="home-card" onclick="showView('request', document.querySelector('nav button:nth-child(3)'))">
         <div class="home-card-icon">🎾</div>
         <div class="home-card-title">I need a sub</div>
         <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
-        <button class="home-card-btn" disabled>Request a Sub</button>
+        <button class="home-card-btn">Request a Sub</button>
       </div>
 
-      <div class="home-card home-card-alt" style="opacity:0.35;cursor:not-allowed;pointer-events:none;">
+      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(4)'))">
         <div class="home-card-icon">🙋</div>
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
-        <button class="home-card-btn home-card-btn-alt" disabled>Volunteer to Sub</button>
+        <button class="home-card-btn home-card-btn-alt">Volunteer to Sub</button>
       </div>
     </div>
   </div>
@@ -1148,25 +1155,11 @@
       <div class="section-title">Request a Substitute</div>
     </div>
 
-    <div id="my-req-section" style="display:none;">
-      <div class="section-header">
-        <div class="section-title" style="font-size:18px;">Your Requests</div>
-      </div>
-      <div id="my-req-list"></div>
-      <hr class="divider" />
-    </div>
-
-    <div class="alert alert-info" style="margin-bottom:1.25rem;">
-      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
-    </div>
-
-    <div class="card">
-      <div id="req-alert" class="hidden"></div>
-
-      <div class="form-grid">
-        <div class="field">
+    <!-- Name / email at the top -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:start;">
+        <div class="field" style="margin:0;">
           <label>Your name</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Start typing your name and select it from the list. Already submitted a request? Select your name to see it here.</div>
           <div class="typeahead-wrap">
             <div id="req-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -1185,11 +1178,29 @@
             </div>
           </div>
         </div>
-        <div class="field">
+        <div class="field" style="margin:0;">
           <label>Your email</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">This will be filled in automatically.</div>
           <input type="email" id="req-email" placeholder="Auto-filled on selection" disabled />
         </div>
+      </div>
+    </div>
+
+    <div id="my-req-section" style="display:none;">
+      <div class="section-header">
+        <div class="section-title" style="font-size:18px;">Your Upcoming Requests</div>
+      </div>
+      <div id="my-req-list"></div>
+      <hr class="divider" />
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1.25rem;">
+      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
+    </div>
+
+    <div class="card">
+      <div id="req-alert" class="hidden"></div>
+
+      <div class="form-grid">
         <div class="field">
           <label>Match date</label>
           <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The date of the match you need covered.</div>
@@ -1474,6 +1485,7 @@
     <div class="section-header">
       <div class="section-title">Match Schedule</div>
       <span class="section-sub" id="sch-month-label"></span>
+
     </div>
 
     <div class="card" style="margin-bottom:1.25rem;">
@@ -1711,6 +1723,11 @@
             <div class="loading"><div class="spinner"></div>Loading status…</div>
           </div>
         </div>
+        <div class="card mt8" id="reminder-status-card">
+          <div id="reminder-status-content">
+            <div class="loading"><div class="spinner"></div>Loading…</div>
+          </div>
+        </div>
         <div id="dispatch-filled-section" style="display:none;margin-top:1.5rem;">
           <div class="section-header">
             <div class="section-title" style="font-size:17px;">Filled by Auto-Dispatch</div>
@@ -1718,6 +1735,11 @@
           <div id="dispatch-filled-list"></div>
           <hr class="divider" />
         </div>
+        <div style="margin-top:1.5rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="expire-today-btn" onclick="expireTodayRecords()">Expire Today's Records</button>
+          <div id="expire-today-alert"></div>
+        </div>
+
         <div style="margin-top:1.5rem;">
           <div class="section-header">
             <div class="section-title" style="font-size:17px;">Needs Attention</div>
@@ -1757,7 +1779,6 @@ const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:
 // CONFIG — paste your Apps Script URL here after deploying
 // ══════════════════════════════════════════════════
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymmYjtMAEnNO0D_1yuYZJQmOisxtSHBcaOCzTm74-iBmSnQgQgFTMB4IvJqeK6SEFhMg/exec';
-
 // ══════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════
@@ -1766,8 +1787,9 @@ function showView(name, btn) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
-  if (name === 'volunteer') buildCalendar();
-  if (name === 'availability') loadAvailabilityView();
+  if (name === 'request') prefillIdentity('req');
+  if (name === 'volunteer') { buildCalendar().then(() => prefillIdentity('vol')); }
+  if (name === 'availability') { loadAvailabilityView(); prefillIdentity('av'); }
   if (name === 'schedule') loadScheduleView();
   if (name === 'directory') loadDirectoryView();
   if (name === 'admin') {
@@ -1897,11 +1919,22 @@ function selectTypeaheadPlayer(prefix, name, email) {
   document.getElementById(prefix + '-selected-name').textContent = name;
   document.getElementById(prefix + '-email').value = email;
   document.getElementById(prefix + '-dropdown').style.display = 'none';
+  if (['req', 'vol', 'av'].includes(prefix)) {
+    try { localStorage.setItem('rally_user_identity', JSON.stringify({ name, email })); } catch(e) {}
+  }
   if (prefix === 'vol') loadMySubmissions(email);
   if (prefix === 'req') loadMyRequests(email);
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email);
+}
+
+function prefillIdentity(prefix) {
+  try {
+    const id = JSON.parse(localStorage.getItem('rally_user_identity'));
+    if (!id || !id.email || document.getElementById(prefix + '-email').value) return;
+    selectTypeaheadPlayer(prefix, id.name, id.email);
+  } catch(e) {}
 }
 
 function clearTypeahead(prefix) {
@@ -2047,7 +2080,7 @@ function clearRequestForm() {
   document.getElementById('req-time').value = '';
 }
 
-async function loadMyRequests(email) {
+async function loadMyRequests(email) { // v2
   const el      = document.getElementById('my-req-list');
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
@@ -2057,82 +2090,64 @@ async function loadMyRequests(email) {
   try {
     requestCache = null;
     const requests = await getRequests();
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Today's date string for comparison (YYYY-MM-DD)
+    const todayStr     = new Date().toISOString().slice(0, 10);
+    const twoDaysOut   = new Date(); twoDaysOut.setDate(twoDaysOut.getDate() + 2);
+    const twoDaysStr   = twoDaysOut.toISOString().slice(0, 10);
+
+    // Only show future requests (strictly after today)
     const mine = requests.filter(r =>
       r.email.toLowerCase() === email.toLowerCase() &&
       r.status !== 'cancelled' &&
-      new Date(r.matchDate + 'T23:59:59') >= cutoff
-    );
+      r.matchDate > todayStr
+    ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
 
     if (!mine.length) {
-      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No recent requests found.</div>';
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No upcoming requests found.</div>';
       return;
     }
 
-    el.innerHTML = mine.map(r => {
-      const isOpen = r.status === 'open';
-      const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : 'TBD';
-      const subPlayer = r.assignedSub ? playerList.find(p => p.name.toLowerCase() === r.assignedSub.toLowerCase()) : null;
-      const subEmail  = subPlayer ? subPlayer.email : '';
-
-      if (isOpen) {
-        return `
-          <div class="request-card" id="req-card-${r.rowIndex}">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
-              <div>
-                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
-                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
-              </div>
-              <span class="badge badge-open" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Looking for sub</span>
-            </div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
-              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
-              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
-              <span style="color:var(--ink-light);font-weight:500;">Status</span>
-              <span style="color:var(--warn);font-weight:600;">Waiting — sub not yet found</span>
-            </div>
-            <div style="background:var(--warn-bg);border-radius:var(--radius);padding:10px 14px;font-size:14px;color:var(--warn);margin-bottom:14px;">
-              Need to update your match time? Use the dropdown below and tap <strong>Save</strong>.
-            </div>
-            <div class="field" style="max-width:260px;">
-              <label style="font-size:15px;">Update match time</label>
-              <select id="req-time-edit-${r.rowIndex}" style="font-size:16px;">
-                <option value="" ${!r.matchTime ? 'selected' : ''}>Unknown / TBD</option>
-                <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
-                <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
-                <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
-                <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
-              </select>
-            </div>
-            <div class="flex gap8 mt12">
-              <button class="btn btn-clay" onclick="saveRequestTime(${r.rowIndex})">Save</button>
-            </div>
-          </div>`;
+    const rows = mine.map(r => {
+      const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : '<span class="badge badge-tbd">TBD</span>';
+      const needsTime   = !r.matchTime && r.matchDate <= twoDaysStr;
+      let statusCell;
+      if (r.status === 'filled') {
+        statusCell = '<span class="badge badge-matched">Sub found</span>';
+      } else if (r.status === 'expired') {
+        statusCell = '<span class="badge" style="background:#F3F4F6;color:#6B7280;">Expired</span>';
       } else {
-        return `
-          <div class="request-card filled">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
-              <div>
-                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
-                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
-              </div>
-              <span class="badge badge-filled" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Sub found!</span>
-            </div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
-              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
-              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
-              <span style="color:var(--ink-light);font-weight:500;">Status</span>
-              <span style="color:var(--success);font-weight:600;">Filled — you are all set!</span>
-            </div>
-            ${r.assignedSub ? `
-            <div style="background:var(--success-bg);border-radius:var(--radius);padding:14px 16px;">
-              <div style="font-size:13px;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Your substitute</div>
-              <div style="font-size:20px;font-weight:700;color:var(--ink);">${r.assignedSub}</div>
-              ${subEmail ? `<div style="font-size:15px;color:var(--ink-mid);margin-top:2px;">${subEmail}</div>` : ''}
-            </div>` : ''}
-          </div>`;
+        statusCell = '<span class="badge badge-open">Looking for sub</span>';
       }
+
+      const subCell = (r.status === 'filled' && r.assignedSub) ? `<strong>${r.assignedSub}</strong>` : '';
+
+      const actionCell = needsTime ? `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <select id="req-time-edit-${r.rowIndex}" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;">
+            <option value="">TBD</option>
+            <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
+            <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
+            <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
+            <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
+          </select>
+          <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
+        </div>` : '';
+
+      return `<tr>
+        <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
+        <td style="white-space:nowrap;">${timeDisplay}</td>
+        <td>${statusCell}</td>
+        <td>${subCell}</td>
+        <td>${actionCell}</td>
+      </tr>`;
     }).join('');
+
+    el.innerHTML = `
+      <table class="dispatch-table">
+        <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Substitute</th><th>Update Time</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
   } catch(e) {
     el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
   }
@@ -2153,7 +2168,8 @@ async function saveRequestTime(rowIndex) {
 // ══════════════════════════════════════════════════
 // VOLUNTEERS
 // ══════════════════════════════════════════════════
-let volSelections = {};
+let volSelections   = {};
+let myVolunteerMap  = {}; // date → {rowIndex, status, times} for pre-existing submissions
 
 async function buildCalendar() {
   try {
@@ -2280,33 +2296,32 @@ async function submitVolunteer() {
   btn.textContent = 'Submitting…';
 
   try {
-    const existing = await getVolunteers();
-    const duplicates = entries
-      .map(([date]) => date)
-      .filter(date => existing.some(v =>
-        v.email.toLowerCase() === email.toLowerCase() &&
-        v.date === date &&
-        v.status !== 'cancelled'
-      ));
-    if (duplicates.length) {
-      showAlert('vol-alert', 'error',
-        'You already have a submission for: ' + duplicates.map(d => formatDate(d)).join(', ') +
-        '. Remove the existing entry first if you want to change it.'
-      );
-      return;
+    const toUpdate = [];
+    const toCreate = [];
+    for (const [date, times] of entries) {
+      const ex = myVolunteerMap[date];
+      if (ex && ex.status === 'matched') continue;       // skip matched
+      if (ex && ex.status === 'pending') toUpdate.push({ rowIndex: ex.rowIndex, times });
+      else toCreate.push({ date, times });
     }
-
-    await apiPost({
-      action: 'submitVolunteer',
-      name,
-      email,
-      entries: entries.map(([date, times]) => ({ date, times: times.map(t => t.replace(':', '_')) }))
-    });
-    showAlert('vol-alert', 'success', `Availability submitted for ${entries.length} date(s). Thank you!`);
+    // Update existing pending records
+    for (const u of toUpdate) {
+      await apiPost({ action: 'updateVolunteer', rowIndex: u.rowIndex, times: JSON.stringify(u.times) });
+    }
+    // Create new records
+    if (toCreate.length) {
+      await apiPost({
+        action: 'submitVolunteer',
+        name,
+        email,
+        entries: toCreate.map(({ date, times }) => ({ date, times: times.map(t => t.replace(':', '_')) }))
+      });
+    }
+    const total = toUpdate.length + toCreate.length;
+    showAlert('vol-alert', 'success', `Availability saved for ${total} date(s). Thank you!`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    buildCalendar();
+    buildCalendar().then(() => loadMySubmissions(email));
     clearCache();
-    await loadMySubmissions(email);
   } catch(e) {
     showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
   } finally {
@@ -2316,78 +2331,60 @@ async function submitVolunteer() {
 }
 
 function clearVolForm() {
+  myVolunteerMap = {};
   clearTypeahead('vol');
   document.getElementById('vol-summary').classList.add('hidden');
   buildCalendar();
 }
 
 async function loadMySubmissions(email) {
-  const el      = document.getElementById('my-vol-list');
-  const section = document.getElementById('my-vol-section');
-  volEditSelections = {};
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
-  section.style.display = 'block';
-
+  myVolunteerMap = {};
   try {
     volunteerCache = null;
     const vols = await getVolunteers();
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const todayStr = new Date().toISOString().slice(0, 10);
     const mine = vols.filter(v =>
       v.email.toLowerCase() === email.toLowerCase() &&
       v.status !== 'cancelled' &&
-      new Date(v.date + 'T23:59:59') >= cutoff
+      v.date > todayStr
     );
-    if (!mine.length) {
-      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No submissions found.</div>';
-      return;
-    }
-    mine.forEach(v => { volEditSelections[v.rowIndex] = [...v.times]; });
 
-    el.innerHTML = mine.map(v => {
-      const isPending = v.status === 'pending';
-      const timesText = v.times.length === 4
-        ? 'All 4 times ✓'
-        : v.times.map(t => TIME_LABELS[t] || t).join(' · ');
+    mine.forEach(v => {
+      myVolunteerMap[v.date] = { rowIndex: v.rowIndex, status: v.status, times: [...v.times] };
+    });
 
-      if (isPending) {
-        return `
-          <div class="vol-card" id="vol-card-${v.rowIndex}">
-            <div class="vol-header">
-              <div>
-                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
-              </div>
-              <span class="badge badge-pending">pending</span>
-            </div>
-            <div class="time-chips" style="margin-top:10px;">
-              ${TIMES.map(t => `
-                <button class="time-chip-btn${v.times.includes(t) ? ' on' : ''}"
-                  id="edit-chip-${v.rowIndex}-${t}"
-                  onclick="toggleEditChip(${v.rowIndex}, '${t}')">${TIME_LABELS[t]}</button>
-              `).join('')}
-            </div>
-            <div class="flex gap8 mt12">
-              <button class="btn btn-clay btn-sm" onclick="saveVolunteerEdit(${v.rowIndex})">Save changes</button>
-              <button class="btn btn-secondary btn-sm" onclick="removeVolunteer(${v.rowIndex})">Remove</button>
-            </div>
-          </div>`;
-      } else {
-        return `
-          <div class="vol-card">
-            <div class="vol-header">
-              <div>
-                <div class="card-meta">${formatDate(v.date)} · submitted ${formatTS(v.timestamp)}</div>
-              </div>
-              <span class="badge badge-matched">${v.status}</span>
-            </div>
-            <div class="times-list" style="margin-top:8px;">
-              ${v.times.map(t => `<span class="time-tag">${TIME_LABELS[t] || t}</span>`).join('')}
-            </div>
-            <div style="font-size:11px; color:var(--ink-light); margin-top:6px;">Already matched — cannot edit</div>
-          </div>`;
-      }
-    }).join('');
+    // Pre-populate calendar chips for each existing submission
+    mine.forEach(v => {
+      if (!volSelections.hasOwnProperty(v.date)) return; // date not in visible calendar
+      volSelections[v.date] = [...v.times];
+      refreshDateRow(v.date);
+      if (v.status === 'matched') lockDateRow(v.date);
+    });
+    updateVolSummary();
   } catch(e) {
-    el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
+    console.error('loadMySubmissions error:', e);
+  }
+}
+
+function lockDateRow(k) {
+  const row = document.getElementById('daterow-' + k);
+  if (!row) return;
+  // Disable chips and checkbox
+  TIMES.forEach(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
+  });
+  const allChk = document.getElementById('allchk-' + k);
+  if (allChk) allChk.disabled = true;
+  const saw = row.querySelector('.select-all-wrap');
+  if (saw) saw.style.pointerEvents = 'none';
+  // Add note if not already present
+  if (!row.querySelector('.matched-note')) {
+    const note = document.createElement('div');
+    note.className = 'matched-note';
+    note.style.cssText = 'font-size:12px;color:var(--ink-light);font-style:italic;margin-top:4px;width:100%;';
+    note.textContent = 'Already matched — cannot edit';
+    row.appendChild(note);
   }
 }
 
@@ -2433,6 +2430,50 @@ let currentFilter = 'all';
 // ══════════════════════════════════════════════════
 // DISPATCH (matching engine)
 // ══════════════════════════════════════════════════
+async function expireTodayRecords() {
+  const btn = document.getElementById('expire-today-btn');
+  const alertEl = document.getElementById('expire-today-alert');
+  btn.disabled = true;
+  btn.textContent = 'Expiring…';
+  alertEl.innerHTML = '';
+  try {
+    const result = await apiPost({ action: 'expireToday' });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const { requests, volunteers } = result.expired;
+    alertEl.innerHTML = `<span style="color:var(--ink-mid);font-size:13px;">Expired ${requests} request(s) and ${volunteers} volunteer record(s).</span>`;
+    loadDispatch();
+  } catch(e) {
+    alertEl.innerHTML = `<span style="color:var(--warn);font-size:13px;">Error: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Expire Today's Records";
+  }
+}
+
+function retireButtonHTML(requestId) {
+  return `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-sm" id="retire-btn-${requestId}"
+        style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;"
+        onclick="retireRequest('${requestId}')">Retire — No sub found</button>
+      <span style="font-size:12px;color:var(--ink-light);">Sets request to expired and notifies the group by email.</span>
+    </div>`;
+}
+
+async function retireRequest(requestId) {
+  if (!confirm('Retire this request? The requestor and group will be emailed that no sub was found.')) return;
+  const btn = document.getElementById(`retire-btn-${requestId}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Retiring…'; }
+  try {
+    const result = await apiPost({ action: 'retireRequest', requestId });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    loadDispatch();
+  } catch(e) {
+    alert('Could not retire request: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Retire — No sub found'; }
+  }
+}
+
 async function loadDispatch() {
   document.getElementById('dispatch-status-content').innerHTML =
     '<div class="loading"><div class="spinner"></div>Loading status…</div>';
@@ -2457,15 +2498,16 @@ async function loadDispatch() {
 
   document.getElementById('dispatch-loading').classList.add('hidden');
   renderDispatchStatus(config, log);
+  renderReminderStatus(config);
   renderDispatchFilled(log);
   renderDispatchOpen(requests, log);
 }
 
 function renderDispatchStatus(config, log) {
-  const enabled = config && config.autoDispatchEnabled;
-  const time = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '—';
+  const enabled   = config && config.autoDispatchEnabled;
+  const time      = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '08:00';
   const lastEntry = log && log.length ? log[0] : null;
-  const lastRun = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
+  const lastRun   = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
   const lastResult = lastEntry
     ? (lastEntry.result === 'matched'
         ? `<span style="color:#2E7D32;">matched ${lastEntry.subName}</span>`
@@ -2475,19 +2517,157 @@ function renderDispatchStatus(config, log) {
     : '—';
 
   document.getElementById('dispatch-status-content').innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;"></span>
-        <span style="font-weight:600;font-size:15px;">${enabled ? 'Auto-Dispatch Enabled' : 'Auto-Dispatch Disabled'}</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;flex-shrink:0;"></span>
+          <span style="font-weight:600;font-size:15px;">Auto-Dispatch ${enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+        <div style="font-size:13px;color:#666;display:flex;gap:20px;flex-wrap:wrap;">
+          <span>Last run: <strong>${lastRun}</strong></span>
+          <span>Last result: <strong>${lastResult}</strong></span>
+        </div>
       </div>
-      ${enabled ? `<span class="badge badge-matched" style="font-size:12px;">Runs daily at ${time} ET</span>` : ''}
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:13px;font-weight:600;white-space:nowrap;">Daily time (ET):</label>
+          <input type="time" id="autodispatch-time" value="${time}"
+            style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:110px;">
+        </div>
+        <button class="btn btn-sm ${enabled ? 'btn-secondary' : 'btn-primary'}" id="autodispatch-toggle-btn"
+          onclick="saveAutoDispatchSettings(${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+        <button class="btn btn-sm btn-primary" id="autodispatch-save-btn"
+          onclick="saveAutoDispatchSettings(${enabled})">
+          Save time
+        </button>
+        <button class="btn btn-sm btn-secondary" id="autodispatch-runnow-btn"
+          onclick="runAutoDispatchNow()" title="Run dispatch immediately">
+          Run Now
+        </button>
+      </div>
     </div>
-    <div style="margin-top:10px;font-size:13px;color:#666;display:flex;gap:24px;flex-wrap:wrap;">
-      <span>Last run: <strong>${lastRun}</strong></span>
-      <span>Last result: <strong>${lastResult}</strong></span>
-    </div>
-    <div style="margin-top:8px;font-size:12px;color:#999;">To change schedule or toggle, edit the Config tab in the Google Sheet, then run <code>setupTriggers()</code> from the Apps Script editor.</div>
+    <div id="autodispatch-alert" style="margin-top:8px;"></div>
   `;
+}
+
+async function runAutoDispatchNow() {
+  const btn     = document.getElementById('autodispatch-runnow-btn');
+  const alertEl = document.getElementById('autodispatch-alert');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (alertEl) alertEl.innerHTML = '';
+  try {
+    const result = await apiPost({ action: 'runAutoDispatchNow' });
+    const msg = result.skipped
+      ? 'Skipped — auto-dispatch is disabled.'
+      : `Dispatched. ${result.dispatched ?? 0} open request(s) processed.`;
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
+    loadDispatch();
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
+  }
+}
+
+async function saveAutoDispatchSettings(enabled) {
+  const timeInput = document.getElementById('autodispatch-time');
+  const alertEl   = document.getElementById('autodispatch-alert');
+  const toggleBtn = document.getElementById('autodispatch-toggle-btn');
+  const saveBtn   = document.getElementById('autodispatch-save-btn');
+  const time = timeInput ? timeInput.value || '08:00' : '08:00';
+
+  [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = true; });
+  if (alertEl) alertEl.innerHTML = '';
+
+  try {
+    const result = await apiPost({ action: 'saveAutoDispatchSettings', enabled: String(enabled), time });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const config = await getAppConfig();
+    renderDispatchStatus(config, null);
+    loadDispatch();
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+    [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
+  }
+}
+
+function renderReminderStatus(config) {
+  const enabled = config && config.matchTimeReminderEnabled;
+  const time    = config && config.matchTimeReminderTimeET ? config.matchTimeReminderTimeET : '10:00';
+
+  document.getElementById('reminder-status-content').innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">Court Time Reminder</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;flex-shrink:0;"></span>
+          <span style="font-weight:600;font-size:15px;">Reminder ${enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+        <div style="font-size:13px;color:#666;">Emails requestors of open TBD sub requests within 60 hours to add a court time.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:13px;font-weight:600;white-space:nowrap;">Daily time (ET):</label>
+          <input type="time" id="reminder-time" value="${time}"
+            style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:110px;">
+        </div>
+        <button class="btn btn-sm ${enabled ? 'btn-secondary' : 'btn-primary'}" id="reminder-toggle-btn"
+          onclick="saveMatchTimeReminderSettings(${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+        <button class="btn btn-sm btn-primary" id="reminder-save-btn"
+          onclick="saveMatchTimeReminderSettings(${enabled})">
+          Save time
+        </button>
+        <button class="btn btn-sm btn-secondary" id="reminder-runnow-btn"
+          onclick="runMatchTimeReminderNow()" title="Send reminders now">
+          Run Now
+        </button>
+      </div>
+    </div>
+    <div id="reminder-alert" style="margin-top:8px;"></div>
+  `;
+}
+
+async function saveMatchTimeReminderSettings(enabled) {
+  const timeInput = document.getElementById('reminder-time');
+  const alertEl   = document.getElementById('reminder-alert');
+  const toggleBtn = document.getElementById('reminder-toggle-btn');
+  const saveBtn   = document.getElementById('reminder-save-btn');
+  const time = timeInput ? timeInput.value || '10:00' : '10:00';
+
+  [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = true; });
+  if (alertEl) alertEl.innerHTML = '';
+
+  try {
+    const result = await apiPost({ action: 'saveMatchTimeReminderSettings', enabled: String(enabled), time });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const config = await getAppConfig();
+    renderReminderStatus(config);
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+    [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
+  }
+}
+
+async function runMatchTimeReminderNow() {
+  const btn     = document.getElementById('reminder-runnow-btn');
+  const alertEl = document.getElementById('reminder-alert');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (alertEl) alertEl.innerHTML = '';
+  try {
+    const result = await apiPost({ action: 'runMatchTimeReminderNow' });
+    const msg = result.skipped
+      ? 'Skipped — reminder is disabled.'
+      : `Sent reminders to ${result.notified ?? 0} requestor(s).`;
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
+  }
 }
 
 function renderDispatchFilled(log) {
@@ -2496,22 +2676,27 @@ function renderDispatchFilled(log) {
   if (!matched.length) return;
 
   document.getElementById('dispatch-filled-section').style.display = '';
-  document.getElementById('dispatch-filled-list').innerHTML = matched.map(e => `
-    <div class="request-card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">${e.requestorName}</div>
-          <div class="card-meta">${formatDate(e.matchDate)}${e.matchTime ? ' · ' + formatTime(e.matchTime) : ''} · Sub: <strong>${e.subName}</strong> (${e.subEmail})</div>
-        </div>
-        <span class="badge badge-matched">Auto-matched</span>
-      </div>
-      <div style="font-size:12px;color:#999;margin-top:4px;">Dispatched ${formatTS(e.timestamp)}</div>
-    </div>
-  `).join('');
+  document.getElementById('dispatch-filled-list').innerHTML = `
+    <table class="dispatch-table">
+      <thead><tr>
+        <th>Requestor</th><th>Date</th><th>Time</th><th>Sub Assigned</th><th>Dispatched</th>
+      </tr></thead>
+      <tbody>
+        ${matched.map(e => `<tr class="data-row">
+          <td style="font-weight:600;">${e.requestorName}</td>
+          <td style="white-space:nowrap;">${formatDate(e.matchDate)}</td>
+          <td style="white-space:nowrap;">${e.matchTime ? formatTime(e.matchTime) : '—'}</td>
+          <td>${e.subName} <span style="color:var(--ink-light);font-size:12px;">(${e.subEmail})</span></td>
+          <td style="font-size:12px;color:var(--ink-light);white-space:nowrap;">${formatTS(e.timestamp)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 function renderDispatchOpen(requests, log) {
-  const open = requests.filter(r => r.status === 'open');
+  const open = requests
+    .filter(r => r.status !== 'expired' && r.status !== 'filled')
+    .sort((a, b) => (a.matchDate || '').localeCompare(b.matchDate || ''));
   const noCandidate = new Set((log || []).filter(e => e.result === 'no_candidates').map(e => e.requestId));
 
   if (!open.length) {
@@ -2520,33 +2705,45 @@ function renderDispatchOpen(requests, log) {
     return;
   }
 
-  document.getElementById('dispatch-list').innerHTML = open.map(r => `
-    <div class="request-card" id="dr-${r.id}">
-      <div class="request-row">
-        <div class="request-info">
-          <div class="card-header" style="margin-bottom:6px;">
-            <div>
-              <div class="card-title">${r.name}</div>
-              <div class="card-meta">${r.email} · ${formatDate(r.matchDate)} ${r.matchTime ? '· ' + formatTime(r.matchTime) : '· <span class="badge badge-tbd">TBD</span>'}</div>
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;">
-              ${noCandidate.has(r.id) ? '<span class="badge" style="background:#FEF3C7;color:#92400E;">No candidates</span>' : ''}
-              ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
-            </div>
-          </div>
-        </div>
-        <div class="request-actions">
-          <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
-        </div>
-      </div>
-      <div id="match-result-${r.id}"></div>
-    </div>
-  `).join('');
+  document.getElementById('dispatch-list').innerHTML = `
+    <table class="dispatch-table">
+      <thead><tr>
+        <th>Requestor</th><th>Date</th><th>Time</th><th>Status</th><th style="text-align:right;">Action</th>
+      </tr></thead>
+      <tbody>
+        ${open.map(r => `
+          <tr class="data-row" id="dr-${r.id}">
+            <td>
+              <div style="font-weight:600;">${r.name}</div>
+              <div style="font-size:12px;color:var(--ink-light);">${r.email}</div>
+            </td>
+            <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
+            <td style="white-space:nowrap;">${r.matchTime ? formatTime(r.matchTime) : '<span class="badge badge-tbd">TBD</span>'}</td>
+            <td>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                ${noCandidate.has(r.id) ? '<span class="badge" style="background:#FEF3C7;color:#92400E;">No candidates</span>' : ''}
+                ${isUrgent(r) ? '<span class="badge badge-open" style="background:#FCEBEB;color:#A32D2D;">Urgent</span>' : '<span class="badge badge-open">Open</span>'}
+              </div>
+            </td>
+            <td style="text-align:right;white-space:nowrap;">
+              <button class="btn btn-primary btn-sm" onclick="runMatch('${r.id}')">Find candidates</button>
+            </td>
+          </tr>
+          <tr id="dr-result-row-${r.id}" style="display:none;">
+            <td colspan="5" style="padding:0 12px 12px;background:var(--chalk);border-bottom:2px solid var(--line);">
+              <div id="match-result-${r.id}"></div>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
 }
 
 async function runMatch(requestId) {
   const container = document.getElementById(`match-result-${requestId}`);
-  container.innerHTML = '<div class="loading"><div class="spinner"></div>Running matching engine…</div>';
+  const resultRow = document.getElementById(`dr-result-row-${requestId}`);
+  if (resultRow) resultRow.style.display = '';
+  container.innerHTML = '<div class="loading" style="padding:12px 0;"><div class="spinner"></div>Running matching engine…</div>';
 
   try {
     const result = await apiPost({ action: 'runMatch', requestId });
@@ -2559,6 +2756,7 @@ async function runMatch(requestId) {
         <div class="match-panel">
           <div class="match-panel-title">Matching engine results</div>
           <div class="alert alert-error">No eligible candidates found. Criteria: ${phaseDesc}.</div>
+          ${result.phase === 'last-minute' ? retireButtonHTML(requestId) : ''}
         </div>`;
       return;
     }
@@ -2596,6 +2794,7 @@ async function runMatch(requestId) {
           Candidates — ${result.candidates.length} found · ${phaseLabel} · ${availLabel}
         </div>
         ${cHTML}
+        ${result.phase === 'last-minute' ? retireButtonHTML(requestId) : ''}
       </div>`;
   } catch(e) {
     container.innerHTML = `<div class="alert alert-error">Matching engine error: ${e.message}</div>`;
@@ -3820,6 +4019,14 @@ async function closeAvailWindow() {
 // INIT
 // ══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  // Navigate to view specified in URL hash (e.g. #directory from email links)
+  const hash = location.hash.slice(1);
+  if (hash && document.getElementById('view-' + hash)) {
+    const btn = Array.from(document.querySelectorAll('nav button'))
+      .find(b => (b.getAttribute('onclick') || '').includes("'" + hash + "'"));
+    showView(hash, btn || null);
+  }
+
   // Single call returns players + availConfig — avoids two cold-start round trips
   apiGetWithParams({ action: 'getHomeData' }).then(data => {
     if (data.players)     playerList  = data.players;
