@@ -156,8 +156,16 @@ function getOrCreateDispatchLog() {
   return sheet;
 }
 
-function updateDispatchTrigger() {
-  const config = getConfig();
+function updateDispatchTrigger(enabledOverride, timeOverride) {
+  var enabled, timeET;
+  if (enabledOverride !== undefined && timeOverride !== undefined) {
+    enabled = enabledOverride;
+    timeET  = timeOverride;
+  } else {
+    var config = getConfig();
+    enabled = config.autoDispatchEnabled;
+    timeET  = config.autoDispatchTimeET;
+  }
 
   // Delete any existing dispatch triggers
   ScriptApp.getProjectTriggers().forEach(trigger => {
@@ -166,13 +174,13 @@ function updateDispatchTrigger() {
     }
   });
 
-  if (!config.autoDispatchEnabled) {
+  if (!enabled) {
     Logger.log('Auto-dispatch is disabled. No trigger set.');
     return;
   }
 
   // Parse the ET time string (HH:MM)
-  const parts = config.autoDispatchTimeET.split(':');
+  const parts = timeET.split(':');
   const hourET = parseInt(parts[0]);
   const minET  = parseInt(parts[1]) || 0;
 
@@ -192,12 +200,18 @@ function updateDispatchTrigger() {
 
 function runAutoDispatch() {
   var config = getConfig();
-  if (!config.autoDispatchEnabled) return;
+  if (!config.autoDispatchEnabled) {
+    Logger.log('runAutoDispatch: disabled, exiting.');
+    return { skipped: 'disabled' };
+  }
 
   var requests  = getRequests();
   var open      = requests.filter(function(r) { return r.status === 'open'; });
   var logSheet  = getOrCreateDispatchLog();
   var timestamp = new Date().toISOString();
+
+  Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
+  if (!open.length) return { dispatched: 0 };
 
   open.forEach(function(req) {
     try {
@@ -254,6 +268,7 @@ function doGet(e) {
     else if (action === 'expireToday')       result = expireToday();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
     else if (action === 'saveAutoDispatchSettings') result = saveAutoDispatchSettings(e.parameter);
+    else if (action === 'runAutoDispatchNow')        result = runAutoDispatch();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -986,8 +1001,9 @@ function saveAutoDispatchSettings(params) {
   var timeCell = sheet.getRange('B14');
   timeCell.setNumberFormat('@');
   timeCell.setValue(time);
+  SpreadsheetApp.flush(); // commit writes before trigger reads them back
 
-  updateDispatchTrigger();
+  updateDispatchTrigger(enabled, time); // pass values directly to avoid stale cache
 
   return { success: true, autoDispatchEnabled: enabled, autoDispatchTimeET: time };
 }

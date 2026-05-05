@@ -2562,10 +2562,33 @@ function renderDispatchStatus(config, log) {
           onclick="saveAutoDispatchSettings(${enabled})">
           Save time
         </button>
+        <button class="btn btn-sm btn-secondary" id="autodispatch-runnow-btn"
+          onclick="runAutoDispatchNow()" title="Run dispatch immediately">
+          Run Now
+        </button>
       </div>
     </div>
     <div id="autodispatch-alert" style="margin-top:8px;"></div>
   `;
+}
+
+async function runAutoDispatchNow() {
+  const btn     = document.getElementById('autodispatch-runnow-btn');
+  const alertEl = document.getElementById('autodispatch-alert');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (alertEl) alertEl.innerHTML = '';
+  try {
+    const result = await apiPost({ action: 'runAutoDispatchNow' });
+    const msg = result.skipped
+      ? 'Skipped — auto-dispatch is disabled.'
+      : `Dispatched. ${result.dispatched ?? 0} open request(s) processed.`;
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
+    loadDispatch();
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
+  }
 }
 
 async function saveAutoDispatchSettings(enabled) {
