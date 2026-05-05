@@ -205,6 +205,10 @@ function runAutoDispatch() {
     return { skipped: 'disabled' };
   }
 
+  // Step 1: expire all sub requests and volunteer records on or before today
+  expireUpToToday();
+
+  // Step 2: fetch open requests (after expiry, so already-expired ones are excluded)
   var requests  = getRequests();
   var open      = requests.filter(function(r) { return r.status === 'open'; });
   var logSheet  = getOrCreateDispatchLog();
@@ -212,6 +216,8 @@ function runAutoDispatch() {
 
   Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
   if (!open.length) return { dispatched: 0 };
+
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
 
   open.forEach(function(req) {
     try {
@@ -233,14 +239,24 @@ function runAutoDispatch() {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
-        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
-        Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
+        // No match found — retire if within 24 hours
+        if (isLastMinute(req, config.lastMinuteThresholdHrs)) {
+          reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('expired');
+          sendRetirementEmail(req);
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'retired', '', '', 'no candidates, last-minute']);
+          Logger.log('Auto-retired (last-minute, no candidates): ' + req.name);
+        } else {
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
+          Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
+        }
       }
     } catch(err) {
       logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'error', '', '', err.message]);
       Logger.log('Auto-dispatch error for ' + req.id + ': ' + err.message);
     }
   });
+
+  return { dispatched: open.length };
 }
 
 // ──────────────────────────────────────────────────
@@ -1008,19 +1024,10 @@ function saveAutoDispatchSettings(params) {
   return { success: true, autoDispatchEnabled: enabled, autoDispatchTimeET: time };
 }
 
-function retireRequest(params) {
-  var requests = getRequests();
-  var req = requests.find(function(r) { return r.id === params.requestId; });
-  if (!req) return { success: false, error: 'Request not found' };
-
-  // Mark expired in SubRequests sheet
-  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
-  reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('expired');
-
-  // Email requestor + CC group players
-  var dateStr  = formatDate(req.matchDate);
-  var timeStr  = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
-  var subject  = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
+function sendRetirementEmail(req) {
+  var dateStr      = formatDate(req.matchDate);
+  var timeStr      = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
+  var subject      = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
   var directoryUrl = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#directory';
   var body =
     'Hi ' + req.name + ',\n\n' +
@@ -1036,14 +1043,52 @@ function retireRequest(params) {
     '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
     'Player email addresses and phone numbers can be found on the <a href="' + directoryUrl + '">Directory</a> page.<br><br>' +
     'MWF Tennis League';
-
   var groupPlayers = req.groupPlayers || [];
   var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
   var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+}
+
+function retireRequest(params) {
+  var requests = getRequests();
+  var req = requests.find(function(r) { return r.id === params.requestId; });
+  if (!req) return { success: false, error: 'Request not found' };
+
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('expired');
+  sendRetirementEmail(req);
 
   return { success: true };
+}
+
+function expireUpToToday() {
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var today = formatSheetDate(new Date());
+
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  if (reqSheet && reqSheet.getLastRow() >= 2) {
+    var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < reqRows.length; i++) {
+      var matchDate = formatSheetDate(reqRows[i][4]);
+      var status    = (reqRows[i][6] || '').toString();
+      if (matchDate && matchDate <= today && status === 'open') {
+        reqSheet.getRange(i + 2, 7).setValue('expired');
+      }
+    }
+  }
+
+  var volSheet = ss.getSheetByName(TABS.volunteers);
+  if (volSheet && volSheet.getLastRow() >= 2) {
+    var volRows = volSheet.getRange(2, 1, volSheet.getLastRow() - 1, 7).getValues();
+    for (var i = 0; i < volRows.length; i++) {
+      var volDate = formatSheetDate(volRows[i][4]);
+      var status  = (volRows[i][6] || '').toString();
+      if (volDate && volDate <= today && status === 'pending') {
+        volSheet.getRange(i + 2, 7).setValue('expired');
+      }
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────
