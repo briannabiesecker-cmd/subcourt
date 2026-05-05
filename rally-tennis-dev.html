@@ -2081,82 +2081,61 @@ async function loadMyRequests(email) {
   try {
     requestCache = null;
     const requests = await getRequests();
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Today's date string for comparison (YYYY-MM-DD)
+    const todayStr     = new Date().toISOString().slice(0, 10);
+    const twoDaysOut   = new Date(); twoDaysOut.setDate(twoDaysOut.getDate() + 2);
+    const twoDaysStr   = twoDaysOut.toISOString().slice(0, 10);
+
+    // Only show future requests (strictly after today)
     const mine = requests.filter(r =>
       r.email.toLowerCase() === email.toLowerCase() &&
       r.status !== 'cancelled' &&
-      new Date(r.matchDate + 'T23:59:59') >= cutoff
-    );
+      r.matchDate > todayStr
+    ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
 
     if (!mine.length) {
-      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No recent requests found.</div>';
+      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No upcoming requests found.</div>';
       return;
     }
 
-    el.innerHTML = mine.map(r => {
-      const isOpen = r.status === 'open';
-      const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : 'TBD';
-      const subPlayer = r.assignedSub ? playerList.find(p => p.name.toLowerCase() === r.assignedSub.toLowerCase()) : null;
-      const subEmail  = subPlayer ? subPlayer.email : '';
-
-      if (isOpen) {
-        return `
-          <div class="request-card" id="req-card-${r.rowIndex}">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
-              <div>
-                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
-                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
-              </div>
-              <span class="badge badge-open" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Looking for sub</span>
-            </div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
-              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
-              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
-              <span style="color:var(--ink-light);font-weight:500;">Status</span>
-              <span style="color:var(--warn);font-weight:600;">Waiting — sub not yet found</span>
-            </div>
-            <div style="background:var(--warn-bg);border-radius:var(--radius);padding:10px 14px;font-size:14px;color:var(--warn);margin-bottom:14px;">
-              Need to update your match time? Use the dropdown below and tap <strong>Save</strong>.
-            </div>
-            <div class="field" style="max-width:260px;">
-              <label style="font-size:15px;">Update match time</label>
-              <select id="req-time-edit-${r.rowIndex}" style="font-size:16px;">
-                <option value="" ${!r.matchTime ? 'selected' : ''}>Unknown / TBD</option>
-                <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
-                <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
-                <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
-                <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
-              </select>
-            </div>
-            <div class="flex gap8 mt12">
-              <button class="btn btn-clay" onclick="saveRequestTime(${r.rowIndex})">Save</button>
-            </div>
-          </div>`;
+    const rows = mine.map(r => {
+      const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : '<span class="badge badge-tbd">TBD</span>';
+      const needsTime   = !r.matchTime && r.matchDate <= twoDaysStr;
+      let statusCell;
+      if (r.status === 'filled') {
+        statusCell = `<span class="badge badge-matched">Sub found — ${r.assignedSub || ''}</span>`;
+      } else if (r.status === 'expired') {
+        statusCell = '<span class="badge" style="background:#F3F4F6;color:#6B7280;">Expired</span>';
       } else {
-        return `
-          <div class="request-card filled">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
-              <div>
-                <div style="font-size:22px;font-weight:700;color:var(--ink);line-height:1.2;">${formatDate(r.matchDate)}</div>
-                <div style="font-size:14px;color:var(--ink-light);margin-top:3px;">Submitted ${formatTS(r.timestamp)}</div>
-              </div>
-              <span class="badge badge-filled" style="font-size:13px;padding:5px 12px;white-space:nowrap;">Sub found!</span>
-            </div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin-bottom:16px;">
-              <span style="color:var(--ink-light);font-weight:500;">Match time</span>
-              <span style="color:var(--ink);font-weight:600;">${timeDisplay}</span>
-              <span style="color:var(--ink-light);font-weight:500;">Status</span>
-              <span style="color:var(--success);font-weight:600;">Filled — you are all set!</span>
-            </div>
-            ${r.assignedSub ? `
-            <div style="background:var(--success-bg);border-radius:var(--radius);padding:14px 16px;">
-              <div style="font-size:13px;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Your substitute</div>
-              <div style="font-size:20px;font-weight:700;color:var(--ink);">${r.assignedSub}</div>
-              ${subEmail ? `<div style="font-size:15px;color:var(--ink-mid);margin-top:2px;">${subEmail}</div>` : ''}
-            </div>` : ''}
-          </div>`;
+        statusCell = '<span class="badge badge-open">Looking for sub</span>';
       }
+
+      const actionCell = needsTime ? `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <select id="req-time-edit-${r.rowIndex}" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;">
+            <option value="">TBD</option>
+            <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
+            <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
+            <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
+            <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
+          </select>
+          <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
+        </div>` : '';
+
+      return `<tr>
+        <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
+        <td style="white-space:nowrap;">${timeDisplay}</td>
+        <td>${statusCell}</td>
+        <td>${actionCell}</td>
+      </tr>`;
     }).join('');
+
+    el.innerHTML = `
+      <table class="dispatch-table">
+        <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Update Time</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
   } catch(e) {
     el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
   }
