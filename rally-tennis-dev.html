@@ -1723,6 +1723,11 @@
             <div class="loading"><div class="spinner"></div>Loading status…</div>
           </div>
         </div>
+        <div class="card mt8" id="reminder-status-card">
+          <div id="reminder-status-content">
+            <div class="loading"><div class="spinner"></div>Loading…</div>
+          </div>
+        </div>
         <div id="dispatch-filled-section" style="display:none;margin-top:1.5rem;">
           <div class="section-header">
             <div class="section-title" style="font-size:17px;">Filled by Auto-Dispatch</div>
@@ -2493,6 +2498,7 @@ async function loadDispatch() {
 
   document.getElementById('dispatch-loading').classList.add('hidden');
   renderDispatchStatus(config, log);
+  renderReminderStatus(config);
   renderDispatchFilled(log);
   renderDispatchOpen(requests, log);
 }
@@ -2584,6 +2590,83 @@ async function saveAutoDispatchSettings(enabled) {
   } catch(e) {
     if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
     [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
+  }
+}
+
+function renderReminderStatus(config) {
+  const enabled = config && config.matchTimeReminderEnabled;
+  const time    = config && config.matchTimeReminderTimeET ? config.matchTimeReminderTimeET : '10:00';
+
+  document.getElementById('reminder-status-content').innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">Court Time Reminder</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;flex-shrink:0;"></span>
+          <span style="font-weight:600;font-size:15px;">Reminder ${enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+        <div style="font-size:13px;color:#666;">Emails requestors of open TBD sub requests within 60 hours to add a court time.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:13px;font-weight:600;white-space:nowrap;">Daily time (ET):</label>
+          <input type="time" id="reminder-time" value="${time}"
+            style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:110px;">
+        </div>
+        <button class="btn btn-sm ${enabled ? 'btn-secondary' : 'btn-primary'}" id="reminder-toggle-btn"
+          onclick="saveMatchTimeReminderSettings(${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+        <button class="btn btn-sm btn-primary" id="reminder-save-btn"
+          onclick="saveMatchTimeReminderSettings(${enabled})">
+          Save time
+        </button>
+        <button class="btn btn-sm btn-secondary" id="reminder-runnow-btn"
+          onclick="runMatchTimeReminderNow()" title="Send reminders now">
+          Run Now
+        </button>
+      </div>
+    </div>
+    <div id="reminder-alert" style="margin-top:8px;"></div>
+  `;
+}
+
+async function saveMatchTimeReminderSettings(enabled) {
+  const timeInput = document.getElementById('reminder-time');
+  const alertEl   = document.getElementById('reminder-alert');
+  const toggleBtn = document.getElementById('reminder-toggle-btn');
+  const saveBtn   = document.getElementById('reminder-save-btn');
+  const time = timeInput ? timeInput.value || '10:00' : '10:00';
+
+  [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = true; });
+  if (alertEl) alertEl.innerHTML = '';
+
+  try {
+    const result = await apiPost({ action: 'saveMatchTimeReminderSettings', enabled: String(enabled), time });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const config = await getAppConfig();
+    renderReminderStatus(config);
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+    [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
+  }
+}
+
+async function runMatchTimeReminderNow() {
+  const btn     = document.getElementById('reminder-runnow-btn');
+  const alertEl = document.getElementById('reminder-alert');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (alertEl) alertEl.innerHTML = '';
+  try {
+    const result = await apiPost({ action: 'runMatchTimeReminderNow' });
+    const msg = result.skipped
+      ? 'Skipped — reminder is disabled.'
+      : `Sent reminders to ${result.notified ?? 0} requestor(s).`;
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
+  } catch(e) {
+    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
   }
 }
 

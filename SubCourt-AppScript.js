@@ -58,9 +58,12 @@ function getConfig() {
       lastMinuteThresholdHrs:   parseInt(sheet.getRange('B7').getValue())    || 24,
       // Volunteer calendar — row 10
       calendarLookaheadDays:    parseInt(sheet.getRange('B10').getValue())   || 30,
-      // Dispatch automation — rows 13–15
+      // Dispatch automation — rows 13–14
       autoDispatchEnabled:      (function() { var v = sheet.getRange('B13').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B14').getValue()) || '08:00',
+      // Match time reminder — rows 28–29
+      matchTimeReminderEnabled: (function() { var v = sheet.getRange('B28').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
+      matchTimeReminderTimeET:  formatSheetTime(sheet.getRange('B29').getValue()) || '10:00',
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -74,8 +77,10 @@ function getConfig() {
       preScheduleThresholdHrs: 48,
       lastMinuteThresholdHrs:  24,
       calendarLookaheadDays:   30,
-      autoDispatchEnabled:     false,
-      autoDispatchTimeET:      '08:00',
+      autoDispatchEnabled:      false,
+      autoDispatchTimeET:       '08:00',
+      matchTimeReminderEnabled: false,
+      matchTimeReminderTimeET:  '10:00',
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -280,8 +285,10 @@ function doGet(e) {
     else if (action === 'getDispatchLog')    result = getDispatchLog();
     else if (action === 'expireToday')       result = expireToday();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
-    else if (action === 'saveAutoDispatchSettings') result = saveAutoDispatchSettings(e.parameter);
-    else if (action === 'runAutoDispatchNow')        result = runAutoDispatch();
+    else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
+    else if (action === 'runAutoDispatchNow')             result = runAutoDispatch();
+    else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
+    else if (action === 'runMatchTimeReminderNow')        result = runMatchTimeReminder();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -1003,6 +1010,92 @@ function sendConfirmationEmails(data, groupPlayers) {
   if (ccAddresses) emailParams.cc = ccAddresses;
 
   if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+}
+
+function saveMatchTimeReminderSettings(params) {
+  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  var enabled = params.enabled === 'true' || params.enabled === true;
+  var time    = (params.time || '10:00').trim();
+
+  sheet.getRange('B28').setValue(enabled);
+  var timeCell = sheet.getRange('B29');
+  timeCell.setNumberFormat('@');
+  timeCell.setValue(time);
+  SpreadsheetApp.flush();
+
+  updateMatchTimeReminderTrigger(enabled, time);
+
+  return { success: true, matchTimeReminderEnabled: enabled, matchTimeReminderTimeET: time };
+}
+
+function updateMatchTimeReminderTrigger(enabled, time) {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'runMatchTimeReminder') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  if (!enabled) return;
+  var parts  = time.split(':');
+  var hourET = parseInt(parts[0]);
+  var minET  = parseInt(parts[1]) || 0;
+  ScriptApp.newTrigger('runMatchTimeReminder')
+    .timeBased().atHour(hourET).nearMinute(minET).everyDays(1)
+    .inTimezone('America/New_York').create();
+}
+
+function runMatchTimeReminder() {
+  var config = getConfig();
+  if (!config.matchTimeReminderEnabled) return { skipped: 'disabled' };
+
+  var requests = getRequests();
+  var now      = new Date();
+  var siteUrl  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#request';
+  var notified = 0;
+
+  requests.forEach(function(req) {
+    if (req.status !== 'open') return;
+    if (req.matchTime) return; // already has a time
+
+    // Check if match date is within 60 hours (use 8:00 AM for TBD times)
+    var matchDT = new Date(req.matchDate + 'T08:00:00');
+    var diffHrs = (matchDT - now) / 36e5;
+    if (diffHrs <= 0 || diffHrs > 60) return;
+
+    var dateStr = formatDate(req.matchDate);
+    var subject = 'MWF Tennis League — Court time needed for your sub request: ' + dateStr;
+
+    var body =
+      'Hi ' + req.name + ',\n\n' +
+      'You have an open sub request for ' + dateStr + ' and no court time has been assigned yet.\n\n' +
+      'Once Chelsea has scheduled a court, please add the court time to your request at:\n' + siteUrl + '\n\n' +
+      'If you are on Overflow, do nothing. Rally will still try to find a sub.\n\n' +
+      'Note: Non 8am players are ineligible to fill a sub request without a court time assigned.\n\n' +
+      'MWF Tennis League';
+
+    var htmlBody =
+      'Hi ' + req.name + ',<br><br>' +
+      'You have an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
+      'Once Chelsea has scheduled a court, please <a href="' + siteUrl + '">add the court time to your request</a>.<br><br>' +
+      '<em>If you are on Overflow, do nothing. Rally will still try to find a sub.</em><br><br>' +
+      '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
+      'MWF Tennis League';
+
+    var groupPlayers = req.groupPlayers || [];
+    var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+    var emailParams = {
+      to:       req.email,
+      subject:  subject,
+      body:     body,
+      htmlBody: htmlBody,
+      name:     'MWF Tennis League'
+    };
+    if (ccList.length) emailParams.cc = ccList.join(', ');
+    if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+    notified++;
+  });
+
+  Logger.log('runMatchTimeReminder: notified ' + notified + ' requestor(s).');
+  return { success: true, notified: notified };
 }
 
 function saveAutoDispatchSettings(params) {
