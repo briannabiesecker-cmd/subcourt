@@ -1342,7 +1342,9 @@ function checkAvailabilityWindow() {
 
   if (daysUntilClose !== 2 && daysUntilClose !== 1) return;
 
-  var missing = getPlayersWithoutSubmission(config.targetMonth);
+  var missing = getPlayersWithoutSubmission(config.targetMonth).filter(function(p) {
+    return !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
+  });
   if (!missing.length) {
     Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder — all players already submitted');
     return;
@@ -1413,16 +1415,20 @@ function openAvailabilityWindow(params) {
   var emailError = null;
   var emailCount = 0;
   try {
-    const players = getPlayers();
-    const emails  = players.map(function(p) { return p.email; }).filter(Boolean);
-    emailCount = emails.length;
-    if (emails.length && isEmailEnabled()) {
+    // Exclude fictitious Anita Sub players — they don't need availability emails
+    const allPlayers = getPlayers().filter(function(p) {
+      return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
+    });
+    emailCount = allPlayers.length;
+    if (allPlayers.length && isEmailEnabled()) {
+      const remaining = MailApp.getRemainingDailyQuota();
+      if (remaining < allPlayers.length) {
+        throw new Error('Insufficient email quota — ' + remaining + ' sends remaining, need ' + allPlayers.length + '. Try again tomorrow or contact your Google Workspace admin.');
+      }
       const config         = getAvailabilityConfig();
       const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
-      // Send individually — bulk to: exceeds per-message recipient limits
-      players.forEach(function(p) {
-        if (!p.email) return;
+      allPlayers.forEach(function(p) {
         var body =
           'Hi ' + (p.name || 'there') + ',\n\n' +
           'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +

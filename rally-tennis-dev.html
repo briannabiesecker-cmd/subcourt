@@ -1789,7 +1789,7 @@ function showView(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'request') prefillIdentity('req');
   if (name === 'volunteer') { buildCalendar().then(() => prefillIdentity('vol')); }
-  if (name === 'availability') { loadAvailabilityView(); prefillIdentity('av'); }
+  if (name === 'availability') { loadAvailabilityView().then(() => prefillIdentity('av')); }
   if (name === 'schedule') loadScheduleView();
   if (name === 'directory') loadDirectoryView();
   if (name === 'admin') {
