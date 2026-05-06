@@ -4010,8 +4010,14 @@ async function confirmOpenAvailWindow() {
       showAlert('scheduler-alert', 'error', result.error || 'Failed to open window.');
       return;
     }
-    showAlert('scheduler-alert', 'success',
-      'Window is now open. ' + (result.playerCount || 0) + ' players have been notified by email.');
+    if (result.emailError) {
+      showAlert('scheduler-alert', 'info',
+        'Window is now open, but the notification email failed to send: ' + result.emailError +
+        '. Players were not notified — you may need to email them manually.');
+    } else {
+      showAlert('scheduler-alert', 'success',
+        'Window is now open. ' + (result.playerCount || 0) + ' players have been notified by email.');
+    }
     availConfig = null;
     await loadScheduler();
   } catch(e) {

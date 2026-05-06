@@ -1392,25 +1392,36 @@ function openAvailabilityWindow(params) {
   sheet.getRange('B17').setValue(closeDate);
   sheet.getRange('B18').setValue(true);
 
-  // Send email blast to all players
-  const players = getPlayers();
-  const emails  = players.map(function(p) { return p.email; }).filter(Boolean);
-  if (emails.length) {
-    const config          = getAvailabilityConfig();
-    const closeDateLabel  = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    const subject         = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
-    const body =
-      'Hi,\n\n' +
-      'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
-      'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
-      'Open the Rally app to get started:\n' +
-      'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
-      'See you on the court!\n' +
-      'MWF Tennis League';
-    if (isEmailEnabled()) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
+  // Flush writes before reading config back (prevents stale-cache reads)
+  SpreadsheetApp.flush();
+
+  // Send email blast to all players — wrapped so a send failure doesn't undo the window open
+  var emailError = null;
+  var emailCount = 0;
+  try {
+    const players = getPlayers();
+    const emails  = players.map(function(p) { return p.email; }).filter(Boolean);
+    emailCount = emails.length;
+    if (emails.length && isEmailEnabled()) {
+      const config         = getAvailabilityConfig();
+      const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
+      const body =
+        'Hi,\n\n' +
+        'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
+        'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
+        'Open the Rally app to get started:\n' +
+        'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
+        'See you on the court!\n' +
+        'MWF Tennis League';
+      MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
+    }
+  } catch(e) {
+    emailError = e.message;
+    Logger.log('openAvailabilityWindow email error: ' + e.message);
   }
 
-  return { success: true, playerCount: emails.length };
+  return { success: true, playerCount: emailCount, emailError: emailError };
 }
 
 function closeAvailabilityWindow() {
