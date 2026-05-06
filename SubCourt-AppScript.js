@@ -2044,9 +2044,40 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
 
 // ── Chunked Publish Helpers ─────────────────────────
 // Step 1: clear existing rows for the month.
+function clearAnitaRecords() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var anitaPattern = /^Anita Sub\d+$/;
+
+  // Remove from Players sheet (col A = name), iterate bottom-up
+  var pSheet = ss.getSheetByName(TABS.players);
+  if (pSheet && pSheet.getLastRow() >= 2) {
+    var pRows = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues();
+    for (var i = pRows.length - 1; i >= 0; i--) {
+      if (anitaPattern.test((pRows[i][0] || '').toString().trim())) {
+        pSheet.deleteRow(i + 2);
+      }
+    }
+  }
+
+  // Remove from SubRequests sheet (col C = name), iterate bottom-up
+  var rSheet = ss.getSheetByName(TABS.requests);
+  if (rSheet && rSheet.getLastRow() >= 2) {
+    var rRows = rSheet.getRange(2, 3, rSheet.getLastRow() - 1, 1).getValues();
+    for (var i = rRows.length - 1; i >= 0; i--) {
+      if (anitaPattern.test((rRows[i][0] || '').toString().trim())) {
+        rSheet.deleteRow(i + 2);
+      }
+    }
+  }
+}
+
 function publishScheduleStart(params) {
   var month = params.month || '';
   if (!month) return { error: 'Month required.' };
+
+  // Clear fictitious Anita Sub players and their requests before committing new schedule
+  clearAnitaRecords();
+
   var sheet = getOrCreateMatchGroupsSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
@@ -2067,9 +2098,72 @@ function publishScheduleSlot(params) {
   var saved = 0;
   var sitOutName  = slot.sitOut ? slot.sitOut.name  : '';
   var sitOutEmail = slot.sitOut ? slot.sitOut.email : '';
+
+  // Load player ratings once for Anita rating calculation
+  var playerRatings = null;
+
   (slot.groups || []).forEach(function(group, gi) {
     var captainEmail = (slot.captains || [])[gi] || '';
-    var ordered = group.slice().sort(function(a, b) {
+    var workingGroup = group.slice();
+
+    // If only 3 players, create a fictitious Anita Sub to fill the 4th spot
+    if (workingGroup.length === 3) {
+      if (!playerRatings) playerRatings = getPlayersWithRatings();
+
+      // Count existing Anita Sub players to determine next n
+      var ss = SpreadsheetApp.openById(SHEET_ID);
+      var pSheet = ss.getSheetByName(TABS.players);
+      var anitaCount = 0;
+      if (pSheet && pSheet.getLastRow() >= 2) {
+        var names = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues();
+        anitaCount = names.filter(function(r) {
+          return /^Anita Sub\d+$/.test((r[0] || '').toString().trim());
+        }).length;
+      }
+      var n = anitaCount + 1;
+      var anitaName  = 'Anita Sub' + n;
+      var anitaEmail = 'anita.sub' + n + '@xgmail.com';
+
+      // Anita's rating = average of the 3 real players in this group
+      var ratingSum = 0, ratingCount = 0;
+      workingGroup.forEach(function(p) {
+        var pr = playerRatings.find(function(r) { return r.email === p.email.toLowerCase(); });
+        if (pr && pr.rating) { ratingSum += pr.rating; ratingCount++; }
+      });
+      var anitaRating = ratingCount > 0
+        ? Math.round((ratingSum / ratingCount) * 10) / 10
+        : 3.0;
+
+      // Add Anita to Players sheet
+      pSheet.appendRow([anitaName, anitaEmail, '', anitaRating, false, false]);
+      var newPlayerRow = pSheet.getLastRow();
+      pSheet.getRange(newPlayerRow, 4).setNumberFormat('0.0');
+
+      // Create Sub Request for Anita with the 3 real players as group
+      var rSheet = ss.getSheetByName(TABS.requests);
+      var groupPlayersJSON = JSON.stringify(workingGroup.map(function(p) {
+        return { name: p.name, email: p.email };
+      }));
+      var reqRow = [
+        uid(), new Date().toISOString(),
+        anitaName, anitaEmail,
+        slot.date, '',  // matchDate, matchTime (TBD)
+        'open', '',     // status, assignedSub
+        groupPlayersJSON
+      ];
+      rSheet.appendRow(reqRow);
+      var lastReqRow = rSheet.getLastRow();
+      rSheet.getRange(lastReqRow, 5).setNumberFormat('@');
+      rSheet.getRange(lastReqRow, 6).setNumberFormat('@');
+      rSheet.getRange(lastReqRow, 9).setNumberFormat('@');
+
+      Logger.log('Created ' + anitaName + ' (rating ' + anitaRating + ') for ' + slot.date + ' group ' + String.fromCharCode(65 + gi));
+
+      // Add Anita to the group as the 4th player
+      workingGroup.push({ name: anitaName, email: anitaEmail });
+    }
+
+    var ordered = workingGroup.slice().sort(function(a, b) {
       return a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0;
     });
     var p = ordered.concat([{name:'',email:''},{name:'',email:''},{name:'',email:''},{name:'',email:''}]);
