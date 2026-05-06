@@ -2217,17 +2217,30 @@ function publishScheduleSlot(params) {
 
   // Create a Volunteer record for the sit-out player so they can be matched as a sub
   if (sitOutEmail && sitOutName) {
+    // Check No8am flag — reuse pSheet if already loaded, otherwise open now
+    var sitOutTimes = '08_00,09_30,11_00,12_30';
+    var lookupSheet = pSheet || ss.getSheetByName(TABS.players);
+    if (lookupSheet && lookupSheet.getLastRow() >= 2) {
+      var pLookup = lookupSheet.getRange(2, 1, lookupSheet.getLastRow() - 1, 5).getValues();
+      for (var pi = 0; pi < pLookup.length; pi++) {
+        if ((pLookup[pi][1] || '').toLowerCase().trim() === sitOutEmail.toLowerCase().trim()) {
+          var no8am = pLookup[pi][4]; // col E
+          if (no8am === true || (no8am && no8am.toString().toUpperCase() === 'TRUE')) {
+            sitOutTimes = '09_30,11_00,12_30'; // exclude 8:00 AM
+          }
+          break;
+        }
+      }
+    }
     var volSheet = ss.getSheetByName(TABS.volunteers);
     var volRange = volSheet.getRange(volSheet.getLastRow() + 1, 1, 1, 7);
     volRange.setNumberFormats([['@','@','@','@','@','@','@']]);
     volRange.setValues([[
       uid(), new Date().toISOString(),
       sitOutName, sitOutEmail.toLowerCase(),
-      slot.date,
-      '08_00,09_30,11_00,12_30',  // available all day — they are already at the courts
-      'pending'
+      slot.date, sitOutTimes, 'pending'
     ]]);
-    Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date);
+    Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes);
   }
 
   return { success: true, groupsWritten: saved };
