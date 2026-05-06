@@ -1421,28 +1421,37 @@ function openAvailabilityWindow(params) {
     });
     emailCount = allPlayers.length;
     if (allPlayers.length && isEmailEnabled()) {
-      const remaining = MailApp.getRemainingDailyQuota();
-      if (remaining < allPlayers.length) {
-        throw new Error('Insufficient email quota — ' + remaining + ' sends remaining, need ' + allPlayers.length + '. Try again tomorrow or contact your Google Workspace admin.');
+      // BCC batches of 50 — 1 quota point per sendEmail call regardless of BCC count.
+      // 76 players = 2 calls = 2 quota points instead of 76.
+      var BATCH_SIZE   = 50;
+      var batchesNeeded = Math.ceil(allPlayers.length / BATCH_SIZE);
+      var remaining    = MailApp.getRemainingDailyQuota();
+      if (remaining < batchesNeeded) {
+        throw new Error('Insufficient email quota — ' + remaining + ' sends remaining, need ' + batchesNeeded + ' (batched). Try again tomorrow or contact your Google Workspace admin.');
       }
       const config         = getAvailabilityConfig();
       const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
-      allPlayers.forEach(function(p) {
-        var body =
-          'Hi ' + (p.name || 'there') + ',\n\n' +
-          'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
-          'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
-          'Open the Rally app to get started:\n' +
-          APP_BASE_URL + '#availability\n\n' +
-          'See you on the court!\n' +
-          'MWF Tennis League';
+      const body =
+        'Hi,\n\n' +
+        'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
+        'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
+        'Open the Rally app to get started:\n' +
+        APP_BASE_URL + '#availability\n\n' +
+        'See you on the court!\n' +
+        'MWF Tennis League';
+      for (var i = 0; i < allPlayers.length; i += BATCH_SIZE) {
+        var batch      = allPlayers.slice(i, i + BATCH_SIZE);
+        var toEmail    = batch[0].email;
+        var bccEmails  = batch.slice(1).map(function(p) { return p.email; }).join(', ');
+        var emailParams = { to: toEmail, subject: subject, body: body, name: 'MWF Tennis League' };
+        if (bccEmails) emailParams.bcc = bccEmails;
         try {
-          MailApp.sendEmail({ to: p.email, subject: subject, body: body, name: 'MWF Tennis League' });
+          MailApp.sendEmail(emailParams);
         } catch(sendErr) {
-          Logger.log('Failed to email ' + p.email + ': ' + sendErr.message);
+          Logger.log('Batch email failed (batch ' + Math.floor(i/BATCH_SIZE + 1) + '): ' + sendErr.message);
         }
-      });
+      }
     }
   } catch(e) {
     emailError = e.message;
