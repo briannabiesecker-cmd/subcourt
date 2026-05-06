@@ -5,6 +5,12 @@
 
 const SHEET_ID = '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE';
 
+// Derives the correct app URL for email links based on which sheet this script is connected to.
+// deploy.sh swaps SHEET_ID when pushing to prod, so this automatically resolves correctly.
+const APP_BASE_URL = (SHEET_ID === '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE')
+  ? 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-dev.html'
+  : 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html';
+
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
 function isEmailEnabled() {
@@ -1071,7 +1077,7 @@ function runMatchTimeReminder() {
 
   var requests = getRequests();
   var now      = new Date();
-  var siteUrl  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#request';
+  var siteUrl  = APP_BASE_URL + '#request';
   var notified = 0;
 
   requests.forEach(function(req) {
@@ -1140,7 +1146,7 @@ function sendRetirementEmail(req) {
   var dateStr      = formatDate(req.matchDate);
   var timeStr      = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
   var subject      = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
-  var directoryUrl = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html#directory';
+  var directoryUrl = APP_BASE_URL + '#directory';
   var body =
     'Hi ' + req.name + ',\n\n' +
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
@@ -1350,7 +1356,7 @@ function checkAvailabilityWindow() {
     'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes ' + urgency + ' (' + closeDateLabel + ').\n\n' +
     'We haven\'t received your availability yet. Please submit before the window closes so we can include you in the schedule.\n\n' +
     'Open the Rally app to submit:\n' +
-    'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
+    APP_BASE_URL + '#availability\n\n' +
     'See you on the court!\n' +
     'MWF Tennis League';
 
@@ -1378,7 +1384,7 @@ function testAvailabilityEmail() {
     'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
     'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
     'Open the Rally app to get started:\n' +
-    'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
+    APP_BASE_URL + '#availability\n\n' +
     'See you on the court!\n' +
     'MWF Tennis League';
   MailApp.sendEmail({ to: 'brianna.biesecker@gmail.com, marobria@gmail.com', subject: subject, body: body, name: 'MWF Tennis League' });
@@ -1422,7 +1428,7 @@ function openAvailabilityWindow(params) {
           'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
           'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
           'Open the Rally app to get started:\n' +
-          'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
+          APP_BASE_URL + '#availability\n\n' +
           'See you on the court!\n' +
           'MWF Tennis League';
         try {
