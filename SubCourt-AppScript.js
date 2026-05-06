@@ -2045,23 +2045,38 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
 // ── Chunked Publish Helpers ─────────────────────────
 // Step 1: clear existing rows for the month.
 function clearAnitaRecords() {
-  var ss           = SpreadsheetApp.openById(SHEET_ID); // single open — reused for both sheets
+  var ss           = SpreadsheetApp.openById(SHEET_ID);
   var anitaPattern = /^Anita Sub\d+$/;
 
+  // Players: read-filter-rewrite (one read + one write instead of N deleteRow calls)
   var pSheet = ss.getSheetByName(TABS.players);
   if (pSheet && pSheet.getLastRow() >= 2) {
-    var pRows = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues();
-    for (var i = pRows.length - 1; i >= 0; i--) {
-      if (anitaPattern.test((pRows[i][0] || '').toString().trim())) pSheet.deleteRow(i + 2);
+    var numCols  = Math.max(pSheet.getLastColumn(), 1);
+    var allData  = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, numCols).getValues();
+    var keep     = allData.filter(function(r) {
+      return !anitaPattern.test((r[0] || '').toString().trim());
+    });
+    var removed  = allData.length - keep.length;
+    if (removed > 0) {
+      pSheet.getRange(2, 1, allData.length, numCols).clearContent();
+      if (keep.length > 0) pSheet.getRange(2, 1, keep.length, numCols).setValues(keep);
+      if (removed > 0) pSheet.deleteRows(keep.length + 2, removed); // remove leftover blank rows
     }
   }
 
+  // SubRequests: batch-set status to 'cancelled' (one read + one setValues instead of N deleteRow)
   var rSheet = ss.getSheetByName(TABS.requests);
   if (rSheet && rSheet.getLastRow() >= 2) {
-    var rRows = rSheet.getRange(2, 3, rSheet.getLastRow() - 1, 1).getValues();
-    for (var i = rRows.length - 1; i >= 0; i--) {
-      if (anitaPattern.test((rRows[i][0] || '').toString().trim())) rSheet.deleteRow(i + 2);
+    var nameCol   = rSheet.getRange(2, 3, rSheet.getLastRow() - 1, 1).getValues();
+    var statusCol = rSheet.getRange(2, 7, rSheet.getLastRow() - 1, 1).getValues();
+    var changed   = false;
+    for (var i = 0; i < nameCol.length; i++) {
+      if (anitaPattern.test((nameCol[i][0] || '').toString().trim())) {
+        statusCol[i][0] = 'cancelled';
+        changed = true;
+      }
     }
+    if (changed) rSheet.getRange(2, 7, statusCol.length, 1).setValues(statusCol);
   }
 }
 
@@ -2069,15 +2084,20 @@ function publishScheduleStart(params) {
   var month = params.month || '';
   if (!month) return { error: 'Month required.' };
 
-  // Clear fictitious Anita Sub players and their requests before committing new schedule
   clearAnitaRecords();
 
+  // MatchGroups: read-filter-rewrite (one batch delete instead of N deleteRow calls)
   var sheet = getOrCreateMatchGroupsSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
-    var monthVals = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
-    for (var i = monthVals.length - 1; i >= 0; i--) {
-      if (normalizeMonth(monthVals[i][0]) === month) sheet.deleteRow(i + 2);
+    var numCols  = Math.max(sheet.getLastColumn(), 14);
+    var allRows  = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    var keep     = allRows.filter(function(r) { return normalizeMonth(r[1]) !== month; });
+    var removed  = allRows.length - keep.length;
+    if (removed > 0) {
+      sheet.getRange(2, 1, allRows.length, numCols).clearContent();
+      if (keep.length > 0) sheet.getRange(2, 1, keep.length, numCols).setValues(keep);
+      sheet.deleteRows(keep.length + 2, removed); // remove leftover blank rows in one call
     }
   }
   return { success: true };
