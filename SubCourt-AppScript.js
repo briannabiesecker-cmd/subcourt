@@ -2129,19 +2129,35 @@ function publishScheduleSlot(params) {
       var anitaName  = 'Anita Sub' + n;
       var anitaEmail = 'anita.sub' + n + '@xgmail.com';
 
-      // Anita's ideal rating = her partner's rating.
-      // Adjacent pairing [P0+P1 vs P2+P3]; Anita is P3, paired with P2.
-      // Sorted descending, P2 is the 3rd-highest — matching her minimises within-team variance (d23→0).
-      var groupRatings = workingGroup.map(function(p) {
+      // Anita's rating = (partnerRating + avgOf3) / 2
+      // partnerRating: adjacent pairing [P0+P1 vs P2+P3] → Anita is P3, paired with P2 (3rd-highest)
+      // avgOf3: average of the 3 real players (group-level balance)
+      // Fallback: overall pool average when individual ratings are absent (rating = 0 means unrated)
+      var ratedGroup = workingGroup.map(function(p) {
         var pr = playerRatings.find(function(r) { return r.email === p.email.toLowerCase(); });
-        return pr ? (pr.rating || 0) : 0;
-      }).filter(function(v) { return v > 0; });
-      groupRatings.sort(function(a, b) { return b - a; });
-      var anitaRating = groupRatings.length >= 3
-        ? Math.round(groupRatings[2] * 10) / 10
-        : groupRatings.length > 0
-          ? Math.round((groupRatings.reduce(function(s,v){return s+v;},0) / groupRatings.length) * 10) / 10
+        return (pr && pr.rating > 0) ? pr.rating : null;
+      }).filter(function(v) { return v !== null; });
+      ratedGroup.sort(function(a, b) { return b - a; }); // descending
+
+      var partnerRating, avgOf3;
+      if (ratedGroup.length >= 3) {
+        partnerRating = ratedGroup[2]; // P2's rating (3rd-highest = Anita's adjacent partner)
+        avgOf3        = (ratedGroup[0] + ratedGroup[1] + ratedGroup[2]) / 3;
+      } else if (ratedGroup.length > 0) {
+        // Partial ratings — use what's available for both terms
+        var partialAvg = ratedGroup.reduce(function(s,v){return s+v;},0) / ratedGroup.length;
+        partnerRating  = ratedGroup[ratedGroup.length - 1]; // lowest rated available
+        avgOf3         = partialAvg;
+      } else {
+        // No individual ratings — fall back to pool average
+        var poolRated = playerRatings.filter(function(p) { return p.rating > 0; });
+        var poolAvg   = poolRated.length > 0
+          ? poolRated.reduce(function(s,p){return s+p.rating;},0) / poolRated.length
           : 3.0;
+        partnerRating = poolAvg;
+        avgOf3        = poolAvg;
+      }
+      var anitaRating = Math.round(((partnerRating + avgOf3) / 2) * 10) / 10;
 
       // Add Anita to Players sheet
       pSheet.appendRow([anitaName, anitaEmail, '', anitaRating, false, false]);
