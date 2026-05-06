@@ -2045,28 +2045,22 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
 // ── Chunked Publish Helpers ─────────────────────────
 // Step 1: clear existing rows for the month.
 function clearAnitaRecords() {
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var ss           = SpreadsheetApp.openById(SHEET_ID); // single open — reused for both sheets
   var anitaPattern = /^Anita Sub\d+$/;
 
-  // Remove from Players sheet (col A = name), iterate bottom-up
   var pSheet = ss.getSheetByName(TABS.players);
   if (pSheet && pSheet.getLastRow() >= 2) {
     var pRows = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues();
     for (var i = pRows.length - 1; i >= 0; i--) {
-      if (anitaPattern.test((pRows[i][0] || '').toString().trim())) {
-        pSheet.deleteRow(i + 2);
-      }
+      if (anitaPattern.test((pRows[i][0] || '').toString().trim())) pSheet.deleteRow(i + 2);
     }
   }
 
-  // Remove from SubRequests sheet (col C = name), iterate bottom-up
   var rSheet = ss.getSheetByName(TABS.requests);
   if (rSheet && rSheet.getLastRow() >= 2) {
     var rRows = rSheet.getRange(2, 3, rSheet.getLastRow() - 1, 1).getValues();
     for (var i = rRows.length - 1; i >= 0; i--) {
-      if (anitaPattern.test((rRows[i][0] || '').toString().trim())) {
-        rSheet.deleteRow(i + 2);
-      }
+      if (anitaPattern.test((rRows[i][0] || '').toString().trim())) rSheet.deleteRow(i + 2);
     }
   }
 }
@@ -2094,13 +2088,19 @@ function publishScheduleSlot(params) {
   var month = params.month || '';
   var slot  = safeParseJSON(params.slot, null);
   if (!slot || !slot.date) return { error: 'Invalid slot.' };
+
+  // Open spreadsheet once — reused for all writes in this call
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
   var sheet = getOrCreateMatchGroupsSheet();
   var saved = 0;
   var sitOutName  = slot.sitOut ? slot.sitOut.name  : '';
   var sitOutEmail = slot.sitOut ? slot.sitOut.email : '';
 
-  // Load player ratings once for Anita rating calculation
+  // Resources for Anita creation — loaded lazily on first 3-player group, then reused
   var playerRatings = null;
+  var pSheet        = null;
+  var rSheet        = null;
+  var anitaBase     = -1; // count of existing Anita players (loaded once, then incremented)
 
   (slot.groups || []).forEach(function(group, gi) {
     var captainEmail = (slot.captains || [])[gi] || '';
@@ -2108,62 +2108,60 @@ function publishScheduleSlot(params) {
 
     // If only 3 players, create a fictitious Anita Sub to fill the 4th spot
     if (workingGroup.length === 3) {
-      if (!playerRatings) playerRatings = getPlayersWithRatings();
 
-      // Count existing Anita Sub players to determine next n
-      var ss = SpreadsheetApp.openById(SHEET_ID);
-      var pSheet = ss.getSheetByName(TABS.players);
-      var anitaCount = 0;
-      if (pSheet && pSheet.getLastRow() >= 2) {
-        var names = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues();
-        anitaCount = names.filter(function(r) {
-          return /^Anita Sub\d+$/.test((r[0] || '').toString().trim());
-        }).length;
+      // Lazy-load everything needed — once per publishScheduleSlot call
+      if (!playerRatings) {
+        playerRatings = getPlayersWithRatings();
+        pSheet        = ss.getSheetByName(TABS.players);
+        rSheet        = ss.getSheetByName(TABS.requests);
+        // Count existing Anita Sub players once; increment in-memory for subsequent groups
+        anitaBase = 0;
+        if (pSheet && pSheet.getLastRow() >= 2) {
+          var names = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues();
+          anitaBase = names.filter(function(r) {
+            return /^Anita Sub\d+$/.test((r[0] || '').toString().trim());
+          }).length;
+        }
       }
-      var n = anitaCount + 1;
+
+      var n          = anitaBase + 1;
+      anitaBase++;   // increment in memory — avoids re-reading the sheet for each group
       var anitaName  = 'Anita Sub' + n;
       var anitaEmail = 'anita.sub' + n + '@xgmail.com';
 
       // Anita's ideal rating = her partner's rating.
-      // The scheduler uses adjacent pairing [P0+P1 vs P2+P3]; Anita is P3, paired with P2.
+      // Adjacent pairing [P0+P1 vs P2+P3]; Anita is P3, paired with P2.
       // Sorted descending, P2 is the 3rd-highest — matching her minimises within-team variance (d23→0).
       var groupRatings = workingGroup.map(function(p) {
         var pr = playerRatings.find(function(r) { return r.email === p.email.toLowerCase(); });
         return pr ? (pr.rating || 0) : 0;
       }).filter(function(v) { return v > 0; });
-      groupRatings.sort(function(a, b) { return b - a; }); // descending
+      groupRatings.sort(function(a, b) { return b - a; });
       var anitaRating = groupRatings.length >= 3
-        ? Math.round(groupRatings[2] * 10) / 10   // P2's rating (3rd-highest = Anita's partner)
+        ? Math.round(groupRatings[2] * 10) / 10
         : groupRatings.length > 0
           ? Math.round((groupRatings.reduce(function(s,v){return s+v;},0) / groupRatings.length) * 10) / 10
           : 3.0;
 
       // Add Anita to Players sheet
       pSheet.appendRow([anitaName, anitaEmail, '', anitaRating, false, false]);
-      var newPlayerRow = pSheet.getLastRow();
-      pSheet.getRange(newPlayerRow, 4).setNumberFormat('0.0');
+      pSheet.getRange(pSheet.getLastRow(), 4).setNumberFormat('0.0');
 
       // Create Sub Request for Anita with the 3 real players as group
-      var rSheet = ss.getSheetByName(TABS.requests);
       var groupPlayersJSON = JSON.stringify(workingGroup.map(function(p) {
         return { name: p.name, email: p.email };
       }));
-      var reqRow = [
+      rSheet.appendRow([
         uid(), new Date().toISOString(),
         anitaName, anitaEmail,
-        slot.date, '',  // matchDate, matchTime (TBD)
-        'open', '',     // status, assignedSub
-        groupPlayersJSON
-      ];
-      rSheet.appendRow(reqRow);
+        slot.date, '', 'open', '', groupPlayersJSON
+      ]);
       var lastReqRow = rSheet.getLastRow();
       rSheet.getRange(lastReqRow, 5).setNumberFormat('@');
       rSheet.getRange(lastReqRow, 6).setNumberFormat('@');
       rSheet.getRange(lastReqRow, 9).setNumberFormat('@');
 
       Logger.log('Created ' + anitaName + ' (rating ' + anitaRating + ') for ' + slot.date + ' group ' + String.fromCharCode(65 + gi));
-
-      // Add Anita to the group as the 4th player
       workingGroup.push({ name: anitaName, email: anitaEmail });
     }
 

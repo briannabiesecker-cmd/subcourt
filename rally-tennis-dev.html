@@ -1824,7 +1824,7 @@ async function apiGetWithParams(params) {
       delete window[callbackName];
       if (document.body.contains(script)) document.body.removeChild(script);
       reject(new Error('Request timed out'));
-    }, 15000);
+    }, 30000);
 
     window[callbackName] = function(data) {
       clearTimeout(timeout);
