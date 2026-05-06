@@ -575,11 +575,18 @@ function getPlayersWithRatings() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   const rows  = sheet.getDataRange().getValues();
   rows.shift();
-  return rows.map(r => ({
-    name:   r[0] || '',
-    email:  (r[1] || '').toLowerCase(),
-    rating: parseFloat(r[3]) || 0
-  }));
+  // Deduplicate by email — first row wins; duplicate emails cause identity collisions
+  const seen = {};
+  return rows.reduce(function(acc, r) {
+    const email = (r[1] || '').toLowerCase();
+    if (email && !seen[email]) {
+      seen[email] = true;
+      acc.push({ name: r[0] || '', email: email, rating: parseFloat(r[3]) || 0 });
+    } else if (email && seen[email]) {
+      Logger.log('WARNING: duplicate email in Players sheet: ' + email);
+    }
+    return acc;
+  }, []);
 }
 
 // ──────────────────────────────────────────────────

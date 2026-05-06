@@ -2994,7 +2994,7 @@ function showAdminTab(tab, btn) {
   document.getElementById('admin-tab-scheduler').style.display = tab === 'scheduler' ? '' : 'none';
   document.getElementById('admin-tab-settings').style.display  = tab === 'settings'  ? '' : 'none';
   if (tab === 'dispatch')  loadDispatch();
-  if (tab === 'players')   loadCoordinatorRatings();
+  if (tab === 'players')   { checkDuplicateEmails(); loadCoordinatorRatings(); }
   if (tab === 'scheduler') loadScheduler();
   if (tab === 'settings')  loadEmailToggle();
 }
@@ -3003,6 +3003,25 @@ function showAdminTab(tab, btn) {
 // PLAYER RATINGS
 // ══════════════════════════════════════════════════
 let playerRatings = []; // current loaded player list with coordinator's ratings
+
+function checkDuplicateEmails() {
+  const alertEl = document.getElementById('players-alert');
+  if (!playerList || !playerList.length) return;
+  const seen = {};
+  const dupes = [];
+  playerList.forEach(p => {
+    const e = (p.email || '').toLowerCase();
+    if (!e) return;
+    if (seen[e]) dupes.push(e);
+    seen[e] = true;
+  });
+  if (dupes.length) {
+    showAlert('players-alert', 'error',
+      '⚠ Duplicate email address' + (dupes.length > 1 ? 'es' : '') + ' detected in the Players sheet: ' +
+      [...new Set(dupes)].join(', ') +
+      '. Duplicate emails cause incorrect matching, wrong ratings, and potential admin access issues. Please fix in the Players sheet immediately.');
+  }
+}
 
 async function loadCoordinatorRatings(forceRefresh) {
   const email = sessionStorage.getItem('adminEmail');
