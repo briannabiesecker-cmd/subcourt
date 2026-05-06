@@ -2194,6 +2194,22 @@ function publishScheduleSlot(params) {
     ]);
     saved++;
   });
+
+  // Create a Volunteer record for the sit-out player so they can be matched as a sub
+  if (sitOutEmail && sitOutName) {
+    var volSheet = ss.getSheetByName(TABS.volunteers);
+    var volRange = volSheet.getRange(volSheet.getLastRow() + 1, 1, 1, 7);
+    volRange.setNumberFormats([['@','@','@','@','@','@','@']]);
+    volRange.setValues([[
+      uid(), new Date().toISOString(),
+      sitOutName, sitOutEmail.toLowerCase(),
+      slot.date,
+      '08_00,09_30,11_00,12_30',  // available all day — they are already at the courts
+      'pending'
+    ]]);
+    Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date);
+  }
+
   return { success: true, groupsWritten: saved };
 }
 
