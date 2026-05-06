@@ -2124,15 +2124,19 @@ function publishScheduleSlot(params) {
       var anitaName  = 'Anita Sub' + n;
       var anitaEmail = 'anita.sub' + n + '@xgmail.com';
 
-      // Anita's rating = average of the 3 real players in this group
-      var ratingSum = 0, ratingCount = 0;
-      workingGroup.forEach(function(p) {
+      // Anita's ideal rating = her partner's rating.
+      // The scheduler uses adjacent pairing [P0+P1 vs P2+P3]; Anita is P3, paired with P2.
+      // Sorted descending, P2 is the 3rd-highest — matching her minimises within-team variance (d23→0).
+      var groupRatings = workingGroup.map(function(p) {
         var pr = playerRatings.find(function(r) { return r.email === p.email.toLowerCase(); });
-        if (pr && pr.rating) { ratingSum += pr.rating; ratingCount++; }
-      });
-      var anitaRating = ratingCount > 0
-        ? Math.round((ratingSum / ratingCount) * 10) / 10
-        : 3.0;
+        return pr ? (pr.rating || 0) : 0;
+      }).filter(function(v) { return v > 0; });
+      groupRatings.sort(function(a, b) { return b - a; }); // descending
+      var anitaRating = groupRatings.length >= 3
+        ? Math.round(groupRatings[2] * 10) / 10   // P2's rating (3rd-highest = Anita's partner)
+        : groupRatings.length > 0
+          ? Math.round((groupRatings.reduce(function(s,v){return s+v;},0) / groupRatings.length) * 10) / 10
+          : 3.0;
 
       // Add Anita to Players sheet
       pSheet.appendRow([anitaName, anitaEmail, '', anitaRating, false, false]);
