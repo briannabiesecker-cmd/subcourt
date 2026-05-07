@@ -3982,7 +3982,40 @@ function dirUpdateCount() {
 function dirSendEmail() {
   const emails = Array.from(document.querySelectorAll('.dir-chk:checked')).map(cb => cb.value).filter(Boolean);
   if (!emails.length) { alert('Select at least one player first.'); return; }
-  window.location.href = 'mailto:' + encodeURIComponent(emails.join(','));
+
+  const joined   = emails.join(', ');
+  const mailtoUrl = 'mailto:' + encodeURIComponent(emails.join(','));
+  const gmailUrl  = 'https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(emails.join(','));
+
+  // Show a panel with copy + launch options instead of relying on a configured mail handler
+  const existing = document.getElementById('dir-email-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'dir-email-panel';
+  panel.style.cssText = 'margin-top:12px;padding:14px 16px;background:var(--chalk);border:1px solid var(--line);border-radius:10px;';
+  panel.innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--ink-mid);margin-bottom:8px;">${emails.length} address${emails.length > 1 ? 'es' : ''} ready to send</div>
+    <textarea id="dir-email-addrs" readonly rows="3"
+      style="width:100%;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:6px;resize:vertical;background:white;">${joined}</textarea>
+    <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="dirCopyAddresses()">Copy addresses</button>
+      <a href="${mailtoUrl}" class="btn btn-secondary btn-sm" style="text-decoration:none;">Open in mail app</a>
+      <a href="${gmailUrl}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">Open in Gmail</a>
+    </div>
+    <div id="dir-copy-msg" style="font-size:12px;color:var(--success);margin-top:6px;display:none;">Copied to clipboard!</div>
+  `;
+  document.getElementById('dir-table-wrap').appendChild(panel);
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function dirCopyAddresses() {
+  const ta = document.getElementById('dir-email-addrs');
+  if (!ta) return;
+  navigator.clipboard.writeText(ta.value).then(() => {
+    const msg = document.getElementById('dir-copy-msg');
+    if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2500); }
+  }).catch(() => { ta.select(); document.execCommand('copy'); });
 }
 
 function renderPublishedSchedule(filterEmail) {
