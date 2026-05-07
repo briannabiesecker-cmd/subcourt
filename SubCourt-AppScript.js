@@ -349,6 +349,10 @@ function doGet(e) {
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
+    else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
+    else if (action === 'addPlayer')               result = addPlayer(e.parameter);
+    else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
+    else if (action === 'deletePlayer')            result = deletePlayer(e.parameter);
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
     else if (action === 'getEmailSettings')         result = getEmailSettings();
     else if (action === 'setEmailEnabled')          result = setEmailEnabled(e.parameter);
@@ -912,6 +916,51 @@ function saveCoordinatorRatings(params) {
   var no8amCol = allData.slice(1).map(function(r) { return [r[4] === true]; });
   sheet.getRange(2, 5, no8amCol.length, 1).setValues(no8amCol);
 
+  return { success: true };
+}
+
+function getPlayersForAdmin() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+  return rows.map(function(r, i) {
+    return { rowIndex: i + 2, name: r[0] || '', email: (r[1] || '').toLowerCase(), phone: r[2] || '' };
+  }).filter(function(p) {
+    return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
+  });
+}
+
+function addPlayer(params) {
+  var name  = (params.name  || '').trim();
+  var email = (params.email || '').toLowerCase().trim();
+  var phone = (params.phone || '').trim();
+  if (!name || !email) return { success: false, error: 'Name and email are required.' };
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  sheet.appendRow([name, email, phone, '', false, false]);
+  return { success: true };
+}
+
+function updatePlayer(params) {
+  var rowIndex = parseInt(params.rowIndex);
+  var name     = (params.name  || '').trim();
+  var email    = (params.email || '').toLowerCase().trim();
+  var phone    = (params.phone || '').trim();
+  if (!name || !email) return { success: false, error: 'Name and email are required.' };
+  if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
+  sheet.getRange(rowIndex, 1).setValue(name);
+  sheet.getRange(rowIndex, 2).setValue(email);
+  sheet.getRange(rowIndex, 3).setValue(phone);
+  return { success: true };
+}
+
+function deletePlayer(params) {
+  var rowIndex = parseInt(params.rowIndex);
+  if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
+  sheet.deleteRow(rowIndex);
   return { success: true };
 }
 
