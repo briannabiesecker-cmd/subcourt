@@ -1490,6 +1490,8 @@
       <div style="overflow-y:auto;max-height:calc(100vh - 300px);overflow-x:auto;">
         <table class="dir-table" id="dir-table"></table>
       </div>
+      <!-- Email panel: static, shown/hidden by dirSendEmail() -->
+      <div id="dir-email-panel" style="display:none;margin-top:12px;padding:14px 16px;background:var(--chalk);border:1px solid var(--line);border-radius:10px;"></div>
     </div>
   </div>
 
@@ -3950,9 +3952,11 @@ async function loadDirectoryView() {
     html += '</tbody>';
     tbl.innerHTML = html;
 
-    // Reset select-all and count
+    // Reset select-all, count, and email panel
     const selAll = document.getElementById('dir-select-all');
     if (selAll) selAll.checked = false;
+    const panel = document.getElementById('dir-email-panel');
+    if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
     dirUpdateCount();
     wrap.style.display = '';
   } catch(e) {
@@ -3983,17 +3987,11 @@ function dirSendEmail() {
   const emails = Array.from(document.querySelectorAll('.dir-chk:checked')).map(cb => cb.value).filter(Boolean);
   if (!emails.length) { alert('Select at least one player first.'); return; }
 
-  const joined   = emails.join(', ');
+  const joined    = emails.join(', ');
   const mailtoUrl = 'mailto:' + encodeURIComponent(emails.join(','));
   const gmailUrl  = 'https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(emails.join(','));
+  const panel     = document.getElementById('dir-email-panel');
 
-  // Show a panel with copy + launch options instead of relying on a configured mail handler
-  const existing = document.getElementById('dir-email-panel');
-  if (existing) existing.remove();
-
-  const panel = document.createElement('div');
-  panel.id = 'dir-email-panel';
-  panel.style.cssText = 'margin-top:12px;padding:14px 16px;background:var(--chalk);border:1px solid var(--line);border-radius:10px;';
   panel.innerHTML = `
     <div style="font-size:13px;font-weight:600;color:var(--ink-mid);margin-bottom:8px;">${emails.length} address${emails.length > 1 ? 'es' : ''} ready to send</div>
     <textarea id="dir-email-addrs" readonly rows="3"
@@ -4005,7 +4003,7 @@ function dirSendEmail() {
     </div>
     <div id="dir-copy-msg" style="font-size:12px;color:var(--success);margin-top:6px;display:none;">Copied to clipboard!</div>
   `;
-  document.getElementById('dir-table-wrap').appendChild(panel);
+  panel.style.display = '';
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
