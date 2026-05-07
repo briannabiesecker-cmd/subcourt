@@ -1710,6 +1710,17 @@
         <div id="settings-alert" class="hidden" style="margin-top:1rem;"></div>
 
         <div class="card mt8" style="max-width:560px;">
+          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Sender Email</div>
+          <div style="font-size:14px;color:var(--ink-mid);margin-bottom:12px;">Email address that appears as the "From" on all outbound player emails. Must be set up as a Gmail "Send as" alias on the account running this script. Leave blank to use the default script account.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="email" id="sender-email-input" placeholder="e.g. coordinator@gmail.com"
+              style="flex:1;min-width:220px;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;">
+            <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="saveSenderEmail()">Save</button>
+          </div>
+          <div id="sender-email-status" style="font-size:13px;color:var(--ink-light);margin-top:8px;"></div>
+        </div>
+
+        <div class="card mt8" style="max-width:560px;margin-top:1rem;">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
             <div style="flex:1;">
               <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Email Notifications</div>
@@ -3008,7 +3019,7 @@ function showAdminTab(tab, btn) {
   if (tab === 'dispatch')  loadDispatch();
   if (tab === 'players')   { checkDuplicateEmails(); loadCoordinatorRatings(); }
   if (tab === 'scheduler') loadScheduler();
-  if (tab === 'settings')  loadEmailToggle();
+  if (tab === 'settings')  { loadSenderEmail(); loadEmailToggle(); }
 }
 
 // ══════════════════════════════════════════════════
@@ -3375,6 +3386,35 @@ function formatDateShort(str) {
 // SCHEDULER (ADMIN)
 // ══════════════════════════════════════════════════
 let scheduleData = null; // last generated result
+
+async function loadSenderEmail() {
+  const input  = document.getElementById('sender-email-input');
+  const status = document.getElementById('sender-email-status');
+  try {
+    const config = await getAppConfig();
+    if (input && config.senderEmail) input.value = config.senderEmail;
+    if (status) status.textContent = config.senderEmail
+      ? 'Currently sending as: ' + config.senderEmail
+      : 'Using default script account.';
+  } catch(e) {}
+}
+
+async function saveSenderEmail() {
+  const input  = document.getElementById('sender-email-input');
+  const status = document.getElementById('sender-email-status');
+  const email  = input ? input.value.trim() : '';
+  if (status) status.textContent = 'Saving…';
+  try {
+    const result = await apiPost({ action: 'saveSenderEmail', email });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    configCache = null;
+    if (status) status.textContent = email
+      ? 'Saved. Emails will send as: ' + email + ' (requires Gmail alias setup).'
+      : 'Cleared. Using default script account.';
+  } catch(e) {
+    if (status) status.textContent = 'Error: ' + e.message;
+  }
+}
 
 async function loadEmailToggle() {
   const wrap = document.getElementById('email-toggle-wrap');

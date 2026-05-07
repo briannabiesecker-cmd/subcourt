@@ -32,6 +32,38 @@ function setEmailEnabled(params) {
   return { success: true, emailEnabled: enabled };
 }
 
+function saveSenderEmail(params) {
+  var email = (params.email || '').toString().trim();
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  sheet.getRange('A30').setValue('Sender Email');
+  sheet.getRange('B30').setValue(email);
+  return { success: true, senderEmail: email };
+}
+
+// Unified email sender — uses GmailApp with configured from: address (requires Gmail alias setup),
+// falls back to MailApp if alias is not configured or not verified.
+function sendLeagueEmail(params) {
+  var config      = getConfig();
+  var senderEmail = config.senderEmail || '';
+  var options = { name: params.name || 'MWF Tennis League' };
+  if (params.htmlBody)  options.htmlBody = params.htmlBody;
+  if (params.cc)        options.cc       = params.cc;
+  if (params.bcc)       options.bcc      = params.bcc;
+  if (params.replyTo)   options.replyTo  = params.replyTo;
+
+  if (senderEmail) {
+    try {
+      options.from    = senderEmail;
+      options.replyTo = senderEmail;
+      GmailApp.sendEmail(params.to, params.subject, params.body, options);
+      return;
+    } catch(e) {
+      Logger.log('GmailApp from ' + senderEmail + ' failed, using MailApp: ' + e.message);
+    }
+  }
+  MailApp.sendEmail(params);
+}
+
 const TABS = {
   players:      'Players',
   requests:     'SubRequests',
@@ -70,6 +102,8 @@ function getConfig() {
       // Match time reminder — rows 28–29
       matchTimeReminderEnabled: (function() { var v = sheet.getRange('B28').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       matchTimeReminderTimeET:  formatSheetTime(sheet.getRange('B29').getValue()) || '10:00',
+      // Sender email — row 30
+      senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -87,6 +121,7 @@ function getConfig() {
       autoDispatchTimeET:       '08:00',
       matchTimeReminderEnabled: false,
       matchTimeReminderTimeET:  '10:00',
+      senderEmail: '',
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -317,6 +352,7 @@ function doGet(e) {
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
     else if (action === 'getEmailSettings')         result = getEmailSettings();
     else if (action === 'setEmailEnabled')          result = setEmailEnabled(e.parameter);
+    else if (action === 'saveSenderEmail')          result = saveSenderEmail(e.parameter);
     else if (action === 'getAvailabilityConfig')   result = getAvailabilityConfig();
     else if (action === 'openAvailabilityWindow')  result = openAvailabilityWindow(e.parameter);
     else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
@@ -1037,7 +1073,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
-  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+  if (isEmailEnabled()) sendLeagueEmail(emailParams);
 }
 
 function saveMatchTimeReminderSettings(params) {
@@ -1118,7 +1154,7 @@ function runMatchTimeReminder() {
       name:     'MWF Tennis League'
     };
     if (ccList.length) emailParams.cc = ccList.join(', ');
-    if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+    if (isEmailEnabled()) sendLeagueEmail(emailParams);
     notified++;
   });
 
@@ -1165,7 +1201,7 @@ function sendRetirementEmail(req) {
   var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
   var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
-  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+  if (isEmailEnabled()) sendLeagueEmail(emailParams);
 }
 
 function retireRequest(params) {
@@ -1369,7 +1405,7 @@ function checkAvailabilityWindow() {
       if (!p.email) return;
       var personalBody = body.replace('Hi,', 'Hi ' + (p.name || 'there') + ',');
       try {
-        MailApp.sendEmail({ to: p.email, subject: subject, body: personalBody, name: 'MWF Tennis League' });
+        sendLeagueEmail({ to: p.email, subject: subject, body: personalBody, name: 'MWF Tennis League' });
       } catch(e) {
         Logger.log('Reminder email failed for ' + p.email + ': ' + e.message);
       }
@@ -1447,7 +1483,7 @@ function openAvailabilityWindow(params) {
         var emailParams = { to: toEmail, subject: subject, body: body, name: 'MWF Tennis League' };
         if (bccEmails) emailParams.bcc = bccEmails;
         try {
-          MailApp.sendEmail(emailParams);
+          sendLeagueEmail(emailParams);
         } catch(sendErr) {
           Logger.log('Batch email failed (batch ' + Math.floor(i/BATCH_SIZE + 1) + '): ' + sendErr.message);
         }
@@ -1555,7 +1591,7 @@ function submitAvailability(params) {
       'See you on the court!\n' +
       'MWF Tennis League';
 
-    if (isEmailEnabled()) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MWF Tennis League' });
+    if (isEmailEnabled()) sendLeagueEmail({ to: email, subject: subject, body: body, name: 'MWF Tennis League' });
   } catch(err) {
     Logger.log('Confirmation email failed: ' + err.message);
   }
