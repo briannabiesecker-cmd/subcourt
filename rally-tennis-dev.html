@@ -3177,6 +3177,37 @@ async function mpDelete() {
   }
 }
 
+function calcNormDistRatings(players) {
+  // Abramowitz & Stegun erf approximation, accurate to 1.5e-7
+  function erf(x) {
+    const sign = x >= 0 ? 1 : -1;
+    const t = 1 / (1 + 0.3275911 * Math.abs(x));
+    const y = 1 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t
+                      - 0.284496736) * t + 0.254829592) * t) * Math.exp(-x * x);
+    return sign * y;
+  }
+  const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+
+  const rated = players.filter(p => p.myRating !== '' && p.myRating !== null);
+  if (rated.length < 2) return players.map(() => '');
+
+  const vals = rated.map(p => parseFloat(p.myRating));
+  const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+  const std  = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
+
+  // CDF for each rated player; if all ratings identical put everyone at midpoint
+  const cdfs = std === 0
+    ? vals.map(() => 0.5)
+    : vals.map(v => normCdf((v - mean) / std));
+
+  const minC = Math.min(...cdfs), maxC = Math.max(...cdfs), span = maxC - minC;
+  const normMap = {};
+  rated.forEach((p, i) => {
+    normMap[p.email] = span === 0 ? 3.0 : +(1 + (cdfs[i] - minC) / span * 4).toFixed(2);
+  });
+  return players.map(p => normMap[p.email] !== undefined ? normMap[p.email] : '');
+}
+
 function renderRatingsTable() {
   const grid = document.getElementById('players-grid');
   if (!playerRatings.length) {
@@ -3184,6 +3215,7 @@ function renderRatingsTable() {
     document.getElementById('players-list').style.display = 'block';
     return;
   }
+  const normDists = calcNormDistRatings(playerRatings);
   const arrow = col => {
     if (ratingsSort.col !== col) return '<span style="color:#ccc;font-size:11px;margin-left:4px;">⇅</span>';
     return ratingsSort.dir === 'asc'
@@ -3196,6 +3228,7 @@ function renderRatingsTable() {
         <th style="cursor:pointer;user-select:none;" onclick="sortRatingsTable('name')">Name${arrow('name')}</th>
         <th>Email</th>
         <th style="cursor:pointer;user-select:none;" onclick="sortRatingsTable('rating')">Rating${arrow('rating')}</th>
+        <th title="Rating rescaled through a normal distribution so the lowest-rated player = 1.0 and highest = 5.0">Norm Dist</th>
       </tr></thead>
       <tbody>
         ${playerRatings.map((p, i) => `
@@ -3207,6 +3240,7 @@ function renderRatingsTable() {
               value="${p.myRating !== '' ? p.myRating : ''}"
               placeholder="—"
               onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
+            <td style="text-align:center;color:var(--ink-mid);font-size:14px;">${normDists[i] !== '' ? normDists[i] : '—'}</td>
           </tr>
         `).join('')}
       </tbody>
