@@ -930,6 +930,12 @@ function getPlayersForAdmin() {
   });
 }
 
+function sortPlayersSheet(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 3) return;
+  sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+}
+
 function addPlayer(params) {
   var name  = (params.name  || '').trim();
   var email = (params.email || '').toLowerCase().trim();
@@ -937,6 +943,7 @@ function addPlayer(params) {
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   sheet.appendRow([name, email, phone, '', false, false]);
+  sortPlayersSheet(sheet);
   return { success: true };
 }
 
@@ -952,6 +959,7 @@ function updatePlayer(params) {
   sheet.getRange(rowIndex, 1).setValue(name);
   sheet.getRange(rowIndex, 2).setValue(email);
   sheet.getRange(rowIndex, 3).setValue(phone);
+  sortPlayersSheet(sheet);
   return { success: true };
 }
 
