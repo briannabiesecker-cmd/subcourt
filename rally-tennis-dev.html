@@ -3071,6 +3071,7 @@ function showAdminTab(tab, btn) {
 // PLAYER RATINGS
 // ══════════════════════════════════════════════════
 let playerRatings = []; // current loaded player list with coordinator's ratings
+let ratingsSort   = { col: 'name', dir: 'asc' };
 
 function checkDuplicateEmails() {
   const alertEl = document.getElementById('players-alert');
@@ -3176,6 +3177,67 @@ async function mpDelete() {
   }
 }
 
+function renderRatingsTable() {
+  const grid = document.getElementById('players-grid');
+  if (!playerRatings.length) {
+    grid.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
+    document.getElementById('players-list').style.display = 'block';
+    return;
+  }
+  const arrow = col => {
+    if (ratingsSort.col !== col) return '<span style="color:#ccc;font-size:11px;margin-left:4px;">⇅</span>';
+    return ratingsSort.dir === 'asc'
+      ? '<span style="color:var(--clay);font-size:11px;margin-left:4px;">↑</span>'
+      : '<span style="color:var(--clay);font-size:11px;margin-left:4px;">↓</span>';
+  };
+  grid.innerHTML = `
+    <table class="players-table">
+      <thead><tr>
+        <th style="cursor:pointer;user-select:none;" onclick="sortRatingsTable('name')">Name${arrow('name')}</th>
+        <th>Email</th>
+        <th style="cursor:pointer;user-select:none;" onclick="sortRatingsTable('rating')">Rating${arrow('rating')}</th>
+      </tr></thead>
+      <tbody>
+        ${playerRatings.map((p, i) => `
+          <tr>
+            <td class="player-name">${p.name}</td>
+            <td class="player-email">${p.email}</td>
+            <td><input type="number" class="player-rating-input" id="pr-${i}"
+              min="1.0" max="5.0" step="0.5"
+              value="${p.myRating !== '' ? p.myRating : ''}"
+              placeholder="—"
+              onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+  document.getElementById('players-list').style.display = 'block';
+}
+
+function sortRatingsTable(col) {
+  ratingsSort.dir = ratingsSort.col === col && ratingsSort.dir === 'asc' ? 'desc' : 'asc';
+  ratingsSort.col = col;
+  playerRatings.sort((a, b) => {
+    let av, bv;
+    if (col === 'name') {
+      av = (a.name || '').toLowerCase();
+      bv = (b.name || '').toLowerCase();
+    } else {
+      const noA = a.myRating === '' || a.myRating === null;
+      const noB = b.myRating === '' || b.myRating === null;
+      if (noA && noB) return 0;
+      if (noA) return 1;   // empty always last
+      if (noB) return -1;
+      av = parseFloat(a.myRating);
+      bv = parseFloat(b.myRating);
+    }
+    if (av < bv) return ratingsSort.dir === 'asc' ? -1 : 1;
+    if (av > bv) return ratingsSort.dir === 'asc' ?  1 : -1;
+    return 0;
+  });
+  renderRatingsTable();
+}
+
 async function loadCoordinatorRatings(forceRefresh) {
   const email = sessionStorage.getItem('adminEmail');
   if (!email) return;
@@ -3197,40 +3259,10 @@ async function loadCoordinatorRatings(forceRefresh) {
       return;
     }
 
-    playerRatings = (result.players || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '')).sort((a, b) => {
-      const aHas = a.myRating !== '' && a.myRating !== null;
-      const bHas = b.myRating !== '' && b.myRating !== null;
-      if (!aHas && bHas) return -1;
-      if (aHas && !bHas) return 1;
-      if (!aHas && !bHas) return 0;
-      return parseFloat(b.myRating) - parseFloat(a.myRating);
-    });
-    if (!playerRatings.length) {
-      document.getElementById('players-grid').innerHTML =
-        '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
-      document.getElementById('players-list').style.display = 'block';
-      return;
-    }
-
-    document.getElementById('players-grid').innerHTML = `
-      <table class="players-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Rating</th></tr></thead>
-        <tbody>
-          ${playerRatings.map((p, i) => `
-            <tr>
-              <td class="player-name">${p.name}</td>
-              <td class="player-email">${p.email}</td>
-              <td><input type="number" class="player-rating-input" id="pr-${i}"
-                min="1.0" max="5.0" step="0.5"
-                value="${p.myRating !== '' ? p.myRating : ''}"
-                placeholder="—"
-                onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>`;
-
-    document.getElementById('players-list').style.display = 'block';
+    playerRatings = (result.players || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+    ratingsSort = { col: 'name', dir: 'asc' };
+    playerRatings.sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+    renderRatingsTable();
   } catch(e) {
     document.getElementById('players-loading').classList.add('hidden');
     showAlert('players-alert', 'error', 'Failed to load players: ' + e.message);
