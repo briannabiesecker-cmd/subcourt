@@ -435,15 +435,24 @@ function doGet(e) {
     result = { error: err.message };
   }
 
-  if (callback) {
+  try {
+    var body = JSON.stringify(result);
+    if (callback) {
+      return ContentService
+        .createTextOutput(callback + '(' + body + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
     return ContentService
-      .createTextOutput(callback + '(' + JSON.stringify(result) + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+      .createTextOutput(body)
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (serr) {
+    var fallback = callback
+      ? callback + '({"error":"Serialization error: ' + serr.message.replace(/"/g, "'") + '"})'
+      : '{"error":"Serialization error"}';
+    return ContentService
+      .createTextOutput(fallback)
+      .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
   }
-
-  return ContentService
-    .createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -859,13 +868,6 @@ function saveCoordinatorRatings(params) {
   }
   if (coordColIdx === -1) return { success: false, error: 'not_assigned' };
 
-  // Build player email → row number map
-  var emailToRow = {};
-  for (var r = 1; r < allData.length; r++) {
-    var e = (allData[r][1] || '').toLowerCase().trim();
-    if (e) emailToRow[e] = r + 1; // 1-indexed sheet row
-  }
-
   // Build rating + no8am lookup from input
   var ratingMap = {};
   var no8amMap = {};
@@ -901,9 +903,7 @@ function saveCoordinatorRatings(params) {
 
   // Batch write: ratings column
   var ratingsCol = allData.slice(1).map(function(r) { return [r[coordColIdx]]; });
-  var ratingRange = sheet.getRange(2, coordColIdx + 1, ratingsCol.length, 1);
-  ratingRange.setNumberFormat('0.0');
-  ratingRange.setValues(ratingsCol);
+  sheet.getRange(2, coordColIdx + 1, ratingsCol.length, 1).setValues(ratingsCol);
 
   // Batch write: averages column (D)
   var avgsCol = allData.slice(1).map(function(r) { return [r[3]]; });
