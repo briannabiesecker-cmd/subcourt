@@ -909,7 +909,7 @@ function saveCoordinatorRatings(params) {
   // Write coordinator column
   sheet.getRange(2, coordColIdx + 1, ratingsCol.length, 1).setValues(ratingsCol);
 
-  // Write averages (D) — isolated; failures must not crash the response
+  // Write averages (D)
   try {
     sheet.getRange(2, 4, avgsCol.length, 1).setValues(avgsCol);
   } catch(e) { /* column D may be formula-controlled */ }
@@ -918,6 +918,12 @@ function saveCoordinatorRatings(params) {
   try {
     sheet.getRange(2, 5, no8amCol.length, 1).setValues(no8amCol);
   } catch(e) { /* ignore */ }
+
+  // Force all batched writes to execute NOW, inside doGet's try/catch.
+  // Without this, V8 runtime flushes pending operations at function-exit time,
+  // which is outside the try/catch, so any write error returns an HTML page
+  // instead of JSONP and causes 'Script load failed' in the browser.
+  SpreadsheetApp.flush();
 
   return { success: true };
 }
