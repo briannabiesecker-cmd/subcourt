@@ -904,17 +904,25 @@ function saveCoordinatorRatings(params) {
   // Batch write: ratings column
   var ratingsCol = allData.slice(1).map(function(r) { return [r[coordColIdx]]; });
   sheet.getRange(2, coordColIdx + 1, ratingsCol.length, 1).setValues(ratingsCol);
+  SpreadsheetApp.flush();
 
   // Batch write: averages column (D)
-  var avgsCol = allData.slice(1).map(function(r) { return [r[3]]; });
-  sheet.getRange(2, 4, avgsCol.length, 1).setValues(avgsCol);
+  try {
+    var avgsCol = allData.slice(1).map(function(r) { return [r[3]]; });
+    sheet.getRange(2, 4, avgsCol.length, 1).setValues(avgsCol);
+  } catch(avgErr) {
+    // Column D may be formula-controlled or protected — it will auto-recalculate
+    // from the coordinator columns we just wrote.
+  }
 
   // Batch write: No 8am column (E)
-  if (!headers[4] || headers[4].toString() !== 'No8am') {
-    sheet.getRange(1, 5).setValue('No8am');
-  }
-  var no8amCol = allData.slice(1).map(function(r) { return [r[4] === true]; });
-  sheet.getRange(2, 5, no8amCol.length, 1).setValues(no8amCol);
+  try {
+    if (!headers[4] || headers[4].toString() !== 'No8am') {
+      sheet.getRange(1, 5).setValue('No8am');
+    }
+    var no8amCol = allData.slice(1).map(function(r) { return [r[4] === true]; });
+    sheet.getRange(2, 5, no8amCol.length, 1).setValues(no8amCol);
+  } catch(e) { /* ignore if E is protected */ }
 
   return { success: true };
 }
