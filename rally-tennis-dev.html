@@ -1616,7 +1616,7 @@
               <option value="">— New player —</option>
             </select>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
             <div class="field" style="margin:0;">
               <label style="font-size:13px;">Name</label>
               <input type="text" id="mp-name" placeholder="First Last"
@@ -1632,6 +1632,10 @@
               <input type="tel" id="mp-phone" placeholder="nnn-nnn-nnnn"
                 style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;">
             </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <input type="checkbox" id="mp-no8am" style="width:18px;height:18px;cursor:pointer;">
+            <label for="mp-no8am" style="font-size:14px;margin:0;cursor:pointer;">No 8am &mdash; exclude from 8:00 AM court time slots</label>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button class="btn btn-clay" onclick="mpSave()">Save</button>
@@ -3109,9 +3113,10 @@ function mpSelectPlayer(email) {
   const p = adminPlayers.find(p => p.email === email);
   if (!p) return;
   mpCurrentPlayer = p;
-  document.getElementById('mp-name').value  = p.name;
-  document.getElementById('mp-email').value = p.email;
-  document.getElementById('mp-phone').value = p.phone || '';
+  document.getElementById('mp-name').value    = p.name;
+  document.getElementById('mp-email').value   = p.email;
+  document.getElementById('mp-phone').value   = p.phone || '';
+  document.getElementById('mp-no8am').checked = !!p.no8am;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = false;
   delBtn.style.opacity = '1';
@@ -3120,10 +3125,11 @@ function mpSelectPlayer(email) {
 
 function mpClear() {
   mpCurrentPlayer = null;
-  document.getElementById('mp-select').value = '';
-  document.getElementById('mp-name').value   = '';
-  document.getElementById('mp-email').value  = '';
-  document.getElementById('mp-phone').value  = '';
+  document.getElementById('mp-select').value  = '';
+  document.getElementById('mp-name').value    = '';
+  document.getElementById('mp-email').value   = '';
+  document.getElementById('mp-phone').value   = '';
+  document.getElementById('mp-no8am').checked = false;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = true;
   delBtn.style.opacity = '0.4';
@@ -3135,13 +3141,14 @@ async function mpSave() {
   const name  = document.getElementById('mp-name').value.trim();
   const email = document.getElementById('mp-email').value.trim();
   const phone = document.getElementById('mp-phone').value.trim();
+  const no8am = document.getElementById('mp-no8am').checked;
   if (!name || !email) { showAlert('manage-players-alert', 'error', 'Name and email are required.'); return; }
   try {
     let result;
     if (mpCurrentPlayer) {
-      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone });
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone, no8am });
     } else {
-      result = await apiPost({ action: 'addPlayer', name, email, phone });
+      result = await apiPost({ action: 'addPlayer', name, email, phone, no8am });
     }
     if (!result.success) throw new Error(result.error || 'Failed');
     showAlert('manage-players-alert', 'success', mpCurrentPlayer ? 'Player updated.' : 'Player added.');
@@ -3207,7 +3214,7 @@ async function loadCoordinatorRatings(forceRefresh) {
 
     document.getElementById('players-grid').innerHTML = `
       <table class="players-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Rating</th><th>No 8am</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Rating</th></tr></thead>
         <tbody>
           ${playerRatings.map((p, i) => `
             <tr>
@@ -3218,8 +3225,6 @@ async function loadCoordinatorRatings(forceRefresh) {
                 value="${p.myRating !== '' ? p.myRating : ''}"
                 placeholder="—"
                 onchange="if(this.value!==''){let v=parseFloat(this.value);if(v<1)this.value='1.0';if(v>5)this.value='5.0';}" /></td>
-              <td><input type="checkbox" class="no8am-check" id="no8am-${i}"
-                ${p.no8am ? 'checked' : ''} /></td>
             </tr>
           `).join('')}
         </tbody>
@@ -3238,9 +3243,8 @@ async function saveAllRatings() {
 
   const ratings = playerRatings.map((p, i) => {
     const input = document.getElementById(`pr-${i}`);
-    const no8am = document.getElementById(`no8am-${i}`);
     const val   = input ? input.value.trim() : '';
-    return { playerEmail: p.email, rating: val !== '' ? parseFloat(val) : '', no8am: no8am ? no8am.checked : false };
+    return { playerEmail: p.email, rating: val !== '' ? parseFloat(val) : '' };
   });
 
   // Validate range
@@ -3254,20 +3258,23 @@ async function saveAllRatings() {
   saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Saving…'; } });
 
   try {
-    const result = await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
+    // Use fetch (plain JSON, no JSONP) — Apps Script returns CORS headers for anonymous GET requests
+    const qs = `action=saveCoordinatorRatings&coordEmail=${encodeURIComponent(email)}&ratings=${encodeURIComponent(JSON.stringify(ratings))}`;
+    const resp = await fetch(`${SCRIPT_URL}?${qs}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const result = await resp.json();
     if (!result.success) {
       showAlert('players-alert', 'error', result.error === 'not_assigned'
-        ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns F–J in the Players sheet.'
+        ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns G–K in the Players sheet.'
         : (result.error || 'Failed to save.'));
       saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } });
       return;
     }
     saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.textContent = 'Saved ✓'; } });
     setTimeout(() => { saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } }); }, 2000);
-    // Update local cache with saved values (no need to re-fetch)
     ratings.forEach(r => {
       const p = playerRatings.find(p => p.email === r.playerEmail);
-      if (p) { p.myRating = r.rating; p.no8am = r.no8am; }
+      if (p) p.myRating = r.rating;
     });
   } catch(e) {
     showAlert('players-alert', 'error', 'Failed to save: ' + e.message);

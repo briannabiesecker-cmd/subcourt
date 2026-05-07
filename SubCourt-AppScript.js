@@ -868,15 +868,11 @@ function saveCoordinatorRatings(params) {
   }
   if (coordColIdx === -1) return { success: false, error: 'not_assigned' };
 
-  // Build rating + no8am lookup from input
+  // Build rating lookup from input
   var ratingMap = {};
-  var no8amMap = {};
   ratings.forEach(function(item) {
     var pe = (item.playerEmail || '').toLowerCase().trim();
-    if (pe) {
-      ratingMap[pe] = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
-      no8amMap[pe] = item.no8am === true || item.no8am === 'true';
-    }
+    if (pe) ratingMap[pe] = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
   });
 
   // Find all coordinator columns with data for average calculation (G–K = index 6–10)
@@ -890,7 +886,6 @@ function saveCoordinatorRatings(params) {
     var pe = (allData[row][1] || '').toLowerCase().trim();
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
-      allData[row][4] = no8amMap[pe] ? true : false;
     }
     // Recalculate average from all coordinator columns
     if (!allData[row][0]) continue;
@@ -913,9 +908,15 @@ function saveCoordinatorRatings(params) {
 function getPlayersForAdmin() {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues(); // A-E
   return rows.map(function(r, i) {
-    return { rowIndex: i + 2, name: r[0] || '', email: (r[1] || '').toLowerCase(), phone: r[2] || '' };
+    return {
+      rowIndex: i + 2,
+      name:  r[0] || '',
+      email: (r[1] || '').toLowerCase(),
+      phone: r[2] || '',
+      no8am: r[4] === true || r[4].toString().toUpperCase() === 'TRUE'
+    };
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
@@ -931,9 +932,10 @@ function addPlayer(params) {
   var name  = (params.name  || '').trim();
   var email = (params.email || '').toLowerCase().trim();
   var phone = (params.phone || '').trim();
+  var no8am = params.no8am === 'true' || params.no8am === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
-  sheet.appendRow([name, email, phone, '', false, false]);
+  sheet.appendRow([name, email, phone, '', no8am, false]);
   sortPlayersSheet(sheet);
   return { success: true };
 }
@@ -943,6 +945,7 @@ function updatePlayer(params) {
   var name     = (params.name  || '').trim();
   var email    = (params.email || '').toLowerCase().trim();
   var phone    = (params.phone || '').trim();
+  var no8am    = params.no8am === 'true' || params.no8am === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
@@ -950,6 +953,7 @@ function updatePlayer(params) {
   sheet.getRange(rowIndex, 1).setValue(name);
   sheet.getRange(rowIndex, 2).setValue(email);
   sheet.getRange(rowIndex, 3).setValue(phone);
+  sheet.getRange(rowIndex, 5).setValue(no8am);
   sortPlayersSheet(sheet);
   return { success: true };
 }
