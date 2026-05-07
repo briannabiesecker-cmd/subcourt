@@ -1968,13 +1968,14 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   var pool = available.slice();
 
   if (remainder === 1) {
-    var minSitOuts = Infinity;
-    var sitOutIdx  = 0;
-    pool.forEach(function(p, i) {
-      var count = sitOutCounts[p.email] || 0;
-      if (count < minSitOuts) { minSitOuts = count; sitOutIdx = i; }
+    // Prefer players who haven't sat out yet this month (max 1 sit-out per player per month).
+    // Among eligible candidates, choose randomly so selection isn't tied to submission order.
+    var notYetSatOut = pool.filter(function(p) {
+      return (sitOutCounts[p.email] || 0) === 0;
     });
-    sitOutPlayer = pool.splice(sitOutIdx, 1)[0];
+    var candidates = notYetSatOut.length > 0 ? notYetSatOut : pool.slice();
+    var chosen     = candidates[Math.floor(Math.random() * candidates.length)];
+    sitOutPlayer   = pool.splice(pool.indexOf(chosen), 1)[0];
   }
 
   var iters    = settings.solverIterations || 800;
