@@ -1926,7 +1926,7 @@ async function loadPlayerList() {
   if (playerList.length) return playerList;
   try {
     const data = await apiGet('getPlayers');
-    playerList = data;
+    playerList = (data || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
   } catch(e) { playerList = []; }
   return playerList;
 }
