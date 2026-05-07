@@ -1587,7 +1587,8 @@ function submitAvailability(params) {
       'We received your availability for ' + avConfig.targetMonthLabel + '.\n\n' +
       'Your selected dates:\n' + (dateLines || '  (none selected)') + '\n\n' +
       (notes ? 'Notes: ' + notes + '\n\n' : '') +
-      'If you need to make changes, you can re-submit before the window closes.\n\n' +
+      'If you need to make changes before the window closes, visit:\n' +
+      APP_BASE_URL + '#availability\n\n' +
       'See you on the court!\n' +
       'MWF Tennis League';
 
