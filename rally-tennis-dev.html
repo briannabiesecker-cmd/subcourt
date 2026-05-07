@@ -1473,6 +1473,36 @@
       <div class="section-title">Player Directory</div>
     </div>
 
+    <!-- Your name — identifies the sender for email composition -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:start;">
+        <div class="field" style="margin:0;">
+          <label>Your name</label>
+          <div class="typeahead-wrap">
+            <div id="dir-selected-state" style="display:none;">
+              <div class="selected-pill">
+                <span id="dir-selected-name"></span>
+                <button class="clear-btn" onclick="clearTypeahead('dir')" title="Clear">×</button>
+              </div>
+            </div>
+            <div id="dir-input-state">
+              <input class="typeahead-input" id="dir-name-input" type="text"
+                placeholder="Start typing your name…"
+                oninput="onTypeaheadInput('dir', this.value)"
+                onblur="onTypeaheadBlur('dir')"
+                onfocus="onTypeaheadFocus('dir')"
+                autocomplete="off" />
+              <div class="typeahead-dropdown" id="dir-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Your email</label>
+          <input type="email" id="dir-email" placeholder="Auto-filled on selection" disabled />
+        </div>
+      </div>
+    </div>
+
     <div id="dir-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading directory…</div>
     <div id="dir-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No players found.</div>
     <div id="dir-table-wrap" style="display:none;">
@@ -1814,7 +1844,7 @@ function showView(name, btn) {
   if (name === 'volunteer') { buildCalendar().then(() => prefillIdentity('vol')); }
   if (name === 'availability') { loadAvailabilityView().then(() => prefillIdentity('av')); }
   if (name === 'schedule') loadScheduleView();
-  if (name === 'directory') loadDirectoryView();
+  if (name === 'directory') { loadDirectoryView(); prefillIdentity('dir'); }
   if (name === 'admin') {
     if (sessionStorage.getItem('adminAuthenticated') === 'true') {
       unlockAdmin(sessionStorage.getItem('adminName') || '');
@@ -1942,7 +1972,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
   document.getElementById(prefix + '-selected-name').textContent = name;
   document.getElementById(prefix + '-email').value = email;
   document.getElementById(prefix + '-dropdown').style.display = 'none';
-  if (['req', 'vol', 'av'].includes(prefix)) {
+  if (['req', 'vol', 'av', 'dir'].includes(prefix)) {
     try { localStorage.setItem('rally_user_identity', JSON.stringify({ name, email })); } catch(e) {}
   }
   if (prefix === 'vol') loadMySubmissions(email);
