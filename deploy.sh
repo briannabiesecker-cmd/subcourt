@@ -1,7 +1,7 @@
 #!/bin/bash
 # SubCourt — clasp deploy script
 # Usage:
-#   ./deploy.sh test    — push to TEST Apps Script
+#   ./deploy.sh dev     — push to DEV Apps Script (rally-tennis-dev.html)
 #   ./deploy.sh prod    — push to PROD Apps Script
 
 set -e
@@ -9,22 +9,29 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE="$SCRIPT_DIR/SubCourt-AppScript.js"
 
-TEST_SHEET_ID="1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE"
+DEV_DEPLOYMENT_ID="AKfycbxS8vYTuuuxsjbVoLS0Mup8VYiCj0t95N6dq7cCKIimnwfLW4or5qBoGFHGbVZIT597Ug"
+DEV_SHEET_ID="1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE"
 PROD_SHEET_ID="1hA-ZPhV62pp376qtWRDfQQkFv6y9U5Wkm0nUyKCHC6o"
 
 TARGET="${1:-}"
+DESCRIPTION="${2:-}"
 
 if [ -z "$TARGET" ]; then
-  echo "Usage: ./deploy.sh test | prod"
+  echo "Usage: ./deploy.sh dev | prod [description]"
   exit 1
 fi
 
-if [ "$TARGET" = "test" ]; then
-  echo "→ Deploying to TEST..."
-  cp "$SOURCE" "$SCRIPT_DIR/clasp/test/Code.js"
-  cd "$SCRIPT_DIR/clasp/test"
+if [ "$TARGET" = "dev" ]; then
+  echo "→ Deploying to DEV..."
+  cp "$SOURCE" "$HOME/subcourt-dev-script/SubCourt-AppScript.js"
+  cd "$HOME/subcourt-dev-script"
   clasp push --force
-  echo "✓ TEST deploy complete. Create a new version in the Apps Script editor (Deploy → Manage deployments) to make it live."
+  if [ -n "$DESCRIPTION" ]; then
+    clasp deploy --deploymentId "$DEV_DEPLOYMENT_ID" --description "$DESCRIPTION"
+  else
+    clasp deploy --deploymentId "$DEV_DEPLOYMENT_ID"
+  fi
+  echo "✓ DEV deploy complete and live."
 
 elif [ "$TARGET" = "prod" ]; then
   if [ -z "$PROD_SHEET_ID" ]; then
@@ -38,6 +45,6 @@ elif [ "$TARGET" = "prod" ]; then
   echo "✓ PROD deploy complete. Create a new version in the Apps Script editor (Deploy → Manage deployments) to make it live."
 
 else
-  echo "Unknown target: $TARGET. Use 'test' or 'prod'."
+  echo "Unknown target: $TARGET. Use 'dev' or 'prod'."
   exit 1
 fi
