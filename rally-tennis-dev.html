@@ -1476,6 +1476,14 @@
     <div id="dir-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading directory…</div>
     <div id="dir-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No players found.</div>
     <div id="dir-table-wrap" style="display:none;overflow-x:auto;">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="dir-select-all" onchange="dirToggleAll(this.checked)" style="width:16px;height:16px;">
+          Select all
+        </label>
+        <button class="btn btn-secondary" id="dir-email-btn" onclick="dirSendEmail()" style="font-size:13px;padding:6px 14px;">Send Email</button>
+        <span id="dir-selected-count" style="font-size:13px;color:var(--ink-light);"></span>
+      </div>
       <table class="dir-table" id="dir-table"></table>
     </div>
   </div>
@@ -3872,26 +3880,64 @@ async function loadDirectoryView() {
   wrap.style.display    = 'none';
 
   try {
-    const players = await apiGet('getPlayers');
+    const allPlayers = await apiGet('getPlayers');
     loading.style.display = 'none';
-    if (!players || !players.length) {
+
+    // Exclude fictitious Anita Sub players
+    const players = (allPlayers || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+
+    if (!players.length) {
       empty.style.display = '';
       return;
     }
-    // Sort by name
     players.sort((a, b) => a.name.localeCompare(b.name));
-    let html = '<thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>';
+
+    let html = '<thead><tr><th style="width:36px;"></th><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>';
     for (const p of players) {
-      html += `<tr><td>${p.name}</td><td>${p.email}</td><td>${p.phone || ''}</td></tr>`;
+      const safeEmail = (p.email || '').replace(/"/g, '&quot;');
+      html += `<tr>
+        <td><input type="checkbox" class="dir-chk" value="${safeEmail}" onchange="dirUpdateCount()" style="width:16px;height:16px;cursor:pointer;"></td>
+        <td>${p.name}</td>
+        <td>${p.email}</td>
+        <td>${p.phone || ''}</td>
+      </tr>`;
     }
     html += '</tbody>';
     tbl.innerHTML = html;
+
+    // Reset select-all and count
+    const selAll = document.getElementById('dir-select-all');
+    if (selAll) selAll.checked = false;
+    dirUpdateCount();
     wrap.style.display = '';
   } catch(e) {
     loading.style.display = 'none';
     empty.style.display = '';
     empty.textContent = 'Could not load directory. Please try again.';
   }
+}
+
+function dirToggleAll(checked) {
+  document.querySelectorAll('.dir-chk').forEach(cb => cb.checked = checked);
+  dirUpdateCount();
+}
+
+function dirUpdateCount() {
+  const checked = document.querySelectorAll('.dir-chk:checked').length;
+  const total   = document.querySelectorAll('.dir-chk').length;
+  const countEl = document.getElementById('dir-selected-count');
+  if (countEl) countEl.textContent = checked > 0 ? checked + ' of ' + total + ' selected' : '';
+  const selAll = document.getElementById('dir-select-all');
+  if (selAll) {
+    selAll.checked       = checked === total && total > 0;
+    selAll.indeterminate = checked > 0 && checked < total;
+  }
+}
+
+function dirSendEmail() {
+  const emails = Array.from(document.querySelectorAll('.dir-chk:checked')).map(cb => cb.value).filter(Boolean);
+  if (!emails.length) { alert('Select at least one player first.'); return; }
+  window.location.href = 'mailto:?to=' + encodeURIComponent(emails.join(', '));
 }
 
 function renderPublishedSchedule(filterEmail) {
