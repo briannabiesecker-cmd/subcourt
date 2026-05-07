@@ -4368,7 +4368,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Single call returns players + availConfig — avoids two cold-start round trips
   apiGetWithParams({ action: 'getHomeData' }).then(data => {
-    if (data.players)     playerList  = data.players;
+    if (data.players)     playerList  = data.players.filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
     if (data.availConfig) {
       availConfig = data.availConfig;
       applyAvailConfigToHomeCard(availConfig);
