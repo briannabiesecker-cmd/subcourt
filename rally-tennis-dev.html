@@ -1607,24 +1607,38 @@
 
         <!-- ── Manage Players ── -->
         <div class="card mt8">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div style="font-size:16px;font-weight:700;color:var(--ink);">Manage Players</div>
-            <button class="btn btn-primary btn-sm" onclick="showAddPlayerForm()">+ Add Player</button>
+          <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:14px;">Manage Players</div>
+          <div id="manage-players-alert" class="hidden" style="margin-bottom:10px;"></div>
+          <div class="field" style="margin-bottom:14px;">
+            <label>Select a player to edit, or fill in the fields below to add a new one</label>
+            <select id="mp-select" onchange="mpSelectPlayer(this.value)"
+              style="font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;width:100%;">
+              <option value="">— New player —</option>
+            </select>
           </div>
-          <div id="manage-players-loading" class="loading hidden"><div class="spinner"></div>Loading…</div>
-          <div id="manage-players-alert" class="hidden" style="margin-bottom:8px;"></div>
-          <div id="manage-players-list"></div>
-          <div id="add-player-form" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-            <div style="font-size:14px;font-weight:600;color:var(--ink-mid);margin-bottom:10px;">Add New Player</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-              <div class="field" style="margin:0;"><label style="font-size:13px;">Name</label><input type="text" id="new-player-name" placeholder="Last, First" style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;"></div>
-              <div class="field" style="margin:0;"><label style="font-size:13px;">Email</label><input type="email" id="new-player-email" placeholder="email@example.com" style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;"></div>
-              <div class="field" style="margin:0;"><label style="font-size:13px;">Phone</label><input type="tel" id="new-player-phone" placeholder="(optional)" style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div class="field" style="margin:0;">
+              <label style="font-size:13px;">Name</label>
+              <input type="text" id="mp-name" placeholder="Last, First"
+                style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;">
             </div>
-            <div style="display:flex;gap:8px;">
-              <button class="btn btn-clay btn-sm" onclick="submitAddPlayer()">Add Player</button>
-              <button class="btn btn-secondary btn-sm" onclick="document.getElementById('add-player-form').style.display='none'">Cancel</button>
+            <div class="field" style="margin:0;">
+              <label style="font-size:13px;">Email</label>
+              <input type="email" id="mp-email"
+                style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;">
             </div>
+            <div class="field" style="margin:0;">
+              <label style="font-size:13px;">Phone</label>
+              <input type="tel" id="mp-phone" placeholder="(optional)"
+                style="font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;width:100%;">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-clay" onclick="mpSave()">Save</button>
+            <button class="btn btn-sm" id="mp-delete-btn"
+              style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;opacity:0.4;cursor:not-allowed;"
+              onclick="mpDelete()" disabled>Delete</button>
+            <button class="btn btn-secondary btn-sm" onclick="mpClear()">Clear</button>
           </div>
         </div>
 
@@ -3073,107 +3087,86 @@ function checkDuplicateEmails() {
   }
 }
 
-let adminPlayers = [];
+let adminPlayers    = [];
+let mpCurrentPlayer = null; // the player currently loaded in the form (null = new)
 
 async function loadManagePlayers() {
-  const listEl  = document.getElementById('manage-players-list');
-  const loadEl  = document.getElementById('manage-players-loading');
-  const alertEl = document.getElementById('manage-players-alert');
-  loadEl.classList.remove('hidden');
-  listEl.innerHTML = '';
-  alertEl.classList.add('hidden');
   try {
     adminPlayers = await apiPost({ action: 'getPlayersForAdmin' });
     adminPlayers.sort((a, b) => a.name.localeCompare(b.name));
-    if (!adminPlayers.length) {
-      listEl.innerHTML = '<div class="empty" style="padding:1rem 0;">No players found.</div>';
-      return;
-    }
-    listEl.innerHTML = `
-      <div style="overflow-x:auto;">
-        <table class="dispatch-table">
-          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th style="width:120px;"></th></tr></thead>
-          <tbody id="manage-players-tbody">
-            ${adminPlayers.map((p, i) => playerRow(p, i)).join('')}
-          </tbody>
-        </table>
-      </div>`;
+    const sel = document.getElementById('mp-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— New player —</option>' +
+      adminPlayers.map(p => `<option value="${p.email}">${p.name}</option>`).join('');
+    mpClear();
   } catch(e) {
-    showAlert('manage-players-alert', 'error', 'Failed to load: ' + e.message);
-  } finally {
-    loadEl.classList.add('hidden');
+    showAlert('manage-players-alert', 'error', 'Failed to load players: ' + e.message);
   }
 }
 
-function playerRow(p, i) {
-  return `<tr id="mpr-${i}">
-    <td>${p.name}</td>
-    <td>${p.email}</td>
-    <td>${p.phone || ''}</td>
-    <td style="text-align:right;white-space:nowrap;">
-      <button class="btn btn-secondary btn-sm" onclick="editPlayerRow(${i})" style="margin-right:4px;">Edit</button>
-      <button class="btn btn-sm" style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;" onclick="deletePlayerRow(${i}, ${p.rowIndex})">Delete</button>
-    </td>
-  </tr>`;
+function mpSelectPlayer(email) {
+  if (!email) { mpClear(); return; }
+  const p = adminPlayers.find(p => p.email === email);
+  if (!p) return;
+  mpCurrentPlayer = p;
+  document.getElementById('mp-name').value  = p.name;
+  document.getElementById('mp-email').value = p.email;
+  document.getElementById('mp-phone').value = p.phone || '';
+  const delBtn = document.getElementById('mp-delete-btn');
+  delBtn.disabled = false;
+  delBtn.style.opacity = '1';
+  delBtn.style.cursor  = 'pointer';
 }
 
-function editPlayerRow(i) {
-  const p = adminPlayers[i];
-  document.getElementById('mpr-' + i).innerHTML = `
-    <td><input id="ep-name-${i}" value="${p.name}" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;width:100%;"></td>
-    <td><input id="ep-email-${i}" value="${p.email}" type="email" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;width:100%;"></td>
-    <td><input id="ep-phone-${i}" value="${p.phone||''}" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;width:100%;"></td>
-    <td style="text-align:right;white-space:nowrap;">
-      <button class="btn btn-clay btn-sm" onclick="savePlayerRow(${i}, ${p.rowIndex})" style="margin-right:4px;">Save</button>
-      <button class="btn btn-secondary btn-sm" onclick="cancelEditRow(${i})">Cancel</button>
-    </td>`;
+function mpClear() {
+  mpCurrentPlayer = null;
+  document.getElementById('mp-select').value = '';
+  document.getElementById('mp-name').value   = '';
+  document.getElementById('mp-email').value  = '';
+  document.getElementById('mp-phone').value  = '';
+  const delBtn = document.getElementById('mp-delete-btn');
+  delBtn.disabled = true;
+  delBtn.style.opacity = '0.4';
+  delBtn.style.cursor  = 'not-allowed';
+  document.getElementById('manage-players-alert').classList.add('hidden');
 }
 
-function cancelEditRow(i) {
-  document.getElementById('mpr-' + i).innerHTML = playerRow(adminPlayers[i], i).replace(/^<tr[^>]*>/, '').replace(/<\/tr>$/, '');
-}
-
-async function savePlayerRow(i, rowIndex) {
-  const name  = document.getElementById('ep-name-'  + i).value.trim();
-  const email = document.getElementById('ep-email-' + i).value.trim();
-  const phone = document.getElementById('ep-phone-' + i).value.trim();
-  if (!name || !email) { alert('Name and email are required.'); return; }
+async function mpSave() {
+  const name  = document.getElementById('mp-name').value.trim();
+  const email = document.getElementById('mp-email').value.trim();
+  const phone = document.getElementById('mp-phone').value.trim();
+  if (!name || !email) { showAlert('manage-players-alert', 'error', 'Name and email are required.'); return; }
   try {
-    const result = await apiPost({ action: 'updatePlayer', rowIndex, name, email, phone });
+    let result;
+    if (mpCurrentPlayer) {
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone });
+    } else {
+      result = await apiPost({ action: 'addPlayer', name, email, phone });
+    }
     if (!result.success) throw new Error(result.error || 'Failed');
-    adminPlayers[i] = { ...adminPlayers[i], name, email, phone };
-    document.getElementById('mpr-' + i).outerHTML = playerRow(adminPlayers[i], i);
-  } catch(e) { alert('Could not save: ' + e.message); }
+    showAlert('manage-players-alert', 'success', mpCurrentPlayer ? 'Player updated.' : 'Player added.');
+    await loadManagePlayers();
+    // Re-select if editing so the form stays populated
+    if (email) {
+      document.getElementById('mp-select').value = email;
+      mpSelectPlayer(email);
+    }
+  } catch(e) {
+    showAlert('manage-players-alert', 'error', 'Could not save: ' + e.message);
+  }
 }
 
-async function deletePlayerRow(i, rowIndex) {
-  if (!confirm(`Delete ${adminPlayers[i].name}? This cannot be undone.`)) return;
+async function mpDelete() {
+  if (!mpCurrentPlayer) return;
+  if (!confirm(`Delete ${mpCurrentPlayer.name}? This cannot be undone.`)) return;
   try {
-    const result = await apiPost({ action: 'deletePlayer', rowIndex });
+    const result = await apiPost({ action: 'deletePlayer', rowIndex: mpCurrentPlayer.rowIndex });
     if (!result.success) throw new Error(result.error || 'Failed');
     await loadManagePlayers();
-  } catch(e) { alert('Could not delete: ' + e.message); }
-}
-
-function showAddPlayerForm() {
-  document.getElementById('add-player-form').style.display = '';
-  document.getElementById('new-player-name').focus();
-}
-
-async function submitAddPlayer() {
-  const name  = document.getElementById('new-player-name').value.trim();
-  const email = document.getElementById('new-player-email').value.trim();
-  const phone = document.getElementById('new-player-phone').value.trim();
-  if (!name || !email) { alert('Name and email are required.'); return; }
-  try {
-    const result = await apiPost({ action: 'addPlayer', name, email, phone });
-    if (!result.success) throw new Error(result.error || 'Failed');
-    document.getElementById('new-player-name').value  = '';
-    document.getElementById('new-player-email').value = '';
-    document.getElementById('new-player-phone').value = '';
-    document.getElementById('add-player-form').style.display = 'none';
-    await loadManagePlayers();
-  } catch(e) { alert('Could not add player: ' + e.message); }
+    showAlert('manage-players-alert', 'success', 'Player deleted.');
+  } catch(e) {
+    showAlert('manage-players-alert', 'error', 'Could not delete: ' + e.message);
+  }
 }
 
 async function loadCoordinatorRatings(forceRefresh) {
