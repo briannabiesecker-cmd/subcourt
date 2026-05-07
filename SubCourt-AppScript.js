@@ -820,13 +820,13 @@ function getCoordinatorRatings(params) {
   var lastRow    = sheet.getLastRow();
   if (lastRow < 2) return { players: [] };
 
-  var lastCol  = Math.max(sheet.getLastColumn(), 10); // ensure we read through col J (coordinators)
+  var lastCol  = Math.max(sheet.getLastColumn(), 11); // ensure we read through col K (coordinators G–K)
   var allData  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers  = allData[0];
 
-  // Find this coordinator's column (cols F–J = index 5–9)
+  // Find this coordinator's column (cols G–K = index 6–10)
   var coordColIdx = -1;
-  for (var i = 5; i <= 9; i++) {
+  for (var i = 6; i <= 10; i++) {
     if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
       coordColIdx = i;
       break;
@@ -855,13 +855,13 @@ function saveCoordinatorRatings(params) {
   var ratings    = JSON.parse(params.ratings || '[]'); // [{playerEmail, rating, no8am}]
   var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   var lastRow    = sheet.getLastRow();
-  var lastCol    = Math.max(sheet.getLastColumn(), 10);
+  var lastCol    = Math.max(sheet.getLastColumn(), 11); // read through col K (G–K are coordinator cols)
   var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers    = allData[0];
 
-  // Find coordinator column — must be pre-assigned in sheet header (cols F–J)
+  // Find coordinator column — assigned in sheet header (cols G–K = index 6–10)
   var coordColIdx = -1;
-  for (var i = 5; i <= 9; i++) {
+  for (var i = 6; i <= 10; i++) {
     if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
       coordColIdx = i; break;
     }
@@ -879,9 +879,9 @@ function saveCoordinatorRatings(params) {
     }
   });
 
-  // Find all coordinator columns with data for average calculation
+  // Find all coordinator columns with data for average calculation (G–K = index 6–10)
   var coordCols = [];
-  for (var k = 5; k <= 9; k++) {
+  for (var k = 6; k <= 10; k++) {
     if (headers[k]) coordCols.push(k);
   }
 
