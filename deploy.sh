@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE="$SCRIPT_DIR/SubCourt-AppScript.js"
 
 DEV_DEPLOYMENT_ID="AKfycbxS8vYTuuuxsjbVoLS0Mup8VYiCj0t95N6dq7cCKIimnwfLW4or5qBoGFHGbVZIT597Ug"
+PROD_DEPLOYMENT_ID="AKfycbymmYjtMAEnNO0D_1yuYZJQmOisxtSHBcaOCzTm74-iBmSnQgQgFTMB4IvJqeK6SEFhMg"
 DEV_SHEET_ID="1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE"
 PROD_SHEET_ID="1hA-ZPhV62pp376qtWRDfQQkFv6y9U5Wkm0nUyKCHC6o"
 
@@ -39,10 +40,15 @@ elif [ "$TARGET" = "prod" ]; then
     exit 1
   fi
   echo "→ Deploying to PROD..."
-  sed "s/$TEST_SHEET_ID/$PROD_SHEET_ID/" "$SOURCE" > "$SCRIPT_DIR/clasp/prod/Code.js"
+  sed "s/$DEV_SHEET_ID/$PROD_SHEET_ID/" "$SOURCE" > "$SCRIPT_DIR/clasp/prod/Code.js"
   cd "$SCRIPT_DIR/clasp/prod"
   clasp push --force
-  echo "✓ PROD deploy complete. Create a new version in the Apps Script editor (Deploy → Manage deployments) to make it live."
+  if [ -n "$DESCRIPTION" ]; then
+    clasp deploy --deploymentId "$PROD_DEPLOYMENT_ID" --description "$DESCRIPTION"
+  else
+    clasp deploy --deploymentId "$PROD_DEPLOYMENT_ID"
+  fi
+  echo "✓ PROD deploy complete and live."
 
 else
   echo "Unknown target: $TARGET. Use 'dev' or 'prod'."
