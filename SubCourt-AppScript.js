@@ -582,15 +582,17 @@ function getColMap(sheet) {
 
 function getPlayers() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
-  const col   = getColMap(sheet);
-  const rows  = sheet.getDataRange().getValues();
-  rows.shift();
+  if (!sheet) return [];
+  const col  = getColMap(sheet);
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  rows.shift(); // remove header
   return rows.map(r => ({
     name:    r[col.name]  || '',
     email:   (r[col.email] || '').toLowerCase(),
     phone:   col.phone >= 0 ? (r[col.phone] || '') : '',
-    isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin]).toUpperCase() === 'TRUE'
-  }));
+    isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin] || '').toUpperCase() === 'TRUE'
+  })).filter(p => p.name || p.email);
 }
 
 // Combined home-page bootstrap call — returns players + availConfig in one round trip.
