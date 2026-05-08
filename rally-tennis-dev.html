@@ -97,19 +97,24 @@
   .view { display: none; }
   .view.active { display: block; }
 
-  /* Request view: two-zone layout — locked card + scrollable body */
+  /* Request view: two-zone layout — locked card + independent scroll below.
+     :has() locks body/main so their scroll doesn't compete with #req-body. */
+  body:has(#view-request.active) { overflow: hidden; }
+  body:has(#view-request.active) main {
+    height: calc(100vh - 68px);
+    overflow: hidden;
+    box-sizing: border-box;
+  }
   #view-request.active {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 68px - 4rem); /* viewport minus nav minus main padding */
+    height: 100%;
   }
   #req-body {
     flex: 1;
-    min-height: 0;   /* required for flex children to scroll */
+    min-height: 0;
     overflow-y: auto;
-  }
-  @media (max-width: 640px) {
-    #view-request.active { height: calc(100vh - 68px - 2rem); }
+    padding-bottom: 1.5rem;
   }
 
   /* ── Section heading ── */
