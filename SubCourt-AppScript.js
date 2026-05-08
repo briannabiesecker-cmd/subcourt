@@ -559,17 +559,32 @@ function getVolunteers() {
   }));
 }
 
+// Detects whether the Players sheet has a Phone column at C (new layout) or not (classic).
+// Returns 0-indexed column positions so all functions stay in sync across both layouts.
+//   New:     A=Name B=Email C=Phone D=Rating E=No8am F=isAdmin G-K=CoordRatings
+//   Classic: A=Name B=Email          C=Rating D=No8am E=isAdmin F-J=CoordRatings
+function getColMap(sheet) {
+  var hdr = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 10)).getValues()[0];
+  var hasPhone = (hdr[2] || '').toString().toLowerCase().trim() === 'phone';
+  return hasPhone ? {
+    name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
+    coordStart: 6, coordEnd: 10, totalCols: 11
+  } : {
+    name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
+    coordStart: 5, coordEnd: 9, totalCols: 10
+  };
+}
+
 function getPlayers() {
-  // Returns players WITHOUT ratings — ratings are used internally only
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  const col   = getColMap(sheet);
   const rows  = sheet.getDataRange().getValues();
   rows.shift();
   return rows.map(r => ({
-    name:    r[0] || '',
-    email:   (r[1] || '').toLowerCase(),
-    phone:   r[2] || '',
-    isAdmin: r[5] === true || String(r[5]).toUpperCase() === 'TRUE'
-    // rating intentionally excluded from public response
+    name:    r[col.name]  || '',
+    email:   (r[col.email] || '').toLowerCase(),
+    phone:   col.phone >= 0 ? (r[col.phone] || '') : '',
+    isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin]).toUpperCase() === 'TRUE'
   }));
 }
 
@@ -638,17 +653,16 @@ function expireToday() {
 }
 
 function getPlayersWithRatings() {
-  // Internal use only — never sent to browser
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  const col   = getColMap(sheet);
   const rows  = sheet.getDataRange().getValues();
   rows.shift();
-  // Deduplicate by email — first row wins; duplicate emails cause identity collisions
   const seen = {};
   return rows.reduce(function(acc, r) {
-    const email = (r[1] || '').toLowerCase();
+    const email = (r[col.email] || '').toLowerCase();
     if (email && !seen[email]) {
       seen[email] = true;
-      acc.push({ name: r[0] || '', email: email, rating: parseFloat(r[3]) || 0 });
+      acc.push({ name: r[col.name] || '', email: email, rating: parseFloat(r[col.rating]) || 0 });
     } else if (email && seen[email]) {
       Logger.log('WARNING: duplicate email in Players sheet: ' + email);
     }
@@ -765,14 +779,14 @@ function debugAdmin(params) {
 
 function isAdminEmail(email) {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  const col     = getColMap(sheet);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
-  // Read A:F explicitly — getDataRange() misses col F when booleans are stored as checkboxes
-  const rows = sheet.getRange(1, 1, lastRow, 6).getValues();
-  rows.shift(); // remove header
+  const rows = sheet.getRange(1, 1, lastRow, col.totalCols).getValues();
+  rows.shift();
   return rows.some(function(r) {
-    const rowEmail = (r[1] || '').toLowerCase().trim();
-    const flag     = r[5]; // column F = isAdmin
+    const rowEmail = (r[col.email] || '').toLowerCase().trim();
+    const flag     = r[col.isAdmin];
     return rowEmail === email.toLowerCase().trim() &&
            (flag === true || String(flag).toUpperCase() === 'TRUE');
   });
@@ -829,32 +843,30 @@ function verifyAdminCode(params) {
 function getCoordinatorRatings(params) {
   var coordEmail = (params.email || '').toLowerCase().trim();
   var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col        = getColMap(sheet);
   var lastRow    = sheet.getLastRow();
   if (lastRow < 2) return { players: [] };
 
-  var lastCol  = Math.max(sheet.getLastColumn(), 11); // ensure we read through col K (coordinators G–K)
+  var lastCol  = Math.max(sheet.getLastColumn(), col.totalCols);
   var allData  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers  = allData[0];
 
-  // Find this coordinator's column (cols G–K = index 6–10)
   var coordColIdx = -1;
-  for (var i = 6; i <= 10; i++) {
+  for (var i = col.coordStart; i <= col.coordEnd; i++) {
     if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
-      coordColIdx = i;
-      break;
+      coordColIdx = i; break;
     }
   }
-
   if (coordColIdx === -1) return { players: [], notAssigned: true };
 
   var players = [];
   for (var r = 1; r < allData.length; r++) {
     var row = allData[r];
-    if (!row[0]) continue;
-    var no8amVal = row[4];
+    if (!row[col.name]) continue;
+    var no8amVal = row[col.no8am];
     players.push({
-      name:     row[0] || '',
-      email:    (row[1] || '').toLowerCase(),
+      name:     row[col.name] || '',
+      email:    (row[col.email] || '').toLowerCase(),
       myRating: row[coordColIdx] !== '' ? row[coordColIdx] : '',
       no8am:    no8amVal === true || (no8amVal && no8amVal.toString().toUpperCase() === 'TRUE')
     });
@@ -864,55 +876,52 @@ function getCoordinatorRatings(params) {
 
 function saveCoordinatorRatings(params) {
   var coordEmail = (params.coordEmail || '').toLowerCase().trim();
-  var ratings    = JSON.parse(params.ratings || '[]'); // [{playerEmail, rating, no8am}]
+  var ratings    = JSON.parse(params.ratings || '[]');
   var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col        = getColMap(sheet);
   var lastRow    = sheet.getLastRow();
-  var lastCol    = Math.max(sheet.getLastColumn(), 11); // read through col K (G–K are coordinator cols)
+  var lastCol    = Math.max(sheet.getLastColumn(), col.totalCols);
   var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers    = allData[0];
 
-  // Find coordinator column — assigned in sheet header (cols G–K = index 6–10)
   var coordColIdx = -1;
-  for (var i = 6; i <= 10; i++) {
+  for (var i = col.coordStart; i <= col.coordEnd; i++) {
     if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
       coordColIdx = i; break;
     }
   }
   if (coordColIdx === -1) return { success: false, error: 'not_assigned' };
 
-  // Build rating lookup from input
   var ratingMap = {};
   ratings.forEach(function(item) {
     var pe = (item.playerEmail || '').toLowerCase().trim();
     if (pe) ratingMap[pe] = item.rating !== '' && item.rating !== null ? parseFloat(item.rating) : '';
   });
 
-  // Find all coordinator columns with data for average calculation (G–K = index 6–10)
   var coordCols = [];
-  for (var k = 6; k <= 10; k++) {
+  for (var k = col.coordStart; k <= col.coordEnd; k++) {
     if (headers[k]) coordCols.push(k);
   }
 
-  // Update allData in memory, then batch-write ratings column + averages column
   for (var row = 1; row < allData.length; row++) {
-    var pe = (allData[row][1] || '').toLowerCase().trim();
+    var pe = (allData[row][col.email] || '').toLowerCase().trim();
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
     }
-    // Recalculate average from all coordinator columns
-    if (!allData[row][0]) continue;
+    if (!allData[row][col.name]) continue;
     var vals = coordCols.map(function(ci) {
       var v = allData[row][ci];
       return (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
     }).filter(function(v) { return v !== null; });
-    allData[row][3] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
+    allData[row][col.rating] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
   }
 
-  // Write ONLY the coordinator column — column D and E writes are skipped
-  // until the source of 'Script load failed' is identified.
   var dataRows   = allData.slice(1);
   var ratingsCol = dataRows.map(function(r) { return [r[coordColIdx]]; });
+  var avgsCol    = dataRows.map(function(r) { return [r[col.rating]]; });
   sheet.getRange(2, coordColIdx + 1, ratingsCol.length, 1).setValues(ratingsCol);
+  try { sheet.getRange(2, col.rating + 1, avgsCol.length, 1).setValues(avgsCol); } catch(e) {}
+  SpreadsheetApp.flush();
 
   return { success: true };
 }
@@ -920,14 +929,15 @@ function saveCoordinatorRatings(params) {
 function getPlayersForAdmin() {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues(); // A-E
+  var col  = getColMap(sheet);
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
   return rows.map(function(r, i) {
     return {
       rowIndex: i + 2,
-      name:  r[0] || '',
-      email: (r[1] || '').toLowerCase(),
-      phone: r[2] || '',
-      no8am: r[4] === true || r[4].toString().toUpperCase() === 'TRUE'
+      name:  r[col.name]  || '',
+      email: (r[col.email] || '').toLowerCase(),
+      phone: col.phone >= 0 ? (r[col.phone] || '') : '',
+      no8am: r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE'
     };
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
@@ -946,8 +956,12 @@ function addPlayer(params) {
   var phone = (params.phone || '').trim();
   var no8am = params.no8am === 'true' || params.no8am === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
-  sheet.appendRow([name, email, phone, '', no8am, false]);
+  var sheet  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col    = getColMap(sheet);
+  var newRow = col.phone >= 0
+    ? [name, email, phone, '', no8am, false]   // new layout: name,email,phone,rating,no8am,isAdmin
+    : [name, email, '', no8am, false];          // classic:    name,email,rating,no8am,isAdmin
+  sheet.appendRow(newRow);
   sortPlayersSheet(sheet);
   return { success: true };
 }
@@ -962,10 +976,11 @@ function updatePlayer(params) {
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
-  sheet.getRange(rowIndex, 1).setValue(name);
-  sheet.getRange(rowIndex, 2).setValue(email);
-  sheet.getRange(rowIndex, 3).setValue(phone);
-  sheet.getRange(rowIndex, 5).setValue(no8am);
+  var col = getColMap(sheet);
+  sheet.getRange(rowIndex, col.name  + 1).setValue(name);
+  sheet.getRange(rowIndex, col.email + 1).setValue(email);
+  if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
+  sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
   sortPlayersSheet(sheet);
   return { success: true };
 }
