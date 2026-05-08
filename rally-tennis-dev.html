@@ -1151,12 +1151,9 @@
 
   <!-- ── REQUEST VIEW ── -->
   <div id="view-request" class="view">
-    <div class="section-header">
-      <div class="section-title">Request a Substitute</div>
-    </div>
 
-    <!-- Name / email at the top -->
-    <div class="card" style="margin-bottom:1rem;">
+    <!-- Name / email — sticky so it stays visible while scrolling -->
+    <div class="card" style="margin-bottom:1rem;position:sticky;top:68px;z-index:50;background:var(--paper);box-shadow:0 2px 6px rgba(0,0,0,0.07);">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:start;">
         <div class="field" style="margin:0;">
           <label>Your name</label>
@@ -1186,11 +1183,11 @@
     </div>
 
     <div id="my-req-section" style="display:none;">
-      <div class="section-header">
+      <div id="my-req-header" class="section-header">
         <div class="section-title" style="font-size:18px;">Your Upcoming Requests</div>
       </div>
       <div id="my-req-list"></div>
-      <hr class="divider" />
+      <hr id="my-req-divider" class="divider" />
     </div>
 
     <div class="alert alert-info" style="margin-bottom:1.25rem;">
@@ -2172,9 +2169,13 @@ async function loadMyRequests(email) { // v2
     ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
 
     if (!mine.length) {
-      el.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No upcoming requests found.</div>';
+      document.getElementById('my-req-header').style.display = 'none';
+      document.getElementById('my-req-divider').style.display = 'none';
+      el.innerHTML = '<p style="margin:0 0 0.5rem;font-size:13px;color:var(--ink-light);">No upcoming requests.</p>';
       return;
     }
+    document.getElementById('my-req-header').style.display = '';
+    document.getElementById('my-req-divider').style.display = '';
 
     const rows = mine.map(r => {
       const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : '<span class="badge badge-tbd">TBD</span>';
