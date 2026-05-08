@@ -1896,9 +1896,7 @@ async function apiGet(action) {
 }
 
 async function apiPost(payload) {
-  // Convert to GET/JSONP to avoid CORS issues with Apps Script
   const params = { ...payload };
-  // Serialize any object values as JSON strings
   Object.keys(params).forEach(k => {
     if (typeof params[k] === 'object') params[k] = JSON.stringify(params[k]);
   });
@@ -1906,35 +1904,14 @@ async function apiPost(payload) {
 }
 
 async function apiGetWithParams(params) {
-  return new Promise((resolve, reject) => {
-    const callbackName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    const script = document.createElement('script');
-    const timeout = setTimeout(() => {
-      delete window[callbackName];
-      if (document.body.contains(script)) document.body.removeChild(script);
-      reject(new Error('Request timed out'));
-    }, 30000);
-
-    window[callbackName] = function(data) {
-      clearTimeout(timeout);
-      delete window[callbackName];
-      if (document.body.contains(script)) document.body.removeChild(script);
-      if (data && data.error) reject(new Error(data.error));
-      else resolve(data);
-    };
-
-    const qs = Object.entries({ ...params, callback: callbackName })
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&');
-
-    script.src = `${SCRIPT_URL}?${qs}`;
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[callbackName];
-      reject(new Error('Script load failed'));
-    };
-    document.body.appendChild(script);
-  });
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  const resp = await fetch(`${SCRIPT_URL}?${qs}`, { redirect: 'follow' });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (data && data.error) throw new Error(data.error);
+  return data;
 }
 
 // ══════════════════════════════════════════════════
@@ -3349,11 +3326,7 @@ async function saveAllRatings() {
   saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Saving…'; } });
 
   try {
-    // Use fetch (plain JSON, no JSONP) — Apps Script returns CORS headers for anonymous GET requests
-    const qs = `action=saveCoordinatorRatings&coordEmail=${encodeURIComponent(email)}&ratings=${encodeURIComponent(JSON.stringify(ratings))}`;
-    const resp = await fetch(`${SCRIPT_URL}?${qs}`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const result = await resp.json();
+    const result = await apiPost({ action: 'saveCoordinatorRatings', coordEmail: email, ratings: JSON.stringify(ratings) });
     if (!result.success) {
       showAlert('players-alert', 'error', result.error === 'not_assigned'
         ? 'Your account is not assigned to a rating slot. Ask the system admin to add your email to columns G–K in the Players sheet.'
