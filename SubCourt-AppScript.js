@@ -564,15 +564,23 @@ function getVolunteers() {
 //   New:     A=Name B=Email C=Phone D=Rating E=No8am F=isAdmin G-K=CoordRatings
 //   Classic: A=Name B=Email          C=Rating D=No8am E=isAdmin F-J=CoordRatings
 function getColMap(sheet) {
-  var hdr = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 10)).getValues()[0];
-  var hasPhone = (hdr[2] || '').toString().toLowerCase().trim() === 'phone';
-  return hasPhone ? {
-    name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
-    coordStart: 6, coordEnd: 10, totalCols: 11
-  } : {
-    name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-    coordStart: 5, coordEnd: 9, totalCols: 10
-  };
+  try {
+    var maxCols = sheet.getMaxColumns();
+    var readCols = Math.min(Math.max(sheet.getLastColumn(), 6), maxCols);
+    var hdr = sheet.getRange(1, 1, 1, readCols).getValues()[0];
+    var hasPhone = (hdr[2] || '').toString().toLowerCase().trim() === 'phone';
+    return hasPhone ? {
+      name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
+      coordStart: 6, coordEnd: 10, totalCols: Math.min(11, maxCols)
+    } : {
+      name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
+      coordStart: 5, coordEnd: 9, totalCols: Math.min(10, maxCols)
+    };
+  } catch(e) {
+    // Safe fallback: classic layout
+    return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
+             coordStart: 5, coordEnd: 9, totalCols: 10 };
+  }
 }
 
 function getPlayers() {
