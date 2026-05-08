@@ -244,6 +244,18 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
   Logger.log('Dispatch trigger set for ' + config.autoDispatchTimeET + ' ET daily.');
 }
 
+function scheduleImmediateDispatch() {
+  // Delete any existing immediate-dispatch triggers to avoid stacking
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'runAutoDispatch' &&
+        t.getTriggerSource() === ScriptApp.TriggerSource.CLOCK) {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
+    }
+  });
+  ScriptApp.newTrigger('runAutoDispatch').timeBased().after(60 * 1000).create();
+  return { success: true, scheduled: true };
+}
+
 function runAutoDispatch() {
   var config = getConfig();
   if (!config.autoDispatchEnabled) {
@@ -341,7 +353,7 @@ function doGet(e) {
     else if (action === 'expireToday')       result = expireToday();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
     else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
-    else if (action === 'runAutoDispatchNow')             result = runAutoDispatch();
+    else if (action === 'runAutoDispatchNow')             result = scheduleImmediateDispatch();
     else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
     else if (action === 'runMatchTimeReminderNow')        result = runMatchTimeReminder();
     else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);

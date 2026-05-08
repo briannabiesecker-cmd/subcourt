@@ -2648,13 +2648,13 @@ function renderDispatchStatus(config, log) {
 async function runAutoDispatchNow() {
   const btn     = document.getElementById('autodispatch-runnow-btn');
   const alertEl = document.getElementById('autodispatch-alert');
-  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Scheduling…'; }
   if (alertEl) alertEl.innerHTML = '';
   try {
     const result = await apiPost({ action: 'runAutoDispatchNow' });
-    const msg = result.skipped
-      ? 'Skipped — auto-dispatch is disabled.'
-      : `Dispatched. ${result.dispatched ?? 0} open request(s) processed.`;
+    const msg = result.scheduled
+      ? 'Dispatch scheduled — it will run within the next minute. Reload the page after a moment to see results.'
+      : 'Skipped — auto-dispatch is disabled.';
     if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
     loadDispatch();
   } catch(e) {
