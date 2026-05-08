@@ -40,7 +40,7 @@ elif [ "$TARGET" = "prod" ]; then
     exit 1
   fi
   echo "→ Deploying to PROD..."
-  sed "s/$DEV_SHEET_ID/$PROD_SHEET_ID/" "$SOURCE" > "$SCRIPT_DIR/clasp/prod/Code.js"
+  sed "s/$DEV_SHEET_ID/$PROD_SHEET_ID/;s/rally-tennis-dev\.html/rally-tennis-prod.html/g" "$SOURCE" > "$SCRIPT_DIR/clasp/prod/Code.js"
   cd "$SCRIPT_DIR/clasp/prod"
   clasp push --force
   if [ -n "$DESCRIPTION" ]; then

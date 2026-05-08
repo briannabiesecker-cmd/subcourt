@@ -5,11 +5,8 @@
 
 const SHEET_ID = '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE';
 
-// Derives the correct app URL for email links based on which sheet this script is connected to.
-// deploy.sh swaps SHEET_ID when pushing to prod, so this automatically resolves correctly.
-const APP_BASE_URL = (SHEET_ID === '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE')
-  ? 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-dev.html'
-  : 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html';
+// deploy.sh replaces 'rally-tennis-dev.html' with 'rally-tennis-prod.html' when pushing to prod.
+const APP_BASE_URL = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-dev.html';
 
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
