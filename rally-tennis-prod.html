@@ -4120,7 +4120,7 @@ async function loadScheduleView() {
   } catch(e) {
     loading.style.display = 'none';
     empty.style.display = '';
-    empty.textContent = 'Could not load schedule: ' + e.message;
+    empty.textContent = 'Could not load schedule. Please try again.';
   }
 }
 
@@ -4170,7 +4170,7 @@ async function loadDirectoryView() {
   } catch(e) {
     loading.style.display = 'none';
     empty.style.display = '';
-    empty.textContent = 'Could not load directory: ' + e.message;
+    empty.textContent = 'Could not load directory. Please try again.';
   }
 }
 
