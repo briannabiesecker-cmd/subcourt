@@ -382,6 +382,7 @@ function doGet(e) {
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
+    else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'sendTestEmail')             result = sendTestEmail();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
@@ -1008,6 +1009,20 @@ function deletePlayer(params) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
   sheet.deleteRow(rowIndex);
+  return { success: true };
+}
+
+function updateRequest(params) {
+  const sheet    = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  const rowIndex = parseInt(params.rowIndex);
+  if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
+  if (!params.matchDate) return { success: false, error: 'Date required.' };
+  const dateCell = sheet.getRange(rowIndex, 5); // col E = matchDate
+  dateCell.setNumberFormat('@');
+  dateCell.setValue(params.matchDate);
+  const timeCell = sheet.getRange(rowIndex, 6); // col F = matchTime
+  timeCell.setNumberFormat('@');
+  timeCell.setValue(params.matchTime || '');
   return { success: true };
 }
 

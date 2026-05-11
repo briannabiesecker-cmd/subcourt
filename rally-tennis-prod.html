@@ -133,7 +133,8 @@
     background: rgba(0,0,0,0.55); z-index: 9999;
     align-items: center; justify-content: center;
   }
-  #confirm-modal.open { display: flex; }
+  #confirm-modal.open, #anita-edit-modal.open { display: flex; }
+  #anita-edit-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; }
   .confirm-modal-box {
     background: white; border-radius: 20px; padding: 2rem 1.5rem;
     max-width: 360px; width: 90%; box-shadow: 0 12px 40px rgba(0,0,0,0.25);
@@ -2293,17 +2294,20 @@ async function loadMyRequests(email, playerName) { // v2
 
       const subCell = (r.status === 'filled' && r.assignedSub) ? `<strong>${r.assignedSub}</strong>` : '';
 
-      const actionCell = needsTime ? `
-        <div style="display:flex;align-items:center;gap:8px;">
-          <select id="req-time-edit-${r.rowIndex}" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;">
-            <option value="">TBD</option>
-            <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
-            <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
-            <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
-            <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
-          </select>
-          <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
-        </div>` : '';
+      const actionCell = isAnita
+        ? `<button class="btn btn-sm" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;font-size:13px;padding:4px 12px;"
+             onclick="showAnitaEditModal(${r.rowIndex},'${r.matchDate}','${r.matchTime||''}')">Edit</button>`
+        : needsTime ? `
+          <div style="display:flex;align-items:center;gap:8px;">
+            <select id="req-time-edit-${r.rowIndex}" style="font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;">
+              <option value="">TBD</option>
+              <option value="08:00" ${r.matchTime === '08:00' ? 'selected' : ''}>8:00 AM</option>
+              <option value="09:30" ${r.matchTime === '09:30' ? 'selected' : ''}>9:30 AM</option>
+              <option value="11:00" ${r.matchTime === '11:00' ? 'selected' : ''}>11:00 AM</option>
+              <option value="12:30" ${r.matchTime === '12:30' ? 'selected' : ''}>12:30 PM</option>
+            </select>
+            <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
+          </div>` : '';
 
       const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
       const nameCell = isAnita
@@ -2347,6 +2351,40 @@ async function saveRequestTime(rowIndex) {
   } catch(e) {
     alert('Failed to save: ' + e.message);
   }
+}
+
+function showAnitaEditModal(rowIndex, currentDate, currentTime) {
+  const modal = document.getElementById('anita-edit-modal');
+  document.getElementById('anita-edit-date').value = currentDate || '';
+  document.getElementById('anita-edit-time').value = currentTime || '';
+  modal.classList.add('open');
+
+  const saveBtn   = document.getElementById('anita-edit-save');
+  const cancelBtn = document.getElementById('anita-edit-cancel');
+  const close = () => {
+    modal.classList.remove('open');
+    saveBtn.onclick = null; cancelBtn.onclick = null;
+    saveBtn.textContent = 'Save'; saveBtn.disabled = false;
+  };
+  cancelBtn.onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+
+  saveBtn.onclick = async () => {
+    const newDate = document.getElementById('anita-edit-date').value;
+    const newTime = document.getElementById('anita-edit-time').value;
+    if (!newDate) { alert('Please select a match date.'); return; }
+    saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
+    try {
+      await apiPost({ action: 'updateRequest', rowIndex, matchDate: newDate, matchTime: newTime });
+      close();
+      const { email } = getTypeaheadValue('req');
+      const name = document.getElementById('req-selected-name')?.textContent?.trim() || '';
+      await loadMyRequests(email, name);
+    } catch(e) {
+      alert('Failed to save: ' + e.message);
+      saveBtn.textContent = 'Save'; saveBtn.disabled = false;
+    }
+  };
 }
 
 async function deleteRequest(requestId) {
@@ -4727,6 +4765,31 @@ function applyAvailConfigToHomeCard(config) {
 
 
 </script>
+
+<!-- ── Anita Sub Edit Modal ── -->
+<div id="anita-edit-modal" role="dialog" aria-modal="true">
+  <div class="confirm-modal-box" style="max-width:340px;">
+    <div style="font-weight:700;font-size:18px;color:var(--ink);margin-bottom:1.25rem;">Edit Group Request</div>
+    <div class="field" style="margin-bottom:14px;">
+      <label style="font-size:15px;font-weight:600;">Match date</label>
+      <input type="date" id="anita-edit-date" style="width:100%;margin-top:6px;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;" />
+    </div>
+    <div class="field" style="margin-bottom:20px;">
+      <label style="font-size:15px;font-weight:600;">Match time</label>
+      <select id="anita-edit-time" style="width:100%;margin-top:6px;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;">
+        <option value="">Unknown / TBD</option>
+        <option value="08:00">8:00 AM</option>
+        <option value="09:30">9:30 AM</option>
+        <option value="11:00">11:00 AM</option>
+        <option value="12:30">12:30 PM</option>
+      </select>
+    </div>
+    <div class="confirm-modal-btns">
+      <button class="confirm-modal-ok"     id="anita-edit-save">Save</button>
+      <button class="confirm-modal-cancel" id="anita-edit-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Confirm Modal ── -->
 <div id="confirm-modal" role="dialog" aria-modal="true">
