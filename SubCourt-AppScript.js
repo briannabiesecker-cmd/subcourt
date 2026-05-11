@@ -2544,8 +2544,83 @@ function getPublishedSchedule() {
   return { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
 }
 
-// Sends one bulk email with the full schedule to all players (BCC batches of 50).
-// Costs 1 quota unit per 50-player batch instead of 1 per player.
+// Builds PDF and Excel schedule attachments using a temp sheet/spreadsheet.
+// PDF is exported from a temp tab in the main spreadsheet (single-sheet export).
+// Excel is exported from a temp standalone spreadsheet (then trashed via DriveApp).
+function buildScheduleAttachments(schedule, monthLabel) {
+  var ss      = SpreadsheetApp.openById(SHEET_ID);
+  var token   = ScriptApp.getOAuthToken();
+  var safe    = monthLabel.replace(/\s/g, '_');
+
+  // Build row data once — shared between PDF and Excel
+  var dataRows = [];
+  schedule.dates.forEach(function(dayObj) {
+    var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'long', month: 'long', day: 'numeric' });
+    dataRows.push([dateLabel, '', '', '', '']);
+    dayObj.groups.forEach(function(grp) {
+      var real = grp.players.filter(function(p) {
+        return p.name && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
+      });
+      var row = ['Group ' + grp.letter];
+      real.forEach(function(p) { row.push(p.name); });
+      while (row.length < 5) row.push('');
+      row.push(grp.sitOut ? '(sub needed)' : '');
+      dataRows.push(row);
+    });
+    dataRows.push(['', '', '', '', '', '']);
+  });
+
+  function writeToSheet(sheet) {
+    sheet.getRange(1, 1).setValue('MWF Tennis League — ' + monthLabel + ' Schedule');
+    sheet.getRange(1, 1).setFontSize(14).setFontWeight('bold');
+    if (dataRows.length) {
+      sheet.getRange(3, 1, dataRows.length, 6).setValues(dataRows);
+      var r = 3;
+      schedule.dates.forEach(function(dayObj) {
+        sheet.getRange(r, 1, 1, 5).setFontWeight('bold').setBackground('#DCE8F5');
+        r += dayObj.groups.length + 2;
+      });
+    }
+    sheet.setColumnWidth(1, 180);
+    for (var c = 2; c <= 5; c++) sheet.setColumnWidth(c, 140);
+  }
+
+  var pdfBlob = null, xlsxBlob = null;
+
+  // ── PDF: temp tab in main spreadsheet (single-sheet export) ──
+  var tempName = '__sched_export__';
+  var oldTab   = ss.getSheetByName(tempName);
+  if (oldTab) ss.deleteSheet(oldTab);
+  var tab = ss.insertSheet(tempName);
+  try {
+    writeToSheet(tab);
+    SpreadsheetApp.flush();
+    var pdfUrl = 'https://docs.google.com/spreadsheets/d/' + ss.getId() +
+      '/export?format=pdf&gid=' + tab.getSheetId() +
+      '&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&size=letter';
+    pdfBlob = UrlFetchApp.fetch(pdfUrl, { headers: { Authorization: 'Bearer ' + token } })
+      .getBlob().setName(safe + '_Schedule.pdf');
+  } catch(e) { Logger.log('PDF export failed: ' + e.message); }
+  try { ss.deleteSheet(tab); } catch(e) {}
+
+  // ── Excel: temp standalone spreadsheet ───────────────────────
+  try {
+    var tempSS  = SpreadsheetApp.create('__rally_sched_temp__');
+    var tempTab = tempSS.getActiveSheet();
+    tempTab.setName('Schedule');
+    writeToSheet(tempTab);
+    SpreadsheetApp.flush();
+    var xlsxUrl = 'https://docs.google.com/spreadsheets/d/' + tempSS.getId() + '/export?format=xlsx';
+    xlsxBlob = UrlFetchApp.fetch(xlsxUrl, { headers: { Authorization: 'Bearer ' + token } })
+      .getBlob().setName(safe + '_Schedule.xlsx');
+    DriveApp.getFileById(tempSS.getId()).setTrashed(true);
+  } catch(e) { Logger.log('Excel export failed: ' + e.message); }
+
+  return [pdfBlob, xlsxBlob].filter(Boolean);
+}
+
+// Sends the published schedule to ALL players (BCC batches of 50) with PDF + Excel attachments.
 function sendScheduleEmails(params) {
   if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
 
@@ -2559,11 +2634,8 @@ function sendScheduleEmails(params) {
     .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   var scheduleUrl = APP_BASE_URL + '#schedule';
 
-  // Build full schedule body (text + HTML)
-  var textLines = [];
-  var htmlRows  = [];
-  var emailSet  = {};
-
+  // Build email body
+  var textLines = [], htmlRows = [];
   schedule.dates.forEach(function(dayObj) {
     var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
       { weekday: 'long', month: 'long', day: 'numeric' });
@@ -2574,12 +2646,8 @@ function sendScheduleEmails(params) {
       var realPlayers = grp.players.filter(function(p) {
         return p.name && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
       });
-      realPlayers.forEach(function(p) {
-        if (p.email) emailSet[p.email.toLowerCase()] = true;
-      });
-      var names = realPlayers.map(function(p) { return p.name; }).join(', ');
-      var subTag = grp.sitOut ? ' (sub needed)' : '';
-      textLines.push('  Group ' + grp.letter + ': ' + names + subTag);
+      var names  = realPlayers.map(function(p) { return p.name; }).join(', ');
+      textLines.push('  Group ' + grp.letter + ': ' + names + (grp.sitOut ? ' (sub needed)' : ''));
       htmlRows.push('<tr><td style="padding:2px 16px;color:#374151;font-weight:600;">' +
         'Group ' + grp.letter + '</td><td style="padding:2px 8px;">' + names +
         (grp.sitOut ? ' <em style="color:#8A4F0B;">(sub needed)</em>' : '') + '</td></tr>');
@@ -2590,23 +2658,27 @@ function sendScheduleEmails(params) {
   var body = 'The MWF Tennis League schedule for ' + monthLabel + ' has been published.\n\n' +
     textLines.join('\n') +
     'Court times will be announced separately as each date approaches.\n\n' +
-    'View the schedule: ' + scheduleUrl;
+    'View the schedule online: ' + scheduleUrl + '\n\n' +
+    'The schedule is also attached as PDF and Excel files.';
 
   var htmlBody = '<p>The MWF Tennis League schedule for <strong>' + monthLabel +
     '</strong> has been published.</p>' +
     '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;">' +
     htmlRows.join('') + '</table>' +
     '<p style="margin-top:16px;">Court times will be announced separately as each date approaches.</p>' +
-    '<p><a href="' + scheduleUrl + '">View the full schedule</a></p>';
+    '<p><a href="' + scheduleUrl + '">View the full schedule online</a></p>' +
+    '<p style="color:#666;font-size:12px;margin-top:12px;">The schedule is also attached as PDF and Excel files.</p>';
 
-  var allEmails = Object.keys(emailSet);
+  // All players from the Players sheet (not just scheduled ones)
+  var allEmails = getPlayersWithRatings()
+    .filter(function(p) { return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email); })
+    .map(function(p) { return p.email; });
   if (!allEmails.length) return { success: true, emailsSent: 0 };
 
-  var subject  = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
-  var BATCH    = 50;
-  var batches  = Math.ceil(allEmails.length / BATCH);
+  var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
+  var BATCH   = 50;
+  var batches = Math.ceil(allEmails.length / BATCH);
 
-  // Quota check
   try {
     var remaining = MailApp.getRemainingDailyQuota();
     if (remaining < batches) {
@@ -2615,21 +2687,30 @@ function sendScheduleEmails(params) {
     }
   } catch(e) { /* ignore */ }
 
+  // Build PDF + Excel attachments
+  var attachments = [];
+  try { attachments = buildScheduleAttachments(schedule, monthLabel); } catch(e) {
+    Logger.log('Attachment build error: ' + e.message);
+  }
+
   var senderEmail = getConfig().senderEmail || '';
   for (var b = 0; b < batches; b++) {
-    var bcc = allEmails.slice(b * BATCH, (b + 1) * BATCH).join(', ');
+    var batch     = allEmails.slice(b * BATCH, (b + 1) * BATCH);
+    var toEmail   = batch[0];
+    var bccEmails = batch.slice(1).join(', ');
+    var opts = { name: 'MWF Tennis League', htmlBody: htmlBody, attachments: attachments };
+    if (bccEmails) opts.bcc = bccEmails;
     try {
       if (senderEmail) {
         try {
-          GmailApp.sendEmail('', subject, body, {
-            bcc: bcc, htmlBody: htmlBody, name: 'MWF Tennis League',
-            from: senderEmail, replyTo: senderEmail
-          });
+          opts.from    = senderEmail;
+          opts.replyTo = senderEmail;
+          GmailApp.sendEmail(toEmail, subject, body, opts);
           continue;
         } catch(ge) { /* fall through to MailApp */ }
       }
-      MailApp.sendEmail({ to: '', bcc: bcc, subject: subject, body: body,
-        htmlBody: htmlBody, name: 'MWF Tennis League' });
+      opts.to = toEmail; opts.subject = subject; opts.body = body;
+      MailApp.sendEmail(opts);
     } catch(e) {
       return { success: false, error: 'Email batch ' + (b + 1) + ' failed: ' + e.message };
     }
