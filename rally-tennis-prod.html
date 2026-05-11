@@ -2294,6 +2294,8 @@ async function loadMyRequests(email, playerName) { // v2
 
       const subCell = (r.status === 'filled' && r.assignedSub) ? `<strong>${r.assignedSub}</strong>` : '';
 
+      const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
+
       const actionCell = isAnita
         ? `<button class="btn btn-sm" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;font-size:13px;padding:4px 12px;"
              onclick="showAnitaEditModal(${r.rowIndex},'${r.matchDate}','${r.matchTime||''}')">Edit</button>`
@@ -2309,7 +2311,6 @@ async function loadMyRequests(email, playerName) { // v2
             <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
           </div>` : '';
 
-      const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
       const nameCell = isAnita
         ? `<span style="color:var(--warn);font-size:13px;font-style:italic;">${r.name} (your group)</span>`
         : 'My request';
