@@ -378,6 +378,7 @@ function doGet(e) {
     else if (action === 'publishScheduleStart')     result = publishScheduleStart(e.parameter);
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
+    else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -1981,8 +1982,13 @@ function generateSchedule(params) {
     });
   });
 
-  // Sort slots chronologically
-  var slotKeys = Object.keys(slotMap).sort();
+  // Shuffle dates so the Social Variety goal doesn't unfairly benefit end-of-month dates.
+  // Results are re-sorted chronologically before returning so the preview stays readable.
+  var slotKeys = Object.keys(slotMap);
+  for (var si = slotKeys.length - 1; si > 0; si--) {
+    var sj = Math.floor(Math.random() * (si + 1));
+    var st = slotKeys[si]; slotKeys[si] = slotKeys[sj]; slotKeys[sj] = st;
+  }
 
   var settings = getSchedulerSettings();
 
@@ -2017,6 +2023,9 @@ function generateSchedule(params) {
       sitOutCounts[result.sitOut.email] = (sitOutCounts[result.sitOut.email] || 0) + 1;
     }
   });
+
+  // Re-sort chronologically so the schedule preview is in date order
+  slotResults.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
 
   assignCaptains(slotResults);
 
@@ -2351,9 +2360,21 @@ function publishScheduleSlot(params) {
       }
       var anitaRating = Math.round(((partnerRating + avgOf3) / 2) * 10) / 10;
 
-      // Add Anita to Players sheet
-      pSheet.appendRow([anitaName, anitaEmail, '', anitaRating, false, false]);
-      pSheet.getRange(pSheet.getLastRow(), 4).setNumberFormat('0.0');
+      // Add Anita to Players sheet — build row using getColMap so it works for both layouts
+      var anitaCol = getColMap(pSheet);
+      var anitaRow = [];
+      anitaRow[anitaCol.name]   = anitaName;
+      anitaRow[anitaCol.email]  = anitaEmail;
+      if (anitaCol.phone >= 0) anitaRow[anitaCol.phone] = '';
+      anitaRow[anitaCol.rating] = anitaRating;
+      anitaRow[anitaCol.no8am]  = false;
+      anitaRow[anitaCol.isAdmin]= false;
+      // Fill any undefined gaps so appendRow doesn't truncate
+      for (var ai = 0; ai < anitaCol.isAdmin + 1; ai++) {
+        if (anitaRow[ai] === undefined) anitaRow[ai] = '';
+      }
+      pSheet.appendRow(anitaRow);
+      pSheet.getRange(pSheet.getLastRow(), anitaCol.rating + 1).setNumberFormat('0.0');
 
       // Create Sub Request for Anita with the 3 real players as group
       var groupPlayersJSON = JSON.stringify(workingGroup.map(function(p) {
@@ -2493,6 +2514,78 @@ function getPublishedSchedule() {
   });
 
   return { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
+}
+
+// Sends one email per player summarising their matches for the published month.
+function sendScheduleEmails(params) {
+  if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
+
+  var month = params.month || '';
+  if (!month) return { success: false, error: 'Month required.' };
+
+  var schedule = getPublishedSchedule();
+  if (!schedule.month || !schedule.dates || !schedule.dates.length) {
+    return { success: false, error: 'No published schedule found.' };
+  }
+
+  // Build per-player match list: { email → { name, matches: [{date, letter, partners}] } }
+  var playerMatches = {};
+  schedule.dates.forEach(function(dayObj) {
+    var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'long', month: 'long', day: 'numeric' });
+    dayObj.groups.forEach(function(grp) {
+      grp.players.forEach(function(p) {
+        if (!p.email || /^anita\.sub\d+@xgmail\.com$/i.test(p.email)) return;
+        var key = p.email.toLowerCase();
+        if (!playerMatches[key]) playerMatches[key] = { name: p.name, matches: [] };
+        var partners = grp.players
+          .filter(function(op) { return op.email.toLowerCase() !== key; })
+          .map(function(op) { return op.name; });
+        playerMatches[key].matches.push({ dateLabel: dateLabel, letter: grp.letter, partners: partners });
+      });
+    });
+  });
+
+  var [yr, mo] = schedule.month.split('-');
+  var monthLabel = new Date(parseInt(yr), parseInt(mo) - 1, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  var scheduleUrl = APP_BASE_URL + '#schedule';
+
+  var sent = 0;
+  Object.keys(playerMatches).forEach(function(email) {
+    var pm = playerMatches[email];
+    var matchLines = pm.matches.map(function(m) {
+      return m.dateLabel + ' — Group ' + m.letter + '\n  Partners: ' + m.partners.join(', ');
+    }).join('\n\n');
+    var htmlLines = pm.matches.map(function(m) {
+      return '<p><strong>' + m.dateLabel + '</strong> — Group ' + m.letter + '<br>' +
+             'Partners: ' + m.partners.join(', ') + '</p>';
+    }).join('');
+
+    var body = 'Hi ' + pm.name + ',\n\n' +
+      'Your matches for ' + monthLabel + ' have been published:\n\n' +
+      matchLines + '\n\n' +
+      'Court times will be announced separately as each date approaches.\n\n' +
+      'View the full schedule: ' + scheduleUrl;
+
+    var htmlBody = '<p>Hi ' + pm.name + ',</p>' +
+      '<p>Your matches for <strong>' + monthLabel + '</strong> have been published:</p>' +
+      htmlLines +
+      '<p>Court times will be announced separately as each date approaches.</p>' +
+      '<p><a href="' + scheduleUrl + '">View the full schedule</a></p>';
+
+    try {
+      sendLeagueEmail({
+        to: email, subject: 'MWF Tennis League — Your ' + monthLabel + ' Schedule',
+        body: body, htmlBody: htmlBody, name: 'MWF Tennis League'
+      });
+      sent++;
+    } catch(e) {
+      Logger.log('sendScheduleEmails: failed for ' + email + ': ' + e.message);
+    }
+  });
+
+  return { success: true, emailsSent: sent };
 }
 
 // ── Sheet helper ────────────────────────────────────

@@ -4074,7 +4074,15 @@ async function publishScheduleToSheet() {
       totalGroups += res.groupsWritten || 0;
     }
 
-    showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.');
+    // Send notification emails to all players
+    let emailNote = '';
+    try {
+      const emailRes = await apiPost({ action: 'sendScheduleEmails', month: scheduleData.month });
+      if (emailRes.skipped) emailNote = ' Email notifications are disabled.';
+      else emailNote = ' Emails sent to ' + (emailRes.emailsSent || 0) + ' player(s).';
+    } catch(e) { emailNote = ' (Email send failed: ' + e.message + ')'; }
+
+    showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.' + emailNote);
     btn.textContent = 'Published ✓';
     // Unlock exports now that published version is in sync
     const excelBtn = document.getElementById('sched-excel-btn');
