@@ -1367,6 +1367,7 @@
                 oninput="onTypeaheadInput('vol', this.value)"
                 onblur="onTypeaheadBlur('vol')"
                 onfocus="onTypeaheadFocus('vol')"
+                onkeydown="onTypeaheadTabSelect('vol', event)"
                 autocomplete="off" />
               <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
             </div>
@@ -1877,7 +1878,12 @@ function showView(name, btn) {
   document.getElementById('view-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   if (name === 'request') prefillIdentity('req');
-  if (name === 'volunteer') { buildCalendar().then(() => prefillIdentity('vol')); }
+  if (name === 'volunteer') {
+    myVolunteerMap = {};
+    document.getElementById('my-vol-section').style.display = 'none';
+    document.getElementById('my-vol-list').innerHTML = '';
+    buildCalendar().then(() => prefillIdentity('vol'));
+  }
   if (name === 'availability') { loadAvailabilityView().then(() => prefillIdentity('av')); }
   if (name === 'schedule') loadScheduleView();
   if (name === 'directory') loadDirectoryView();
@@ -2014,6 +2020,18 @@ function selectTypeaheadPlayer(prefix, name, email) {
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email);
+}
+
+async function onTypeaheadTabSelect(prefix, event) {
+  if (event.key !== 'Tab') return;
+  const val = document.getElementById(prefix + '-name-input').value.trim();
+  if (!val) return;
+  const players = await loadPlayerList();
+  let pool = prefix === 'adm' ? players.filter(p => p.isAdmin) : players;
+  const matches = pool.filter(p => p.name.toLowerCase().includes(val.toLowerCase()));
+  if (!matches.length) return;
+  selectTypeaheadPlayer(prefix, matches[0].name, matches[0].email);
+  event.preventDefault();
 }
 
 function prefillIdentity(prefix) {
@@ -2377,7 +2395,13 @@ async function submitVolunteer() {
   }
 
   const entries = Object.entries(volSelections).filter(([,v]) => v.length > 0);
-  if (!entries.length) {
+
+  // Find pending records where the player removed all times → delete those rows
+  const toDelete = Object.entries(myVolunteerMap).filter(([date, ex]) =>
+    ex.status === 'pending' && !(volSelections[date] && volSelections[date].length > 0)
+  );
+
+  if (!entries.length && !toDelete.length) {
     showAlert('vol-alert', 'error', 'Please select at least one date and time slot.');
     return;
   }
@@ -2391,25 +2415,30 @@ async function submitVolunteer() {
     const toCreate = [];
     for (const [date, times] of entries) {
       const ex = myVolunteerMap[date];
-      if (ex && ex.status === 'matched') continue;       // skip matched
+      if (ex && ex.status === 'matched') continue;
       if (ex && ex.status === 'pending') toUpdate.push({ rowIndex: ex.rowIndex, times });
       else toCreate.push({ date, times });
     }
-    // Update existing pending records
+    // Delete records where player removed all times
+    for (const [, ex] of toDelete) {
+      await apiPost({ action: 'deleteVolunteer', rowIndex: ex.rowIndex });
+    }
+    // Update existing pending records with changed times
     for (const u of toUpdate) {
       await apiPost({ action: 'updateVolunteer', rowIndex: u.rowIndex, times: JSON.stringify(u.times) });
     }
     // Create new records
     if (toCreate.length) {
       await apiPost({
-        action: 'submitVolunteer',
-        name,
-        email,
+        action: 'submitVolunteer', name, email,
         entries: toCreate.map(({ date, times }) => ({ date, times: times.map(t => t.replace(':', '_')) }))
       });
     }
-    const total = toUpdate.length + toCreate.length;
-    showAlert('vol-alert', 'success', `Availability saved for ${total} date(s). Thank you!`);
+    const changes = toUpdate.length + toCreate.length + toDelete.length;
+    const msg = toDelete.length && !entries.length
+      ? `${toDelete.length} date(s) removed.`
+      : `Availability saved for ${toUpdate.length + toCreate.length} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`;
+    showAlert('vol-alert', 'success', msg);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     buildCalendar().then(() => loadMySubmissions(email));
     clearCache();
@@ -2430,6 +2459,9 @@ function clearVolForm() {
 
 async function loadMySubmissions(email) {
   myVolunteerMap = {};
+  // Clear all calendar selections so a previous player's data doesn't bleed through
+  Object.keys(volSelections).forEach(k => { volSelections[k] = []; refreshDateRow(k); });
+  updateVolSummary();
   try {
     volunteerCache = null;
     const vols = await getVolunteers();
