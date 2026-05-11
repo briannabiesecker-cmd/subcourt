@@ -2682,38 +2682,34 @@ function sendScheduleEmails(params) {
     }
   } catch(e) { /* ignore */ }
 
-  // Build PDF + Excel attachments
-  var attachments = [];
-  try { attachments = buildScheduleAttachments(schedule, monthLabel); } catch(e) {
-    Logger.log('Attachment build error: ' + e.message);
-  }
-
   var senderEmail = getConfig().senderEmail || '';
+  var sent = 0;
   for (var b = 0; b < batches; b++) {
     var batch     = allEmails.slice(b * BATCH, (b + 1) * BATCH);
     var toEmail   = batch[0];
     var bccEmails = batch.slice(1).join(', ');
-    var opts = { name: 'MWF Tennis League', htmlBody: htmlBody, attachments: attachments };
+    var opts = { name: 'MWF Tennis League', htmlBody: htmlBody };
     if (bccEmails) opts.bcc = bccEmails;
     try {
       if (senderEmail) {
         try {
           GmailApp.sendEmail(toEmail, subject, body,
             Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
+          sent += batch.length;
           continue;
         } catch(ge) {
           Logger.log('GmailApp batch ' + (b+1) + ' failed (' + ge.message + '), falling back to MailApp');
         }
       }
-      // MailApp fallback — no from: override, sends from the authorized account
       opts.to = toEmail; opts.subject = subject; opts.body = body;
       MailApp.sendEmail(opts);
+      sent += batch.length;
     } catch(e) {
       return { success: false, error: 'Email batch ' + (b + 1) + ' failed: ' + e.message };
     }
   }
 
-  return { success: true, emailsSent: allEmails.length };
+  return { success: true, emailsSent: sent };
 }
 
 // ── Sheet helper ────────────────────────────────────
