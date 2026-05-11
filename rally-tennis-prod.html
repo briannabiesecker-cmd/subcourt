@@ -2024,16 +2024,17 @@ function selectTypeaheadPlayer(prefix, name, email) {
   if (prefix === 'sch') renderPublishedSchedule(email, name);
 }
 
-async function onTypeaheadTabSelect(prefix, event) {
+function onTypeaheadTabSelect(prefix, event) {
   if (event.key !== 'Tab') return;
   const val = document.getElementById(prefix + '-name-input').value.trim();
   if (!val) return;
-  // preventDefault must be called synchronously — after await it's too late
-  event.preventDefault();
-  const players = await loadPlayerList();
-  let pool = prefix === 'adm' ? players.filter(p => p.isAdmin) : players;
+  // Use the already-loaded playerList synchronously — it is populated by the
+  // first keystroke in the typeahead, so it is always ready when Tab is pressed.
+  let pool = prefix === 'adm' ? playerList.filter(p => p.isAdmin) : playerList;
   const matches = pool.filter(p => p.name.toLowerCase().includes(val.toLowerCase()));
   if (!matches.length) return;
+  // Only prevent Tab's default focus-move when we have a match to select
+  event.preventDefault();
   selectTypeaheadPlayer(prefix, matches[0].name, matches[0].email);
 }
 
