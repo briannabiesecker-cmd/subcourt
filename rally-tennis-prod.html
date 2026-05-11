@@ -2022,7 +2022,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
     try { localStorage.setItem('rally_user_identity', JSON.stringify({ name, email })); } catch(e) {}
   }
   if (prefix === 'vol') loadMySubmissions(email);
-  if (prefix === 'req') loadMyRequests(email);
+  if (prefix === 'req') loadMyRequests(email, name);
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email, name);
@@ -2195,7 +2195,7 @@ function clearRequestForm() {
   document.getElementById('req-time').value = '';
 }
 
-async function loadMyRequests(email) { // v2
+async function loadMyRequests(email, playerName) { // v2
   const el      = document.getElementById('my-req-list');
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
@@ -2212,13 +2212,18 @@ async function loadMyRequests(email) { // v2
     const twoDaysStr   = twoDaysOut.toISOString().slice(0, 10);
 
     // Only show future requests (strictly after today).
-    // Also include Anita Sub requests where this player appears in groupPlayers
-    // (they are in the group and should manage the Anita Sub slot).
+    // Also include Anita Sub requests where this player appears in groupPlayers.
+    // Match by email OR name — email from the availability submission may differ
+    // slightly from the Players sheet email, so name is used as a reliable fallback.
     const emailLower = email.toLowerCase();
+    const nameLower  = (playerName || '').toLowerCase().trim();
     const isAnitaForPlayer = r =>
       /^anita\.sub\d+@xgmail\.com$/i.test(r.email) &&
-      Array.isArray(r.groupPlayers) &&
-      r.groupPlayers.some(p => (p.email || '').toLowerCase() === emailLower);
+      Array.isArray(r.groupPlayers) && r.groupPlayers.length > 0 &&
+      r.groupPlayers.some(p =>
+        (p.email || '').toLowerCase().trim() === emailLower ||
+        (nameLower && (p.name  || '').toLowerCase().trim() === nameLower)
+      );
     const mine = requests.filter(r =>
       (r.email.toLowerCase() === emailLower || isAnitaForPlayer(r)) &&
       r.status !== 'cancelled' &&
@@ -2298,7 +2303,7 @@ async function saveRequestTime(rowIndex) {
   try {
     await apiPost({ action: 'updateRequestTime', rowIndex, matchTime });
     const { email } = getTypeaheadValue('req');
-    await loadMyRequests(email);
+    await loadMyRequests(email, document.getElementById('req-selected-name').textContent.trim());
   } catch(e) {
     alert('Failed to save: ' + e.message);
   }
@@ -2310,7 +2315,7 @@ async function deleteRequest(requestId) {
     const result = await apiPost({ action: 'cancelRequest', requestId });
     if (!result.success) throw new Error(result.error || 'Failed');
     const { email } = getTypeaheadValue('req');
-    await loadMyRequests(email);
+    await loadMyRequests(email, document.getElementById('req-selected-name').textContent.trim());
   } catch(e) {
     alert('Could not delete request: ' + e.message);
   }
