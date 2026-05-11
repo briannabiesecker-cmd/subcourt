@@ -267,6 +267,7 @@ function runAutoDispatch() {
   var requests  = getRequests();
   var open      = requests.filter(function(r) { return r.status === 'open'; });
   var logSheet  = getOrCreateDispatchLog();
+  var reqSheet  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   var timestamp = new Date().toISOString();
 
   Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
@@ -306,11 +307,12 @@ function runAutoDispatch() {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
-        // No match found — notify requestor if within 24 hours
+        // No match found — notify requestor if within 24 hours and cancel the request
         if (isLastMinute(req, config.lastMinuteThresholdHrs)) {
           sendRetirementEmail(req);
-          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'notified — last-minute, no candidates']);
-          Logger.log('No candidates (last-minute, notified): ' + req.name);
+          if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'notified — last-minute, no candidates, cancelled']);
+          Logger.log('No candidates (last-minute, notified, cancelled): ' + req.name);
         } else {
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
           Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
