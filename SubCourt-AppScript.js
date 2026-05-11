@@ -2676,9 +2676,9 @@ function sendScheduleEmails(params) {
 
   try {
     var remaining = MailApp.getRemainingDailyQuota();
-    if (remaining < batches) {
+    if (remaining < allEmails.length) {
       return { success: false, error: 'Insufficient email quota — ' + remaining +
-        ' sends remaining, need ' + batches + ' (batched at 50).' };
+        ' recipient slots remaining today, need ' + allEmails.length + '. Try again tomorrow.' };
     }
   } catch(e) { /* ignore */ }
 
