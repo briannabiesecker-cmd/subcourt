@@ -382,6 +382,7 @@ function doGet(e) {
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
+    else if (action === 'sendTestEmail')             result = sendTestEmail();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -2571,7 +2572,50 @@ function buildScheduleAttachments(schedule, monthLabel) {
   return [Utilities.newBlob('﻿' + csvLines.join('\r\n'), 'text/csv', safe + '_Schedule.csv')];
 }
 
-// Sends the published schedule to ALL players (BCC batches of 50) with PDF + Excel attachments.
+// Diagnostic: sends a test email to the admin and returns full diagnostic info.
+function sendTestEmail() {
+  var diag = { emailEnabled: false, playerCount: 0, senderEmail: '', scheduleFound: false };
+  try {
+    diag.emailEnabled = isEmailEnabled();
+    diag.senderEmail  = getConfig().senderEmail || '';
+    var players = getPlayersWithRatings();
+    diag.playerCount  = players.length;
+    var sched = getPublishedSchedule();
+    diag.scheduleFound = !!(sched && sched.month);
+    diag.scheduleMonth = sched ? sched.month : '';
+
+    if (!diag.emailEnabled) {
+      return { success: false, error: 'Email is disabled — turn on the Email Enabled toggle in Admin settings (Config B27).', diag: diag };
+    }
+    if (!players.length) {
+      return { success: false, error: 'No players found in the Players sheet.', diag: diag };
+    }
+
+    var adminEmail = Session.getActiveUser().getEmail() || 'marobria@gmail.com';
+    var body = 'Rally test email.\n\nDiagnostics:\n' +
+      'Email enabled: ' + diag.emailEnabled + '\n' +
+      'Player count: ' + diag.playerCount + '\n' +
+      'Sender email: ' + (diag.senderEmail || '(none — will send from script account)') + '\n' +
+      'Schedule found: ' + diag.scheduleFound + ' (' + diag.scheduleMonth + ')';
+
+    if (diag.senderEmail) {
+      try {
+        GmailApp.sendEmail(adminEmail, 'Rally — Test Email', body, {
+          from: diag.senderEmail, replyTo: diag.senderEmail, name: 'MWF Tennis League'
+        });
+        return { success: true, sentTo: adminEmail, sentFrom: diag.senderEmail, diag: diag };
+      } catch(ge) {
+        diag.gmailError = ge.message;
+      }
+    }
+    MailApp.sendEmail({ to: adminEmail, subject: 'Rally — Test Email', body: body, name: 'MWF Tennis League' });
+    return { success: true, sentTo: adminEmail, sentFrom: 'script account (MailApp)', diag: diag };
+  } catch(e) {
+    return { success: false, error: e.message, diag: diag };
+  }
+}
+
+// Sends the published schedule to ALL players (BCC batches of 50) with CSV attachment.
 function sendScheduleEmails(params) {
   if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
 

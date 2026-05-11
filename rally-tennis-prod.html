@@ -1825,6 +1825,8 @@
             <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="saveSenderEmail()">Save</button>
           </div>
           <div id="sender-email-status" style="font-size:13px;color:var(--ink-light);margin-top:8px;"></div>
+          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;margin-top:10px;" onclick="runTestEmail()">Send Test Email</button>
+          <div id="test-email-result" style="font-size:13px;margin-top:8px;"></div>
         </div>
 
         <div class="card mt8" style="max-width:560px;margin-top:1rem;">
@@ -3788,6 +3790,26 @@ async function saveSenderEmail() {
   }
 }
 
+async function runTestEmail() {
+  const out = document.getElementById('test-email-result');
+  out.textContent = 'Sending test…';
+  try {
+    const r = await apiPost({ action: 'sendTestEmail' });
+    if (r.success) {
+      out.style.color = 'var(--success)';
+      out.textContent = 'Test email sent to ' + r.sentTo + ' from ' + r.sentFrom + '.';
+    } else {
+      out.style.color = 'var(--danger)';
+      out.textContent = 'Failed: ' + r.error +
+        (r.diag ? ' | Players: ' + r.diag.playerCount + ', Email enabled: ' + r.diag.emailEnabled +
+          (r.diag.gmailError ? ', GmailApp error: ' + r.diag.gmailError : '') : '');
+    }
+  } catch(e) {
+    out.style.color = 'var(--danger)';
+    out.textContent = 'Error: ' + e.message;
+  }
+}
+
 async function loadEmailToggle() {
   const wrap = document.getElementById('email-toggle-wrap');
   try {
@@ -4231,8 +4253,9 @@ async function publishScheduleToSheet() {
     let emailNote = '';
     try {
       const emailRes = await apiPost({ action: 'sendScheduleEmails', month: scheduleData.month });
-      if (emailRes.skipped) emailNote = ' Email notifications are disabled.';
-      else emailNote = ' Emails sent to ' + (emailRes.emailsSent || 0) + ' player(s).';
+      if (emailRes.skipped)        emailNote = ' Email notifications are disabled.';
+      else if (!emailRes.success)  emailNote = ' Email failed: ' + (emailRes.error || 'unknown error');
+      else                         emailNote = ' Emails sent to ' + (emailRes.emailsSent || 0) + ' player(s).';
     } catch(e) { emailNote = ' (Email send failed: ' + e.message + ')'; }
 
     showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.' + emailNote);
