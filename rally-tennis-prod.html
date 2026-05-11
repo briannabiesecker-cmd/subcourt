@@ -4571,33 +4571,9 @@ function renderPublishedSchedule(filterEmail, filterName) {
   empty.style.display = 'none';
   wrap.style.display  = '';
 
-  // When a player has filtered, show large match summary cards above the full table
-  let summaryEl = document.getElementById('sch-summary');
-  if (!summaryEl) {
-    summaryEl = document.createElement('div');
-    summaryEl.id = 'sch-summary';
-    wrap.insertBefore(summaryEl, wrap.firstChild);
-  }
-  if (filterEmailLower || filterNameLower) {
-    const cards = dates.flatMap(d => {
-      const dateLabel = formatDateShort(d.date);
-      return d.groups.map(g => {
-        const partners = g.players
-          .filter(p => !((filterEmailLower && p.email && p.email.toLowerCase() === filterEmailLower) ||
-                         (filterNameLower  && p.name  && p.name.toLowerCase()  === filterNameLower)))
-          .map(p => p.name).join(', ');
-        return `<div class="match-summary-card">
-          <div class="match-summary-date">${dateLabel}</div>
-          <div class="match-summary-group">Group ${g.letter}</div>
-          <div class="match-summary-partners">${partners || 'No partners listed'}</div>
-        </div>`;
-      });
-    }).join('');
-    summaryEl.innerHTML = `<div class="match-summary-grid">${cards}</div>`;
-  } else {
-    summaryEl.innerHTML = '';
-  }
-
+  // Clear any previously rendered summary cards
+  const summaryEl = document.getElementById('sch-summary');
+  if (summaryEl) summaryEl.innerHTML = '';
 
   let html = '<thead><tr><th>Date</th><th>Group</th><th>Captain</th><th>Players</th><th>Alternate</th></tr></thead><tbody>';
   dates.forEach(d => {
