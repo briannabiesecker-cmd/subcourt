@@ -2212,14 +2212,15 @@ async function loadMyRequests(email) { // v2
     const twoDaysStr   = twoDaysOut.toISOString().slice(0, 10);
 
     // Only show future requests (strictly after today).
-    // Also include Anita Sub requests where this player is the captain (groupPlayers[0]).
+    // Also include Anita Sub requests where this player appears in groupPlayers
+    // (they are in the group and should manage the Anita Sub slot).
     const emailLower = email.toLowerCase();
-    const isAnitaCaptain = r =>
+    const isAnitaForPlayer = r =>
       /^anita\.sub\d+@xgmail\.com$/i.test(r.email) &&
-      Array.isArray(r.groupPlayers) && r.groupPlayers.length > 0 &&
-      (r.groupPlayers[0].email || '').toLowerCase() === emailLower;
+      Array.isArray(r.groupPlayers) &&
+      r.groupPlayers.some(p => (p.email || '').toLowerCase() === emailLower);
     const mine = requests.filter(r =>
-      (r.email.toLowerCase() === emailLower || isAnitaCaptain(r)) &&
+      (r.email.toLowerCase() === emailLower || isAnitaForPlayer(r)) &&
       r.status !== 'cancelled' &&
       r.matchDate > todayStr
     ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
@@ -2259,6 +2260,11 @@ async function loadMyRequests(email) { // v2
           <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
         </div>` : '';
 
+      const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
+      const nameCell = isAnita
+        ? `<span style="color:var(--warn);font-size:13px;font-style:italic;">${r.name} (your group)</span>`
+        : 'My request';
+
       const canDelete = r.status !== 'filled';
       const deleteBtn = canDelete
         ? `<button class="btn btn-sm" style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;font-size:12px;padding:3px 10px;"
@@ -2268,6 +2274,7 @@ async function loadMyRequests(email) { // v2
       return `<tr>
         <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
         <td style="white-space:nowrap;">${timeDisplay}</td>
+        <td>${nameCell}</td>
         <td>${statusCell}</td>
         <td>${subCell}</td>
         <td>${actionCell}</td>
@@ -2277,7 +2284,7 @@ async function loadMyRequests(email) { // v2
 
     el.innerHTML = `
       <table class="dispatch-table">
-        <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Substitute</th><th>Update Time</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th>Substitute</th><th>Update Time</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   } catch(e) {
