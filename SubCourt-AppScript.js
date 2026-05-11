@@ -349,6 +349,7 @@ function doGet(e) {
     else if (action === 'getDispatchLog')    result = getDispatchLog();
     else if (action === 'expireToday')       result = expireToday();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
+    else if (action === 'cancelRequest')          result = cancelRequest(e.parameter);
     else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
     else if (action === 'runAutoDispatchNow')             result = scheduleImmediateDispatch();
     else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
@@ -1289,6 +1290,16 @@ function sendRetirementEmail(req) {
   var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) sendLeagueEmail(emailParams);
+}
+
+function cancelRequest(params) {
+  var requests = getRequests();
+  var req = requests.find(function(r) { return r.id === params.requestId; });
+  if (!req) return { success: false, error: 'Request not found' };
+  if (req.status === 'filled') return { success: false, error: 'Cannot cancel a filled request.' };
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('cancelled');
+  return { success: true };
 }
 
 function retireRequest(params) {

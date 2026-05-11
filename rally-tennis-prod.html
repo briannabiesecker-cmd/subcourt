@@ -1946,14 +1946,16 @@ async function apiGetWithParams(params) {
 // ══════════════════════════════════════════════════
 // TYPEAHEAD
 // ══════════════════════════════════════════════════
-let playerList = [];
+let playerList     = []; // Anita Sub filtered out — used by vol/av/dir/sch typeaheads
+let fullPlayerList = []; // includes Anita Sub — used by req typeahead only
 const taBlurTimers = {};
 
 async function loadPlayerList() {
   if (playerList.length) return playerList;
   try {
     const data = await apiGet('getPlayers');
-    playerList = (data || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+    fullPlayerList = data || [];
+    playerList = fullPlayerList.filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
   } catch(e) { playerList = []; }
   return playerList;
 }
@@ -1976,9 +1978,11 @@ function onTypeaheadBlur(prefix) {
 
 async function showTypeaheadDropdown(prefix, val) {
   const dd = document.getElementById(prefix + '-dropdown');
-  let players = await loadPlayerList();
-  // Admin typeahead: only show players with isAdmin flag
-  if (prefix === 'adm') players = players.filter(p => p.isAdmin);
+  await loadPlayerList(); // ensure both lists are populated
+  // req uses fullPlayerList (includes Anita Sub); adm filters to admins; others use filtered list
+  let players = prefix === 'req' ? fullPlayerList
+              : prefix === 'adm' ? playerList.filter(p => p.isAdmin)
+              : playerList;
   const matches = val.trim()
     ? players.filter(p => p.name.toLowerCase().includes(val.toLowerCase()))
     : players;
@@ -2030,7 +2034,9 @@ function onTypeaheadTabSelect(prefix, event) {
   if (!val) return;
   // Use the already-loaded playerList synchronously — it is populated by the
   // first keystroke in the typeahead, so it is always ready when Tab is pressed.
-  let pool = prefix === 'adm' ? playerList.filter(p => p.isAdmin) : playerList;
+  let pool = prefix === 'req' ? fullPlayerList
+           : prefix === 'adm' ? playerList.filter(p => p.isAdmin)
+           : playerList;
   const matches = pool.filter(p => p.name.toLowerCase().includes(val.toLowerCase()));
   if (!matches.length) return;
   // Only prevent Tab's default focus-move when we have a match to select
@@ -2253,18 +2259,25 @@ async function loadMyRequests(email) { // v2
           <button class="btn btn-clay btn-sm" onclick="saveRequestTime(${r.rowIndex})">Save</button>
         </div>` : '';
 
+      const canDelete = r.status !== 'filled';
+      const deleteBtn = canDelete
+        ? `<button class="btn btn-sm" style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;font-size:12px;padding:3px 10px;"
+            onclick="deleteRequest('${r.id}')">Delete</button>`
+        : '';
+
       return `<tr>
         <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
         <td style="white-space:nowrap;">${timeDisplay}</td>
         <td>${statusCell}</td>
         <td>${subCell}</td>
         <td>${actionCell}</td>
+        <td>${deleteBtn}</td>
       </tr>`;
     }).join('');
 
     el.innerHTML = `
       <table class="dispatch-table">
-        <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Substitute</th><th>Update Time</th></tr></thead>
+        <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Substitute</th><th>Update Time</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   } catch(e) {
@@ -2281,6 +2294,18 @@ async function saveRequestTime(rowIndex) {
     await loadMyRequests(email);
   } catch(e) {
     alert('Failed to save: ' + e.message);
+  }
+}
+
+async function deleteRequest(requestId) {
+  if (!confirm('Delete this sub request? This cannot be undone.')) return;
+  try {
+    const result = await apiPost({ action: 'cancelRequest', requestId });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    const { email } = getTypeaheadValue('req');
+    await loadMyRequests(email);
+  } catch(e) {
+    alert('Could not delete request: ' + e.message);
   }
 }
 
@@ -4468,7 +4493,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Single call returns players + availConfig — avoids two cold-start round trips
   apiGetWithParams({ action: 'getHomeData' }).then(data => {
-    if (data.players)     playerList  = data.players.filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+    if (data.players) {
+      fullPlayerList = data.players;
+      playerList     = data.players.filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+    }
     if (data.availConfig) {
       availConfig = data.availConfig;
       applyAvailConfigToHomeCard(availConfig);
