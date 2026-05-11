@@ -2203,9 +2203,15 @@ async function loadMyRequests(email) { // v2
     const twoDaysOut   = new Date(); twoDaysOut.setDate(twoDaysOut.getDate() + 2);
     const twoDaysStr   = twoDaysOut.toISOString().slice(0, 10);
 
-    // Only show future requests (strictly after today)
+    // Only show future requests (strictly after today).
+    // Also include Anita Sub requests where this player is the captain (groupPlayers[0]).
+    const emailLower = email.toLowerCase();
+    const isAnitaCaptain = r =>
+      /^anita\.sub\d+@xgmail\.com$/i.test(r.email) &&
+      Array.isArray(r.groupPlayers) && r.groupPlayers.length > 0 &&
+      (r.groupPlayers[0].email || '').toLowerCase() === emailLower;
     const mine = requests.filter(r =>
-      r.email.toLowerCase() === email.toLowerCase() &&
+      (r.email.toLowerCase() === emailLower || isAnitaCaptain(r)) &&
       r.status !== 'cancelled' &&
       r.matchDate > todayStr
     ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));

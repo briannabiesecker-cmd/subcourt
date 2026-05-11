@@ -2376,8 +2376,14 @@ function publishScheduleSlot(params) {
       pSheet.appendRow(anitaRow);
       pSheet.getRange(pSheet.getLastRow(), anitaCol.rating + 1).setNumberFormat('0.0');
 
-      // Create Sub Request for Anita with the 3 real players as group
-      var groupPlayersJSON = JSON.stringify(workingGroup.map(function(p) {
+      // Create Sub Request for Anita — captain goes first in groupPlayers so the
+      // captain can identify and manage this request on the Request A Sub page.
+      var groupForRequest = workingGroup.slice().sort(function(a, b) {
+        if (a.email === captainEmail) return -1;
+        if (b.email === captainEmail) return 1;
+        return 0;
+      });
+      var groupPlayersJSON = JSON.stringify(groupForRequest.map(function(p) {
         return { name: p.name, email: p.email };
       }));
       rSheet.appendRow([
