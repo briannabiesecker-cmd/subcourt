@@ -41,9 +41,12 @@
     background: var(--chalk);
     color: var(--ink);
     min-height: 100vh;
-    font-size: 17px;
+    font-size: 19px;
     line-height: 1.7;
   }
+
+  label { font-size: 16px; font-weight: 600; }
+  input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on focus */
 
   /* ── Header ── */
   header {
@@ -116,6 +119,45 @@
     overflow-y: auto;
     padding-bottom: 1.5rem;
   }
+
+  /* Volunteer view: same two-zone layout as Request view */
+  body:has(#view-volunteer.active) { overflow: hidden; }
+  body:has(#view-volunteer.active) main { height: calc(100vh - 68px); overflow: hidden; box-sizing: border-box; }
+  #view-volunteer.active { display: flex; flex-direction: column; height: 100%; }
+  #vol-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 1.5rem; }
+  @media (max-width: 640px) { body:has(#view-volunteer.active) main { height: calc(100vh - 68px - 2rem); } }
+
+  /* ── Confirm modal ── */
+  #confirm-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 9999;
+    align-items: center; justify-content: center;
+  }
+  #confirm-modal.open { display: flex; }
+  .confirm-modal-box {
+    background: white; border-radius: 20px; padding: 2rem 1.5rem;
+    max-width: 360px; width: 90%; box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  }
+  .confirm-modal-msg { font-size: 18px; font-weight: 600; color: var(--ink); margin-bottom: 1.5rem; line-height: 1.5; }
+  .confirm-modal-btns { display: flex; gap: 12px; }
+  .confirm-modal-btns button { flex: 1; font-size: 17px; font-weight: 600; padding: 14px; border-radius: 12px; border: none; cursor: pointer; min-height: 52px; }
+  .confirm-modal-ok { background: var(--danger); color: white; }
+  .confirm-modal-cancel { background: var(--chalk); color: var(--ink); }
+
+  /* ── Schedule match summary cards ── */
+  .match-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .match-summary-card { background: var(--clay-bg); border-radius: var(--radius-lg); padding: 1rem 1.25rem; border-left: 4px solid var(--clay); }
+  .match-summary-date { font-size: 17px; font-weight: 700; color: var(--clay); margin-bottom: 4px; }
+  .match-summary-group { font-size: 15px; color: var(--ink-mid); margin-bottom: 4px; }
+  .match-summary-partners { font-size: 15px; color: var(--ink); font-weight: 500; }
+
+  /* ── Responsive tables ── */
+  @media (max-width: 640px) {
+    .dispatch-table { font-size: 14px; }
+    .dispatch-table th:nth-child(6), .dispatch-table td:nth-child(6) { display: none; }
+    .players-table th:last-child, .players-table td:last-child { display: none; }
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
   /* ── Section heading ── */
   .section-header {
@@ -285,8 +327,9 @@
   .btn-clay:hover { opacity: 0.88; }
 
   .btn-sm {
-    padding: 6px 14px;
-    font-size: 13px;
+    padding: 10px 18px;
+    font-size: 14px;
+    min-height: 44px;
   }
 
   .btn-danger {
@@ -580,8 +623,8 @@
     box-shadow: var(--shadow);
   }
   .typeahead-item {
-    padding: 11px 14px;
-    font-size: 14px;
+    padding: 15px 16px;
+    font-size: 17px;
     cursor: pointer;
     color: var(--ink);
     border-bottom: 1px solid var(--chalk);
@@ -634,19 +677,20 @@
   .date-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 12px;
+    padding: 14px 16px;
     background: white;
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
     transition: background 0.1s;
+    flex-wrap: wrap;
   }
   .date-row.any-selected { background: var(--success-bg); }
   .date-row-label {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 700;
     color: var(--ink);
-    min-width: 100px;
+    min-width: 110px;
   }
   .date-row.any-selected .date-row-label { color: var(--success); }
   .select-all-wrap {
@@ -659,23 +703,26 @@
     flex-shrink: 0;
   }
   .select-all-wrap input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--clay); cursor: pointer; }
-  .select-all-label { font-size: 12px; color: var(--ink-light); white-space: nowrap; }
-  .time-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .select-all-label { font-size: 15px; color: var(--ink-mid); white-space: nowrap; font-weight: 600; }
+  .select-all-wrap input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--clay); cursor: pointer; }
+  .time-chips { display: flex; gap: 10px; flex-wrap: wrap; }
   .time-chip-btn {
     font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 5px 12px;
-    border-radius: 20px;
-    border: 1.5px solid var(--line);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 20px;
+    min-width: 96px;
+    min-height: 48px;
+    border-radius: 26px;
+    border: 2px solid var(--line);
     background: white;
     color: var(--ink-mid);
     cursor: pointer;
-    transition: all 0.1s;
+    transition: all 0.15s;
     white-space: nowrap;
   }
-  .time-chip-btn:hover { border-color: var(--clay); color: var(--clay); }
-  .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; }
+  .time-chip-btn:hover { border-color: var(--clay); color: var(--clay); background: var(--clay-bg); }
+  .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; box-shadow: 0 2px 8px rgba(224,122,90,0.35); }
 
   /* ── Player rating grid ── */
   .players-table {
@@ -1241,10 +1288,14 @@
         </div>
 
         <div class="field span2" style="margin-top:8px;">
-          <label>Who else is in your group?</label>
-          <div style="font-size:13px;color:var(--ink-light);">Enter the names of your 3 partners. They'll be copied on the confirmation email so everyone stays in the loop.</div>
+          <button type="button" id="req-partners-toggle" class="btn btn-secondary btn-sm"
+            onclick="document.getElementById('req-partners-section').style.display = document.getElementById('req-partners-section').style.display === 'none' ? '' : 'none'; this.textContent = this.textContent.startsWith('+') ? '− Hide group partners' : '+ Add group partners (optional)';"
+            style="font-size:15px;padding:12px 20px;">+ Add group partners (optional)</button>
+          <div style="font-size:14px;color:var(--ink-light);margin-top:6px;">Partner names are copied on the confirmation email.</div>
         </div>
 
+        <div id="req-partners-section" class="field span2" style="display:none;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <!-- Partner 2 -->
         <div class="field">
           <label>Partner 2 name</label>
@@ -1322,6 +1373,8 @@
           <label>Partner 4 email</label>
           <input type="email" id="p4-email" placeholder="Auto-filled on selection" disabled />
         </div>
+        </div><!-- end partners grid -->
+        </div><!-- end req-partners-section -->
       </div>
 
       <div class="mt12 flex gap8">
@@ -1336,25 +1389,10 @@
   <!-- ── VOLUNTEER VIEW ── -->
   <div id="view-volunteer" class="view">
 
-    <div id="my-vol-section" style="display:none;">
-      <div class="section-header">
-        <div class="section-title">Your Submissions</div>
-      </div>
-      <div id="my-vol-list"></div>
-      <hr class="divider" />
-    </div>
-
-    <div class="section-header">
-      <div class="section-title">Volunteer to Sub</div>
-    </div>
-
-    <div class="alert alert-info">Select every date and time slot you're free to play. The more times you select, the more matches you can be considered for.</div>
-
-    <div class="card mt8">
-      <div id="vol-alert" class="hidden"></div>
-
-      <div class="form-grid" style="margin-bottom:1.25rem;">
-        <div class="field">
+    <!-- Locked name card — always visible while scrolling the calendar -->
+    <div class="card" style="margin-bottom:0;border-radius:var(--radius) var(--radius) 0 0;border-bottom:2px solid var(--line);flex-shrink:0;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:start;">
+        <div class="field" style="margin:0;">
           <label>Your name</label>
           <div class="typeahead-wrap">
             <div id="vol-selected-state" style="display:none;">
@@ -1375,16 +1413,31 @@
             </div>
           </div>
         </div>
-        <div class="field">
+        <div class="field" style="margin:0;">
           <label>Your email</label>
           <input type="email" id="vol-email" placeholder="Auto-filled on selection" disabled />
         </div>
       </div>
+    </div>
 
-      <label style="display:block; margin-bottom:8px; font-size:11px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:500;">Select available dates &amp; times (MWF only)</label>
+    <!-- Scrollable body -->
+    <div id="vol-body" style="padding-top:1rem;">
+      <div id="my-vol-section" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">Your Submissions</div>
+        </div>
+        <div id="my-vol-list"></div>
+        <hr class="divider" />
+      </div>
+
+      <div class="alert alert-info" style="margin-bottom:1rem;">Select every date and time slot you're free to play. The more times you select, the more matches you can be considered for.</div>
+
+      <div id="vol-alert" class="hidden" style="margin-bottom:1rem;"></div>
+
+      <label style="display:block; margin-bottom:10px; font-size:14px; color:var(--ink-mid); text-transform:uppercase; letter-spacing:0.4px; font-weight:600;">Select available dates &amp; times (MWF only)</label>
       <div id="vol-calendar"></div>
 
-      <div id="vol-summary" class="alert alert-info hidden" style="margin-top:12px;"></div>
+      <div id="vol-summary" class="alert alert-info hidden" style="margin-top:16px;"></div>
 
       <div class="flex gap8 mt12">
         <button class="btn btn-clay" id="vol-submit-btn" onclick="submitVolunteer()">Submit availability</button>
@@ -2287,11 +2340,11 @@ async function loadMyRequests(email, playerName) { // v2
       </tr>`;
     }).join('');
 
-    el.innerHTML = `
+    el.innerHTML = `<div class="table-scroll">
       <table class="dispatch-table">
         <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th>Substitute</th><th>Update Time</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>`;
+      </table></div>`;
   } catch(e) {
     el.innerHTML = `<div class="alert alert-error">Failed to load: ${e.message}</div>`;
   }
@@ -2310,7 +2363,7 @@ async function saveRequestTime(rowIndex) {
 }
 
 async function deleteRequest(requestId) {
-  if (!confirm('Delete this sub request? This cannot be undone.')) return;
+  await new Promise(resolve => showConfirmModal('Delete this sub request? This cannot be undone.', resolve));
   try {
     const result = await apiPost({ action: 'cancelRequest', requestId });
     if (!result.success) throw new Error(result.error || 'Failed');
@@ -3082,9 +3135,24 @@ function formatTS(ts) {
 function showAlert(id, type, msg) {
   const el = document.getElementById(id);
   el.className = `alert alert-${type}`;
-  el.textContent = msg;
+  el.style.position = 'relative';
+  el.innerHTML = msg +
+    `<button onclick="this.parentElement.classList.add('hidden')" title="Dismiss"
+      style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:20px;cursor:pointer;color:inherit;line-height:1;padding:0;">×</button>`;
   el.classList.remove('hidden');
-  if (type === 'success') setTimeout(() => el.classList.add('hidden'), 5000);
+  // Success messages stay visible until dismissed — no auto-hide
+}
+
+function showConfirmModal(msg, onConfirm) {
+  const modal = document.getElementById('confirm-modal');
+  document.getElementById('confirm-modal-msg').textContent = msg;
+  modal.classList.add('open');
+  const ok  = document.getElementById('confirm-modal-ok');
+  const can = document.getElementById('confirm-modal-cancel');
+  const close = () => { modal.classList.remove('open'); ok.onclick = null; can.onclick = null; };
+  ok.onclick  = () => { close(); onConfirm(); };
+  can.onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
 }
 
 async function refreshAll() {
@@ -4367,6 +4435,34 @@ function renderPublishedSchedule(filterEmail, filterName) {
   empty.style.display = 'none';
   wrap.style.display  = '';
 
+  // When a player has filtered, show large match summary cards above the full table
+  let summaryEl = document.getElementById('sch-summary');
+  if (!summaryEl) {
+    summaryEl = document.createElement('div');
+    summaryEl.id = 'sch-summary';
+    wrap.insertBefore(summaryEl, wrap.firstChild);
+  }
+  if (filterEmailLower || filterNameLower) {
+    const cards = dates.flatMap(d => {
+      const dateLabel = formatDateShort(d.date);
+      return d.groups.map(g => {
+        const partners = g.players
+          .filter(p => !((filterEmailLower && p.email && p.email.toLowerCase() === filterEmailLower) ||
+                         (filterNameLower  && p.name  && p.name.toLowerCase()  === filterNameLower)))
+          .map(p => p.name).join(', ');
+        return `<div class="match-summary-card">
+          <div class="match-summary-date">${dateLabel}</div>
+          <div class="match-summary-group">Group ${g.letter}</div>
+          <div class="match-summary-partners">${partners || 'No partners listed'}</div>
+        </div>`;
+      });
+    }).join('');
+    summaryEl.innerHTML = `<div class="match-summary-grid">${cards}</div>`;
+  } else {
+    summaryEl.innerHTML = '';
+  }
+
+
   let html = '<thead><tr><th>Date</th><th>Group</th><th>Captain</th><th>Players</th><th>Alternate</th></tr></thead><tbody>';
   dates.forEach(d => {
     const dateStr = formatDateShort(d.date);
@@ -4534,5 +4630,16 @@ function applyAvailConfigToHomeCard(config) {
 
 
 </script>
+
+<!-- ── Confirm Modal ── -->
+<div id="confirm-modal" role="dialog" aria-modal="true">
+  <div class="confirm-modal-box">
+    <div id="confirm-modal-msg" class="confirm-modal-msg">Are you sure?</div>
+    <div class="confirm-modal-btns">
+      <button class="confirm-modal-ok"    id="confirm-modal-ok">Confirm</button>
+      <button class="confirm-modal-cancel" id="confirm-modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
