@@ -2516,76 +2516,98 @@ function getPublishedSchedule() {
   return { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
 }
 
-// Sends one email per player summarising their matches for the published month.
+// Sends one bulk email with the full schedule to all players (BCC batches of 50).
+// Costs 1 quota unit per 50-player batch instead of 1 per player.
 function sendScheduleEmails(params) {
   if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
-
-  var month = params.month || '';
-  if (!month) return { success: false, error: 'Month required.' };
 
   var schedule = getPublishedSchedule();
   if (!schedule.month || !schedule.dates || !schedule.dates.length) {
     return { success: false, error: 'No published schedule found.' };
   }
 
-  // Build per-player match list: { email → { name, matches: [{date, letter, partners}] } }
-  var playerMatches = {};
-  schedule.dates.forEach(function(dayObj) {
-    var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
-      { weekday: 'long', month: 'long', day: 'numeric' });
-    dayObj.groups.forEach(function(grp) {
-      grp.players.forEach(function(p) {
-        if (!p.email || /^anita\.sub\d+@xgmail\.com$/i.test(p.email)) return;
-        var key = p.email.toLowerCase();
-        if (!playerMatches[key]) playerMatches[key] = { name: p.name, matches: [] };
-        var partners = grp.players
-          .filter(function(op) { return op.email.toLowerCase() !== key; })
-          .map(function(op) { return op.name; });
-        playerMatches[key].matches.push({ dateLabel: dateLabel, letter: grp.letter, partners: partners });
-      });
-    });
-  });
-
-  var [yr, mo] = schedule.month.split('-');
-  var monthLabel = new Date(parseInt(yr), parseInt(mo) - 1, 1)
+  var parts = schedule.month.split('-');
+  var monthLabel = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1)
     .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   var scheduleUrl = APP_BASE_URL + '#schedule';
 
-  var sent = 0;
-  Object.keys(playerMatches).forEach(function(email) {
-    var pm = playerMatches[email];
-    var matchLines = pm.matches.map(function(m) {
-      return m.dateLabel + ' — Group ' + m.letter + '\n  Partners: ' + m.partners.join(', ');
-    }).join('\n\n');
-    var htmlLines = pm.matches.map(function(m) {
-      return '<p><strong>' + m.dateLabel + '</strong> — Group ' + m.letter + '<br>' +
-             'Partners: ' + m.partners.join(', ') + '</p>';
-    }).join('');
+  // Build full schedule body (text + HTML)
+  var textLines = [];
+  var htmlRows  = [];
+  var emailSet  = {};
 
-    var body = 'Hi ' + pm.name + ',\n\n' +
-      'Your matches for ' + monthLabel + ' have been published:\n\n' +
-      matchLines + '\n\n' +
-      'Court times will be announced separately as each date approaches.\n\n' +
-      'View the full schedule: ' + scheduleUrl;
-
-    var htmlBody = '<p>Hi ' + pm.name + ',</p>' +
-      '<p>Your matches for <strong>' + monthLabel + '</strong> have been published:</p>' +
-      htmlLines +
-      '<p>Court times will be announced separately as each date approaches.</p>' +
-      '<p><a href="' + scheduleUrl + '">View the full schedule</a></p>';
-
-    try {
-      sendLeagueEmail({
-        to: email, subject: 'MWF Tennis League — Your ' + monthLabel + ' Schedule',
-        body: body, htmlBody: htmlBody, name: 'MWF Tennis League'
+  schedule.dates.forEach(function(dayObj) {
+    var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'long', month: 'long', day: 'numeric' });
+    textLines.push(dateLabel.toUpperCase());
+    htmlRows.push('<tr><td colspan="2" style="padding:10px 0 4px;font-weight:700;' +
+      'border-top:1px solid #E8EBF0;">' + dateLabel + '</td></tr>');
+    dayObj.groups.forEach(function(grp) {
+      var realPlayers = grp.players.filter(function(p) {
+        return p.name && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
       });
-      sent++;
-    } catch(e) {
-      Logger.log('sendScheduleEmails: failed for ' + email + ': ' + e.message);
-    }
+      realPlayers.forEach(function(p) {
+        if (p.email) emailSet[p.email.toLowerCase()] = true;
+      });
+      var names = realPlayers.map(function(p) { return p.name; }).join(', ');
+      var subTag = grp.sitOut ? ' (sub needed)' : '';
+      textLines.push('  Group ' + grp.letter + ': ' + names + subTag);
+      htmlRows.push('<tr><td style="padding:2px 16px;color:#374151;font-weight:600;">' +
+        'Group ' + grp.letter + '</td><td style="padding:2px 8px;">' + names +
+        (grp.sitOut ? ' <em style="color:#8A4F0B;">(sub needed)</em>' : '') + '</td></tr>');
+    });
+    textLines.push('');
   });
 
-  return { success: true, emailsSent: sent };
+  var body = 'The MWF Tennis League schedule for ' + monthLabel + ' has been published.\n\n' +
+    textLines.join('\n') +
+    'Court times will be announced separately as each date approaches.\n\n' +
+    'View the schedule: ' + scheduleUrl;
+
+  var htmlBody = '<p>The MWF Tennis League schedule for <strong>' + monthLabel +
+    '</strong> has been published.</p>' +
+    '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;">' +
+    htmlRows.join('') + '</table>' +
+    '<p style="margin-top:16px;">Court times will be announced separately as each date approaches.</p>' +
+    '<p><a href="' + scheduleUrl + '">View the full schedule</a></p>';
+
+  var allEmails = Object.keys(emailSet);
+  if (!allEmails.length) return { success: true, emailsSent: 0 };
+
+  var subject  = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
+  var BATCH    = 50;
+  var batches  = Math.ceil(allEmails.length / BATCH);
+
+  // Quota check
+  try {
+    var remaining = MailApp.getRemainingDailyQuota();
+    if (remaining < batches) {
+      return { success: false, error: 'Insufficient email quota — ' + remaining +
+        ' sends remaining, need ' + batches + ' (batched at 50).' };
+    }
+  } catch(e) { /* ignore */ }
+
+  var senderEmail = getConfig().senderEmail || '';
+  for (var b = 0; b < batches; b++) {
+    var bcc = allEmails.slice(b * BATCH, (b + 1) * BATCH).join(', ');
+    try {
+      if (senderEmail) {
+        try {
+          GmailApp.sendEmail('', subject, body, {
+            bcc: bcc, htmlBody: htmlBody, name: 'MWF Tennis League',
+            from: senderEmail, replyTo: senderEmail
+          });
+          continue;
+        } catch(ge) { /* fall through to MailApp */ }
+      }
+      MailApp.sendEmail({ to: '', bcc: bcc, subject: subject, body: body,
+        htmlBody: htmlBody, name: 'MWF Tennis League' });
+    } catch(e) {
+      return { success: false, error: 'Email batch ' + (b + 1) + ' failed: ' + e.message };
+    }
+  }
+
+  return { success: true, emailsSent: allEmails.length };
 }
 
 // ── Sheet helper ────────────────────────────────────
