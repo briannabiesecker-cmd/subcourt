@@ -2696,12 +2696,14 @@ function sendScheduleEmails(params) {
     try {
       if (senderEmail) {
         try {
-          opts.from    = senderEmail;
-          opts.replyTo = senderEmail;
-          GmailApp.sendEmail(toEmail, subject, body, opts);
+          GmailApp.sendEmail(toEmail, subject, body,
+            Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
           continue;
-        } catch(ge) { /* fall through to MailApp */ }
+        } catch(ge) {
+          Logger.log('GmailApp batch ' + (b+1) + ' failed (' + ge.message + '), falling back to MailApp');
+        }
       }
+      // MailApp fallback — no from: override, sends from the authorized account
       opts.to = toEmail; opts.subject = subject; opts.body = body;
       MailApp.sendEmail(opts);
     } catch(e) {
