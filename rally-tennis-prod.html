@@ -4329,14 +4329,16 @@ function renderPublishedSchedule(filterEmail, filterName) {
       const captain = g.players.find(p => p.isCaptain);
       const others  = g.players.filter(p => !p.isCaptain);
       const playerNames = others.map(p => {
-        const isMe = filterLower && p.email && p.email.toLowerCase() === filterLower;
+        const isMe = (filterEmailLower && p.email && p.email.toLowerCase() === filterEmailLower) ||
+                     (filterNameLower  && p.name  && p.name.toLowerCase()  === filterNameLower);
         const star = p.email && no8amList.includes(p.email.toLowerCase()) ? starHtml : '';
         const name = p.name + star;
         return isMe ? `<strong>${name}</strong>` : name;
       }).filter(Boolean).join(', ');
       const captainStar = captain && captain.email && no8amList.includes(captain.email.toLowerCase()) ? starHtml : '';
       const captainName = captain
-        ? (filterLower && captain.email && captain.email.toLowerCase() === filterLower
+        ? (((filterEmailLower && captain.email && captain.email.toLowerCase() === filterEmailLower) ||
+            (filterNameLower  && captain.name  && captain.name.toLowerCase()  === filterNameLower))
             ? `<strong>${captain.name}${captainStar}</strong>` : captain.name + captainStar)
         : '';
       const rowClass = gi === 0 ? 'date-first' : '';
