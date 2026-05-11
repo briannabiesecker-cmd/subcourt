@@ -1288,17 +1288,13 @@
         </div>
 
         <div class="field span2" style="margin-top:8px;">
-          <button type="button" id="req-partners-toggle" class="btn btn-secondary btn-sm"
-            onclick="document.getElementById('req-partners-section').style.display = document.getElementById('req-partners-section').style.display === 'none' ? '' : 'none'; this.textContent = this.textContent.startsWith('+') ? '− Hide group partners' : '+ Add group partners (optional)';"
-            style="font-size:15px;padding:12px 20px;">+ Add group partners (optional)</button>
-          <div style="font-size:14px;color:var(--ink-light);margin-top:6px;">Partner names are copied on the confirmation email.</div>
+          <label>Who else is in your group?</label>
+          <div style="font-size:14px;color:var(--ink-light);margin-top:2px;">Select your 3 partners — they'll be copied on the confirmation email.</div>
         </div>
 
-        <div id="req-partners-section" class="field span2" style="display:none;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <!-- Partner 2 -->
-        <div class="field">
-          <label>Partner 2 name</label>
+        <div class="field span2">
+          <label>Partner 2</label>
           <div class="typeahead-wrap">
             <div id="p2-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -1316,15 +1312,12 @@
               <div class="typeahead-dropdown" id="p2-dropdown" style="display:none;"></div>
             </div>
           </div>
-        </div>
-        <div class="field">
-          <label>Partner 2 email</label>
-          <input type="email" id="p2-email" placeholder="Auto-filled on selection" disabled />
+          <input type="email" id="p2-email" style="display:none;" disabled />
         </div>
 
         <!-- Partner 3 -->
-        <div class="field">
-          <label>Partner 3 name</label>
+        <div class="field span2">
+          <label>Partner 3</label>
           <div class="typeahead-wrap">
             <div id="p3-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -1342,15 +1335,12 @@
               <div class="typeahead-dropdown" id="p3-dropdown" style="display:none;"></div>
             </div>
           </div>
-        </div>
-        <div class="field">
-          <label>Partner 3 email</label>
-          <input type="email" id="p3-email" placeholder="Auto-filled on selection" disabled />
+          <input type="email" id="p3-email" style="display:none;" disabled />
         </div>
 
         <!-- Partner 4 -->
-        <div class="field">
-          <label>Partner 4 name</label>
+        <div class="field span2">
+          <label>Partner 4</label>
           <div class="typeahead-wrap">
             <div id="p4-selected-state" style="display:none;">
               <div class="selected-pill">
@@ -1368,13 +1358,8 @@
               <div class="typeahead-dropdown" id="p4-dropdown" style="display:none;"></div>
             </div>
           </div>
+          <input type="email" id="p4-email" style="display:none;" disabled />
         </div>
-        <div class="field">
-          <label>Partner 4 email</label>
-          <input type="email" id="p4-email" placeholder="Auto-filled on selection" disabled />
-        </div>
-        </div><!-- end partners grid -->
-        </div><!-- end req-partners-section -->
       </div>
 
       <div class="mt12 flex gap8">
