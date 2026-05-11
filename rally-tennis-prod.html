@@ -4221,7 +4221,7 @@ function exportSchedulePDF() {
   win.document.close();
 }
 
-function openScheduleEmailDraft(activeSlots) {
+function openScheduleEmailDraft(activeSlots, gmailWin) {
   const parts      = scheduleData.month.split('-');
   const monthLabel = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1)
     .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -4277,15 +4277,19 @@ function openScheduleEmailDraft(activeSlots) {
   document.body.removeChild(dlLink);
   setTimeout(() => URL.revokeObjectURL(dlLink.href), 2000);
 
-  // Open Gmail compose pre-filled with all players in BCC
-  const subject = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
-  window.open(
-    'https://mail.google.com/mail/?view=cm&fs=1' +
+  // Navigate the pre-opened window to Gmail compose
+  const subject    = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
+  const gmailUrl   = 'https://mail.google.com/mail/?view=cm&fs=1' +
     '&bcc='  + encodeURIComponent(emails.join(',')) +
     '&su='   + encodeURIComponent(subject) +
-    '&body=' + encodeURIComponent(bodyLines.join('\n')),
-    '_blank'
-  );
+    '&body=' + encodeURIComponent(bodyLines.join('\n'));
+  if (gmailWin && !gmailWin.closed) {
+    gmailWin.location.href = gmailUrl;
+  } else {
+    // Popup was blocked — show a clickable link in the alert instead
+    showAlert('scheduler-alert', 'success',
+      'Schedule published. <a href="' + gmailUrl + '" target="_blank" style="color:var(--primary);font-weight:600;">Click here to open Gmail compose</a> — attach the downloaded CSV and send.');
+  }
 }
 
 async function publishScheduleToSheet() {
@@ -4293,6 +4297,9 @@ async function publishScheduleToSheet() {
   const btn = document.getElementById('sched-save-btn');
   btn.disabled = true;
   btn.textContent = 'Publishing…';
+
+  // Open blank window NOW — synchronous click context allows it; popup blocker blocks after await
+  const gmailWin = window.open('', '_blank');
 
   const activeSlots = scheduleData.slots
     .filter(s => !s.skipped)
@@ -4316,11 +4323,11 @@ async function publishScheduleToSheet() {
       totalGroups += res.groupsWritten || 0;
     }
 
-    // Download CSV + open Gmail compose with all players pre-filled
-    openScheduleEmailDraft(activeSlots);
+    // Download CSV + redirect pre-opened window to Gmail compose
+    openScheduleEmailDraft(activeSlots, gmailWin);
     showAlert('scheduler-alert', 'success',
       'Schedule published — ' + totalGroups + ' group(s). ' +
-      'A CSV file was downloaded and Gmail is opening — attach the CSV and click Send.');
+      'Gmail opened with all players pre-filled — attach the downloaded CSV and click Send.');
     btn.textContent = 'Published ✓';
     // Unlock exports now that published version is in sync
     const excelBtn = document.getElementById('sched-excel-btn');
@@ -4330,6 +4337,7 @@ async function publishScheduleToSheet() {
     document.getElementById('sched-excel-wrap').title = '';
     document.getElementById('sched-pdf-wrap').title = '';
   } catch(e) {
+    if (gmailWin && !gmailWin.closed) gmailWin.close();
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Publish';
