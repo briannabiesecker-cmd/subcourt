@@ -673,7 +673,12 @@ function getPlayersWithRatings() {
     const email = (r[col.email] || '').toLowerCase();
     if (email && !seen[email]) {
       seen[email] = true;
-      acc.push({ name: r[col.name] || '', email: email, rating: parseFloat(r[col.rating]) || 0 });
+      acc.push({
+        name:   r[col.name] || '',
+        email:  email,
+        rating: parseFloat(r[col.rating]) || 0,
+        no8am:  r[col.no8am] === true || (r[col.no8am] && r[col.no8am].toString().toUpperCase() === 'TRUE')
+      });
     } else if (email && seen[email]) {
       Logger.log('WARNING: duplicate email in Players sheet: ' + email);
     }
@@ -1075,11 +1080,15 @@ function runMatch(params) {
     } else {
       if (!volTimes.includes(effectiveTime)) return false;
     }
+    // Look up player record for rating and no8am flag
+    const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
     if (skillWindow !== Infinity) {
-      const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
       if (!vol) return false;
       if (Math.abs(vol.rating - reqRating) > skillWindow) return false;
     }
+    // No8am volunteers must never be matched to an 8am slot or a TBD request
+    // (TBD defaults to effectiveTime '08:00', which could turn out to be 8am).
+    if (vol && vol.no8am && effectiveTime === '08:00') return false;
     const alreadyAssigned = requests.some(r =>
       r.assignedSub && r.assignedSub.toLowerCase() === v.email.toLowerCase() &&
       r.matchDate === matchDate && r.status === 'filled' &&
