@@ -2472,16 +2472,34 @@ async function loadMySubmissions(email) {
       v.date > todayStr
     );
 
+    // For matched volunteers, look up the corresponding filled request to get
+    // the requestor name and court time for the "Already matched" note.
+    let requests = [];
+    if (mine.some(v => v.status === 'matched')) {
+      try { requests = await getRequests(); } catch(e) {}
+    }
+
     mine.forEach(v => {
-      myVolunteerMap[v.date] = { rowIndex: v.rowIndex, status: v.status, times: [...v.times] };
+      const entry = { rowIndex: v.rowIndex, status: v.status, times: [...v.times] };
+      if (v.status === 'matched') {
+        const req = requests.find(r =>
+          r.assignedSub && r.assignedSub.toLowerCase() === v.email.toLowerCase() &&
+          r.matchDate === v.date && r.status === 'filled'
+        );
+        if (req) {
+          entry.requestorName = req.name;
+          entry.matchTime     = req.matchTime;
+        }
+      }
+      myVolunteerMap[v.date] = entry;
     });
 
     // Pre-populate calendar chips for each existing submission
     mine.forEach(v => {
-      if (!volSelections.hasOwnProperty(v.date)) return; // date not in visible calendar
+      if (!volSelections.hasOwnProperty(v.date)) return;
       volSelections[v.date] = [...v.times];
       refreshDateRow(v.date);
-      if (v.status === 'matched') lockDateRow(v.date);
+      if (v.status === 'matched') lockDateRow(v.date, myVolunteerMap[v.date]);
     });
     updateVolSummary();
   } catch(e) {
@@ -2489,10 +2507,9 @@ async function loadMySubmissions(email) {
   }
 }
 
-function lockDateRow(k) {
+function lockDateRow(k, matchInfo) {
   const row = document.getElementById('daterow-' + k);
   if (!row) return;
-  // Disable chips and checkbox
   TIMES.forEach(t => {
     const chip = document.getElementById('chip-' + k + '-' + t);
     if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
@@ -2501,12 +2518,16 @@ function lockDateRow(k) {
   if (allChk) allChk.disabled = true;
   const saw = row.querySelector('.select-all-wrap');
   if (saw) saw.style.pointerEvents = 'none';
-  // Add note if not already present
   if (!row.querySelector('.matched-note')) {
     const note = document.createElement('div');
     note.className = 'matched-note';
-    note.style.cssText = 'font-size:12px;color:var(--ink-light);font-style:italic;margin-top:4px;width:100%;';
-    note.textContent = 'Already matched — cannot edit';
+    note.style.cssText = 'font-size:12px;color:var(--success);font-style:italic;margin-top:4px;width:100%;';
+    let msg = 'Already matched — cannot edit';
+    if (matchInfo && matchInfo.requestorName) {
+      const timeLabel = matchInfo.matchTime ? (TIME_LABELS[matchInfo.matchTime] || matchInfo.matchTime) : 'TBD';
+      msg += '. Subbing for ' + matchInfo.requestorName + ' at ' + timeLabel;
+    }
+    note.textContent = msg;
     row.appendChild(note);
   }
 }
