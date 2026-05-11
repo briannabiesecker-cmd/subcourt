@@ -2544,20 +2544,22 @@ function getPublishedSchedule() {
   return { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
 }
 
-// Builds PDF and Excel schedule attachments using a temp sheet/spreadsheet.
-// PDF is exported from a temp tab in the main spreadsheet (single-sheet export).
-// Excel is exported from a temp standalone spreadsheet (then trashed via DriveApp).
+// Builds schedule attachments: PDF (temp tab export) + CSV (opens in Excel).
+// Uses only the spreadsheets scope already authorized — no DriveApp needed.
 function buildScheduleAttachments(schedule, monthLabel) {
-  var ss      = SpreadsheetApp.openById(SHEET_ID);
-  var token   = ScriptApp.getOAuthToken();
-  var safe    = monthLabel.replace(/\s/g, '_');
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var token = ScriptApp.getOAuthToken();
+  var safe  = monthLabel.replace(/\s/g, '_');
 
-  // Build row data once — shared between PDF and Excel
+  // Build data rows and CSV lines together
   var dataRows = [];
+  var csvLines = ['"MWF Tennis League — ' + monthLabel + ' Schedule"', ''];
+
   schedule.dates.forEach(function(dayObj) {
     var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
       { weekday: 'long', month: 'long', day: 'numeric' });
     dataRows.push([dateLabel, '', '', '', '']);
+    csvLines.push('"' + dateLabel.replace(/"/g, '""') + '"');
     dayObj.groups.forEach(function(grp) {
       var real = grp.players.filter(function(p) {
         return p.name && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
@@ -2567,26 +2569,13 @@ function buildScheduleAttachments(schedule, monthLabel) {
       while (row.length < 5) row.push('');
       row.push(grp.sitOut ? '(sub needed)' : '');
       dataRows.push(row);
+      csvLines.push(row.map(function(v) { return '"' + (v || '').replace(/"/g, '""') + '"'; }).join(','));
     });
-    dataRows.push(['', '', '', '', '', '']);
+    dataRows.push(['', '', '', '', '']);
+    csvLines.push('');
   });
 
-  function writeToSheet(sheet) {
-    sheet.getRange(1, 1).setValue('MWF Tennis League — ' + monthLabel + ' Schedule');
-    sheet.getRange(1, 1).setFontSize(14).setFontWeight('bold');
-    if (dataRows.length) {
-      sheet.getRange(3, 1, dataRows.length, 6).setValues(dataRows);
-      var r = 3;
-      schedule.dates.forEach(function(dayObj) {
-        sheet.getRange(r, 1, 1, 5).setFontWeight('bold').setBackground('#DCE8F5');
-        r += dayObj.groups.length + 2;
-      });
-    }
-    sheet.setColumnWidth(1, 180);
-    for (var c = 2; c <= 5; c++) sheet.setColumnWidth(c, 140);
-  }
-
-  var pdfBlob = null, xlsxBlob = null;
+  var pdfBlob = null;
 
   // ── PDF: temp tab in main spreadsheet (single-sheet export) ──
   var tempName = '__sched_export__';
@@ -2594,7 +2583,18 @@ function buildScheduleAttachments(schedule, monthLabel) {
   if (oldTab) ss.deleteSheet(oldTab);
   var tab = ss.insertSheet(tempName);
   try {
-    writeToSheet(tab);
+    tab.getRange(1, 1).setValue('MWF Tennis League — ' + monthLabel + ' Schedule');
+    tab.getRange(1, 1).setFontSize(14).setFontWeight('bold');
+    if (dataRows.length) {
+      tab.getRange(3, 1, dataRows.length, 6).setValues(dataRows);
+      var r = 3;
+      schedule.dates.forEach(function(dayObj) {
+        tab.getRange(r, 1, 1, 5).setFontWeight('bold').setBackground('#DCE8F5');
+        r += dayObj.groups.length + 2;
+      });
+    }
+    tab.setColumnWidth(1, 180);
+    for (var c = 2; c <= 5; c++) tab.setColumnWidth(c, 140);
     SpreadsheetApp.flush();
     var pdfUrl = 'https://docs.google.com/spreadsheets/d/' + ss.getId() +
       '/export?format=pdf&gid=' + tab.getSheetId() +
@@ -2604,20 +2604,13 @@ function buildScheduleAttachments(schedule, monthLabel) {
   } catch(e) { Logger.log('PDF export failed: ' + e.message); }
   try { ss.deleteSheet(tab); } catch(e) {}
 
-  // ── Excel: temp standalone spreadsheet ───────────────────────
-  try {
-    var tempSS  = SpreadsheetApp.create('__rally_sched_temp__');
-    var tempTab = tempSS.getActiveSheet();
-    tempTab.setName('Schedule');
-    writeToSheet(tempTab);
-    SpreadsheetApp.flush();
-    var xlsxUrl = 'https://docs.google.com/spreadsheets/d/' + tempSS.getId() + '/export?format=xlsx';
-    xlsxBlob = UrlFetchApp.fetch(xlsxUrl, { headers: { Authorization: 'Bearer ' + token } })
-      .getBlob().setName(safe + '_Schedule.xlsx');
-    DriveApp.getFileById(tempSS.getId()).setTrashed(true);
-  } catch(e) { Logger.log('Excel export failed: ' + e.message); }
+  // ── CSV (opens natively in Excel): no additional scopes needed ──
+  // BOM prefix ensures Excel reads UTF-8 characters correctly
+  var csvBlob = Utilities.newBlob(
+    '﻿' + csvLines.join('\r\n'), 'text/csv', safe + '_Schedule.csv'
+  );
 
-  return [pdfBlob, xlsxBlob].filter(Boolean);
+  return [pdfBlob, csvBlob].filter(Boolean);
 }
 
 // Sends the published schedule to ALL players (BCC batches of 50) with PDF + Excel attachments.
@@ -2659,7 +2652,7 @@ function sendScheduleEmails(params) {
     textLines.join('\n') +
     'Court times will be announced separately as each date approaches.\n\n' +
     'View the schedule online: ' + scheduleUrl + '\n\n' +
-    'The schedule is also attached as PDF and Excel files.';
+    'The schedule is also attached as a PDF and a spreadsheet file (CSV).';
 
   var htmlBody = '<p>The MWF Tennis League schedule for <strong>' + monthLabel +
     '</strong> has been published.</p>' +
@@ -2667,7 +2660,7 @@ function sendScheduleEmails(params) {
     htmlRows.join('') + '</table>' +
     '<p style="margin-top:16px;">Court times will be announced separately as each date approaches.</p>' +
     '<p><a href="' + scheduleUrl + '">View the full schedule online</a></p>' +
-    '<p style="color:#666;font-size:12px;margin-top:12px;">The schedule is also attached as PDF and Excel files.</p>';
+    '<p style="color:#666;font-size:12px;margin-top:12px;">The schedule is also attached as a PDF and a spreadsheet file (CSV, opens in Excel).</p>';
 
   // All players from the Players sheet (not just scheduled ones)
   var allEmails = getPlayersWithRatings()
