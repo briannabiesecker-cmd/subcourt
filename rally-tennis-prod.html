@@ -4221,6 +4221,73 @@ function exportSchedulePDF() {
   win.document.close();
 }
 
+function openScheduleEmailDraft(activeSlots) {
+  const parts      = scheduleData.month.split('-');
+  const monthLabel = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const scheduleUrl = window.location.href.split('#')[0] + '#schedule';
+  const anitaRe    = /^anita\.sub\d+@xgmail\.com$/i;
+
+  // Build plain-text body and CSV simultaneously
+  const bodyLines = ['The MWF Tennis League schedule for ' + monthLabel + ' has been published.\n'];
+  const csvLines  = ['"MWF Tennis League — ' + monthLabel + ' Schedule"', ''];
+
+  activeSlots.forEach(slot => {
+    const dateLabel = new Date(slot.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'long', month: 'long', day: 'numeric' });
+    bodyLines.push(dateLabel.toUpperCase());
+    csvLines.push('"' + dateLabel.replace(/"/g, '""') + '"');
+    slot.groups.forEach((group, gi) => {
+      const letter = String.fromCharCode(65 + gi);
+      const real   = group.filter(p => p.name && !anitaRe.test(p.email || ''));
+      const names  = real.map(p => p.name).join(', ');
+      const subTag = real.length < 4 ? ' (sub needed)' : '';
+      bodyLines.push('  Group ' + letter + ': ' + names + subTag);
+      const row = ['Group ' + letter].concat(real.map(p => p.name));
+      while (row.length < 5) row.push('');
+      if (subTag) row.push('(sub needed)');
+      csvLines.push(row.map(v => '"' + (v || '').replace(/"/g, '""') + '"').join(','));
+    });
+    bodyLines.push('');
+    csvLines.push('');
+  });
+
+  bodyLines.push('Court times will be announced separately as each date approaches.');
+  bodyLines.push('View the full schedule: ' + scheduleUrl);
+  bodyLines.push('');
+  bodyLines.push('(Schedule also attached as CSV — opens in Excel or Google Sheets.)');
+
+  // Collect all player emails — playerList if loaded, else gather from schedule
+  let emails = playerList.filter(p => p.email && !anitaRe.test(p.email)).map(p => p.email);
+  if (!emails.length) {
+    const seen = new Set();
+    activeSlots.forEach(s => s.groups.forEach(g => g.forEach(p => {
+      if (p.email && !anitaRe.test(p.email)) seen.add(p.email.toLowerCase());
+    })));
+    emails = [...seen];
+  }
+
+  // Auto-download the CSV so the user can attach it in Gmail
+  const csvBlob = new Blob(['﻿' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const dlLink  = document.createElement('a');
+  dlLink.href     = URL.createObjectURL(csvBlob);
+  dlLink.download = monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
+  document.body.appendChild(dlLink);
+  dlLink.click();
+  document.body.removeChild(dlLink);
+  setTimeout(() => URL.revokeObjectURL(dlLink.href), 2000);
+
+  // Open Gmail compose pre-filled with all players in BCC
+  const subject = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
+  window.open(
+    'https://mail.google.com/mail/?view=cm&fs=1' +
+    '&bcc='  + encodeURIComponent(emails.join(',')) +
+    '&su='   + encodeURIComponent(subject) +
+    '&body=' + encodeURIComponent(bodyLines.join('\n')),
+    '_blank'
+  );
+}
+
 async function publishScheduleToSheet() {
   if (!scheduleData || !scheduleData.slots) return;
   const btn = document.getElementById('sched-save-btn');
@@ -4249,16 +4316,11 @@ async function publishScheduleToSheet() {
       totalGroups += res.groupsWritten || 0;
     }
 
-    // Send notification emails to all players
-    let emailNote = '';
-    try {
-      const emailRes = await apiPost({ action: 'sendScheduleEmails', month: scheduleData.month });
-      if (emailRes.skipped)        emailNote = ' Email notifications are disabled.';
-      else if (!emailRes.success)  emailNote = ' Email failed: ' + (emailRes.error || 'unknown error');
-      else                         emailNote = ' Emails sent to ' + (emailRes.emailsSent || 0) + ' player(s).';
-    } catch(e) { emailNote = ' (Email send failed: ' + e.message + ')'; }
-
-    showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s) visible on the Schedule tab.' + emailNote);
+    // Download CSV + open Gmail compose with all players pre-filled
+    openScheduleEmailDraft(activeSlots);
+    showAlert('scheduler-alert', 'success',
+      'Schedule published — ' + totalGroups + ' group(s). ' +
+      'A CSV file was downloaded and Gmail is opening — attach the CSV and click Send.');
     btn.textContent = 'Published ✓';
     // Unlock exports now that published version is in sync
     const excelBtn = document.getElementById('sched-excel-btn');
