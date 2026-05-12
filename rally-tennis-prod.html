@@ -1220,39 +1220,34 @@
   <!-- ── REQUEST VIEW ── -->
   <div id="view-request" class="view">
 
-    <!-- Name / email — locked at top; content below scrolls independently -->
-    <div class="card" style="margin-bottom:0;border-radius:var(--radius) var(--radius) 0 0;border-bottom:2px solid var(--line);flex-shrink:0;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:start;">
-        <div class="field" style="margin:0;">
-          <label>Your name</label>
-          <div class="typeahead-wrap">
-            <div id="req-selected-state" style="display:none;">
-              <div class="selected-pill">
-                <span id="req-selected-name"></span>
-                <button class="clear-btn" onclick="clearTypeahead('req')" title="Clear">×</button>
-              </div>
-            </div>
-            <div id="req-input-state">
-              <input class="typeahead-input" id="req-name-input" type="text"
-                placeholder="Start typing your name…"
-                oninput="onTypeaheadInput('req', this.value)"
-                onblur="onTypeaheadBlur('req')"
-                onfocus="onTypeaheadFocus('req')"
-                onkeydown="onTypeaheadTabSelect('req', event)"
-                autocomplete="off" />
-              <div class="typeahead-dropdown" id="req-dropdown" style="display:none;"></div>
+    <!-- Compact sticky name bar -->
+    <div style="flex-shrink:0;background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
+        <div class="typeahead-wrap" style="flex:1;max-width:340px;">
+          <div id="req-selected-state" style="display:none;">
+            <div class="selected-pill">
+              <span id="req-selected-name"></span>
+              <button class="clear-btn" onclick="clearTypeahead('req')" title="Clear">×</button>
             </div>
           </div>
-        </div>
-        <div class="field" style="margin:0;">
-          <label>Your email</label>
-          <input type="email" id="req-email" placeholder="Auto-filled on selection" disabled />
+          <div id="req-input-state">
+            <input class="typeahead-input" id="req-name-input" type="text"
+              placeholder="Start typing your name…"
+              oninput="onTypeaheadInput('req', this.value)"
+              onblur="onTypeaheadBlur('req')"
+              onfocus="onTypeaheadFocus('req')"
+              onkeydown="onTypeaheadTabSelect('req', event)"
+              autocomplete="off" />
+            <div class="typeahead-dropdown" id="req-dropdown" style="display:none;"></div>
+          </div>
         </div>
       </div>
+      <input type="email" id="req-email" style="display:none;" disabled />
     </div>
 
     <!-- Scrollable body — everything below the locked card -->
-    <div id="req-body" style="padding-top:1rem;">
+    <div id="req-body" style="padding-top:0.5rem;">
 
     <div id="my-req-section" style="display:none;">
       <div id="my-req-header" class="section-header">
@@ -1262,9 +1257,7 @@
       <hr id="my-req-divider" class="divider" />
     </div>
 
-    <div class="alert alert-info" style="margin-bottom:1.25rem;">
-      <strong>Can't make your match?</strong> Fill out this form and we'll find someone to cover you. You'll receive a confirmation email once a sub has been found.
-    </div>
+    <p style="font-size:13px;color:var(--ink-light);margin:0 0 8px;">Can't make your match? Fill out this form and we'll find someone to cover you.</p>
 
     <div class="card">
       <div id="req-alert" class="hidden"></div>
@@ -1272,12 +1265,10 @@
       <div class="form-grid">
         <div class="field">
           <label>Match date</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">The date of the match you need covered.</div>
           <input type="date" id="req-date" />
         </div>
         <div class="field">
           <label>Match time</label>
-          <div style="font-size:13px;color:var(--ink-light);margin-bottom:4px;">Select your start time, or leave as TBD if unsure.</div>
           <select id="req-time">
             <option value="">Unknown / TBD</option>
             <option value="08:00">8:00 AM</option>
@@ -1287,78 +1278,78 @@
           </select>
         </div>
 
-        <div class="field span2" style="margin-top:8px;">
+        <!-- Partners 2, 3, 4 — all on one row -->
+        <div class="field span2" style="margin-top:4px;">
           <label>Who else is in your group?</label>
-          <div style="font-size:14px;color:var(--ink-light);margin-top:2px;">Select your 3 partners — they'll be copied on the confirmation email.</div>
-        </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
 
-        <!-- Partner 2 -->
-        <div class="field span2">
-          <label>Partner 2</label>
-          <div class="typeahead-wrap">
-            <div id="p2-selected-state" style="display:none;">
-              <div class="selected-pill">
-                <span id="p2-selected-name"></span>
-                <button class="clear-btn" onclick="clearTypeahead('p2')" title="Clear">×</button>
+            <div style="width:20ch;min-width:130px;">
+              <div style="font-size:12px;color:var(--ink-light);margin-bottom:3px;">Partner 2</div>
+              <div class="typeahead-wrap">
+                <div id="p2-selected-state" style="display:none;">
+                  <div class="selected-pill">
+                    <span id="p2-selected-name"></span>
+                    <button class="clear-btn" onclick="clearTypeahead('p2')" title="Clear">×</button>
+                  </div>
+                </div>
+                <div id="p2-input-state">
+                  <input class="typeahead-input" id="p2-name-input" type="text"
+                    placeholder="Start typing…"
+                    oninput="onTypeaheadInput('p2', this.value)"
+                    onblur="onTypeaheadBlur('p2')"
+                    onfocus="onTypeaheadFocus('p2')"
+                    autocomplete="off" style="width:100%;" />
+                  <div class="typeahead-dropdown" id="p2-dropdown" style="display:none;"></div>
+                </div>
               </div>
+              <input type="email" id="p2-email" style="display:none;" disabled />
             </div>
-            <div id="p2-input-state">
-              <input class="typeahead-input" id="p2-name-input" type="text"
-                placeholder="Start typing…"
-                oninput="onTypeaheadInput('p2', this.value)"
-                onblur="onTypeaheadBlur('p2')"
-                onfocus="onTypeaheadFocus('p2')"
-                autocomplete="off" />
-              <div class="typeahead-dropdown" id="p2-dropdown" style="display:none;"></div>
-            </div>
-          </div>
-          <input type="email" id="p2-email" style="display:none;" disabled />
-        </div>
 
-        <!-- Partner 3 -->
-        <div class="field span2">
-          <label>Partner 3</label>
-          <div class="typeahead-wrap">
-            <div id="p3-selected-state" style="display:none;">
-              <div class="selected-pill">
-                <span id="p3-selected-name"></span>
-                <button class="clear-btn" onclick="clearTypeahead('p3')" title="Clear">×</button>
+            <div style="width:20ch;min-width:130px;">
+              <div style="font-size:12px;color:var(--ink-light);margin-bottom:3px;">Partner 3</div>
+              <div class="typeahead-wrap">
+                <div id="p3-selected-state" style="display:none;">
+                  <div class="selected-pill">
+                    <span id="p3-selected-name"></span>
+                    <button class="clear-btn" onclick="clearTypeahead('p3')" title="Clear">×</button>
+                  </div>
+                </div>
+                <div id="p3-input-state">
+                  <input class="typeahead-input" id="p3-name-input" type="text"
+                    placeholder="Start typing…"
+                    oninput="onTypeaheadInput('p3', this.value)"
+                    onblur="onTypeaheadBlur('p3')"
+                    onfocus="onTypeaheadFocus('p3')"
+                    autocomplete="off" style="width:100%;" />
+                  <div class="typeahead-dropdown" id="p3-dropdown" style="display:none;"></div>
+                </div>
               </div>
+              <input type="email" id="p3-email" style="display:none;" disabled />
             </div>
-            <div id="p3-input-state">
-              <input class="typeahead-input" id="p3-name-input" type="text"
-                placeholder="Start typing…"
-                oninput="onTypeaheadInput('p3', this.value)"
-                onblur="onTypeaheadBlur('p3')"
-                onfocus="onTypeaheadFocus('p3')"
-                autocomplete="off" />
-              <div class="typeahead-dropdown" id="p3-dropdown" style="display:none;"></div>
-            </div>
-          </div>
-          <input type="email" id="p3-email" style="display:none;" disabled />
-        </div>
 
-        <!-- Partner 4 -->
-        <div class="field span2">
-          <label>Partner 4</label>
-          <div class="typeahead-wrap">
-            <div id="p4-selected-state" style="display:none;">
-              <div class="selected-pill">
-                <span id="p4-selected-name"></span>
-                <button class="clear-btn" onclick="clearTypeahead('p4')" title="Clear">×</button>
+            <div style="width:20ch;min-width:130px;">
+              <div style="font-size:12px;color:var(--ink-light);margin-bottom:3px;">Partner 4</div>
+              <div class="typeahead-wrap">
+                <div id="p4-selected-state" style="display:none;">
+                  <div class="selected-pill">
+                    <span id="p4-selected-name"></span>
+                    <button class="clear-btn" onclick="clearTypeahead('p4')" title="Clear">×</button>
+                  </div>
+                </div>
+                <div id="p4-input-state">
+                  <input class="typeahead-input" id="p4-name-input" type="text"
+                    placeholder="Start typing…"
+                    oninput="onTypeaheadInput('p4', this.value)"
+                    onblur="onTypeaheadBlur('p4')"
+                    onfocus="onTypeaheadFocus('p4')"
+                    autocomplete="off" style="width:100%;" />
+                  <div class="typeahead-dropdown" id="p4-dropdown" style="display:none;"></div>
+                </div>
               </div>
+              <input type="email" id="p4-email" style="display:none;" disabled />
             </div>
-            <div id="p4-input-state">
-              <input class="typeahead-input" id="p4-name-input" type="text"
-                placeholder="Start typing…"
-                oninput="onTypeaheadInput('p4', this.value)"
-                onblur="onTypeaheadBlur('p4')"
-                onfocus="onTypeaheadFocus('p4')"
-                autocomplete="off" />
-              <div class="typeahead-dropdown" id="p4-dropdown" style="display:none;"></div>
-            </div>
+
           </div>
-          <input type="email" id="p4-email" style="display:none;" disabled />
         </div>
       </div>
 
