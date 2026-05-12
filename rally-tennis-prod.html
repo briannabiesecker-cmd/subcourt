@@ -89,6 +89,8 @@
 
   nav button:hover { background: var(--chalk); color: var(--ink); }
   nav button.active { background: var(--clay); color: white; border-color: var(--clay); box-shadow: 0 2px 8px rgba(224,122,90,0.35); }
+  nav button[data-view="schedule"].active     { background: #6B8F71;      border-color: #6B8F71;      box-shadow: 0 2px 8px rgba(107,143,113,0.35); }
+  nav button[data-view="directory"].active    { background: #B8910A;      border-color: #B8910A;      box-shadow: 0 2px 8px rgba(184,145,10,0.35); }
   nav button[data-view="request"].active      { background: var(--teal);  border-color: var(--teal);  box-shadow: 0 2px 8px rgba(77,189,173,0.35); }
   nav button[data-view="availability"].active { background: #7C6FCD;      border-color: #7C6FCD;      box-shadow: 0 2px 8px rgba(124,111,205,0.35); }
 
@@ -102,6 +104,17 @@
   #view-availability .btn-primary:hover { background: #6B5FBC !important; border-color: #6B5FBC !important; }
   #view-availability .time-chip.selected { background: #7C6FCD !important; border-color: #7C6FCD !important; }
   #view-availability .avail-util-btn    { color: #7C6FCD; border-color: #7C6FCD; }
+
+  /* View Schedule — Sage Green */
+  #view-schedule .selected-pill         { background: rgba(107,143,113,0.1); border-color: #6B8F71; color: #4A6B4F; }
+  #view-schedule .captain-badge         { background: #6B8F71; }
+  #view-schedule .section-title         { color: #4A6B4F; }
+
+  /* Directory — Mustard Yellow */
+  #view-directory .btn-secondary        { background: #B8910A !important; color: white !important; border-color: #B8910A !important; }
+  #view-directory .btn-secondary:hover  { background: #9A7808 !important; border-color: #9A7808 !important; }
+  #view-directory .section-title        { color: #8A6C08; }
+  #view-directory input[type="checkbox"]{ accent-color: #B8910A; }
 
   /* ── Main Layout ── */
   main {
@@ -1184,8 +1197,8 @@
   <div class="logo">Ral<span>ly</span></div>
   <nav>
     <button class="active" onclick="showView('home', this)">Home</button>
-    <button onclick="showView('schedule', this)">View<br>Schedule</button>
-    <button onclick="showView('directory', this)">Directory</button>
+    <button data-view="schedule"   onclick="showView('schedule', this)">View<br>Schedule</button>
+    <button data-view="directory"  onclick="showView('directory', this)">Directory</button>
     <button data-view="request"      onclick="showView('request', this)">Request A Sub</button>
     <button data-view="volunteer"    onclick="showView('volunteer', this)">Volunteer<br>to Sub</button>
     <button data-view="availability" onclick="showView('availability', this)">My<br>Availability</button>
