@@ -94,13 +94,14 @@
 
   /* ── Page colour schemes ── */
   #view-request .btn-primary,
-  #view-request .btn-clay     { background: var(--teal); border-color: var(--teal); }
+  #view-request .btn-clay       { background: var(--teal)  !important; border-color: var(--teal)  !important; }
   #view-request .btn-primary:hover,
-  #view-request .btn-clay:hover { background: var(--court); border-color: var(--court); }
+  #view-request .btn-clay:hover { background: var(--court) !important; border-color: var(--court) !important; }
 
-  #view-availability .btn-primary { background: #7C6FCD; border-color: #7C6FCD; }
-  #view-availability .btn-primary:hover { background: #6B5FBC; border-color: #6B5FBC; }
-  #view-availability .time-chip.selected { background: #7C6FCD; border-color: #7C6FCD; }
+  #view-availability .btn-primary       { background: #7C6FCD !important; border-color: #7C6FCD !important; }
+  #view-availability .btn-primary:hover { background: #6B5FBC !important; border-color: #6B5FBC !important; }
+  #view-availability .time-chip.selected { background: #7C6FCD !important; border-color: #7C6FCD !important; }
+  #view-availability .avail-util-btn    { color: #7C6FCD; border-color: #7C6FCD; }
 
   /* ── Main Layout ── */
   main {
@@ -4740,7 +4741,7 @@ function applyAvailConfigToHomeCard(config) {
   if (!homeCard) return;
   if (config.isOpen) {
     homeCard.classList.remove('home-card-avail-closed');
-    homeCard.onclick = () => showView('availability', document.querySelector('nav button:nth-child(5)'));
+    homeCard.onclick = () => showView('availability');
     const closeFmt = config.closeDate ? formatDateShort(config.closeDate) : '';
     homeDesc.textContent = 'Submit your available dates for ' + (config.targetMonthLabel || 'next month') + (closeFmt ? '. Closes ' + closeFmt + '.' : '.');
   } else {
