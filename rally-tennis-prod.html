@@ -2603,8 +2603,31 @@ function clearVolForm() {
 
 async function loadMySubmissions(email) {
   myVolunteerMap = {};
-  // Clear all calendar selections so a previous player's data doesn't bleed through
-  Object.keys(volSelections).forEach(k => { volSelections[k] = []; refreshDateRow(k); });
+  // Clear alert message and summary
+  document.getElementById('vol-alert').className = 'hidden';
+  document.getElementById('vol-summary').classList.add('hidden');
+  // Reset calendar: unlock locked rows, remove match notes, clear all selections
+  Object.keys(volSelections).forEach(k => {
+    const row = document.getElementById('daterow-' + k);
+    if (row) {
+      const note = row.querySelector('.matched-note');
+      if (note) note.remove();
+      TIMES.forEach(t => {
+        const chip = document.getElementById('chip-' + k + '-' + t);
+        if (chip) {
+          chip.disabled = false;
+          chip.style.cursor = '';
+          chip.onclick = (function(dk, dt) { return function() { toggleTime(dk, dt); }; })(k, t);
+        }
+      });
+      const allChk = document.getElementById('allchk-' + k);
+      if (allChk) { allChk.disabled = false; }
+      const saw = row.querySelector('.select-all-wrap');
+      if (saw) saw.style.pointerEvents = '';
+    }
+    volSelections[k] = [];
+    refreshDateRow(k);
+  });
   updateVolSummary();
   try {
     volunteerCache = null;
