@@ -89,8 +89,18 @@
 
   nav button:hover { background: var(--chalk); color: var(--ink); }
   nav button.active { background: var(--clay); color: white; border-color: var(--clay); box-shadow: 0 2px 8px rgba(224,122,90,0.35); }
-  nav button[data-view="request"].active   { background: var(--teal); border-color: var(--teal); box-shadow: 0 2px 8px rgba(77,189,173,0.35); }
-  nav button[data-view="availability"].active { background: #7C6FCD; border-color: #7C6FCD; box-shadow: 0 2px 8px rgba(124,111,205,0.35); }
+  nav button[data-view="request"].active      { background: var(--teal);  border-color: var(--teal);  box-shadow: 0 2px 8px rgba(77,189,173,0.35); }
+  nav button[data-view="availability"].active { background: #7C6FCD;      border-color: #7C6FCD;      box-shadow: 0 2px 8px rgba(124,111,205,0.35); }
+
+  /* ── Page colour schemes ── */
+  #view-request .btn-primary,
+  #view-request .btn-clay     { background: var(--teal); border-color: var(--teal); }
+  #view-request .btn-primary:hover,
+  #view-request .btn-clay:hover { background: var(--court); border-color: var(--court); }
+
+  #view-availability .btn-primary { background: #7C6FCD; border-color: #7C6FCD; }
+  #view-availability .btn-primary:hover { background: #6B5FBC; border-color: #6B5FBC; }
+  #view-availability .time-chip.selected { background: #7C6FCD; border-color: #7C6FCD; }
 
   /* ── Main Layout ── */
   main {
@@ -1195,7 +1205,7 @@
 
     <div class="home-actions">
       <div id="home-avail-card" class="home-card home-card-avail home-card-avail-closed"
-        onclick="showView('availability', document.querySelector('nav [data-view=availability]'))">
+        onclick="showView('availability')">
         <div class="home-card-icon">🗓️</div>
         <div class="home-card-title">My availability</div>
         <div style="font-size:14px;color:var(--ink-light);margin-top:-10px;">for next month</div>
@@ -1203,14 +1213,14 @@
         <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
 
-      <div class="home-card" onclick="showView('request', document.querySelector('nav [data-view=request]'))">
+      <div class="home-card" onclick="showView('request')">
         <div class="home-card-icon">🎾</div>
         <div class="home-card-title">I need a sub</div>
         <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
         <button class="home-card-btn">Request a Sub</button>
       </div>
 
-      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav [data-view=volunteer]'))">
+      <div class="home-card home-card-alt" onclick="showView('volunteer')">
         <div class="home-card-icon">🙋</div>
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
@@ -1443,7 +1453,7 @@
         <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
           <div style="font-size:16px;font-weight:700;color:var(--court);margin-bottom:6px;">Available to play right now?</div>
           <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:12px;">If you're free to cover for someone, sign up as a volunteer. You'll be contacted when there's a match that fits your schedule.</div>
-          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav [data-view=volunteer]'))">Go to Volunteer to Sub</button>
+          <button class="btn btn-primary" onclick="showView('volunteer')">Go to Volunteer to Sub</button>
         </div>
       </div>
     </div>
@@ -1901,7 +1911,9 @@ function showView(name, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
-  if (btn) btn.classList.add('active');
+  // btn = 'this' from nav clicks; fall back to data-view lookup for home card clicks
+  (btn || document.querySelector('nav [data-view="' + name + '"]') || null)
+    ?.classList.add('active');
   if (name === 'request') prefillIdentity('req');
   if (name === 'volunteer') {
     myVolunteerMap = {};
