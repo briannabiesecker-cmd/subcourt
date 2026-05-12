@@ -624,8 +624,8 @@
     box-shadow: var(--shadow);
   }
   .typeahead-item {
-    padding: 15px 16px;
-    font-size: 17px;
+    padding: 10px 16px;
+    font-size: 14px;
     cursor: pointer;
     color: var(--ink);
     border-bottom: 1px solid var(--chalk);
@@ -2032,7 +2032,6 @@ async function showTypeaheadDropdown(prefix, val) {
     <div class="typeahead-item ${i === 0 && val ? 'highlighted' : ''}"
       onmousedown="selectTypeaheadPlayer('${prefix}', '${p.name}', '${p.email}')">
       <span>${val ? highlightMatch(p.name, val) : p.name}</span>
-      <span class="typeahead-email">${p.email}</span>
     </div>
   `).join('');
   dd.style.display = 'block';
