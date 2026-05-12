@@ -1376,9 +1376,9 @@
 
     <!-- Compact sticky name bar -->
     <div style="flex-shrink:0;background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
-      <div style="display:flex;align-items:center;gap:12px;max-width:520px;">
+      <div style="display:flex;align-items:center;gap:12px;">
         <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
-        <div class="typeahead-wrap" style="flex:1;">
+        <div class="typeahead-wrap" style="flex:1;max-width:340px;">
           <div id="vol-selected-state" style="display:none;">
             <div class="selected-pill">
               <span id="vol-selected-name"></span>
@@ -1396,6 +1396,8 @@
             <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
           </div>
         </div>
+        <button class="btn btn-clay" style="flex-shrink:0;font-size:14px;padding:8px 16px;" onclick="submitVolunteer()">Submit availability</button>
+        <button class="btn btn-secondary" style="flex-shrink:0;font-size:14px;padding:8px 14px;" onclick="clearVolForm()">Clear</button>
       </div>
       <input type="email" id="vol-email" style="display:none;" disabled />
     </div>
