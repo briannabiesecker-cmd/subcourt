@@ -1195,7 +1195,7 @@
 
     <div class="home-actions">
       <div id="home-avail-card" class="home-card home-card-avail home-card-avail-closed"
-        onclick="showView('availability', document.querySelector('nav button:nth-child(6)'))">
+        onclick="showView('availability', document.querySelector('nav [data-view=availability]'))">
         <div class="home-card-icon">🗓️</div>
         <div class="home-card-title">My availability</div>
         <div style="font-size:14px;color:var(--ink-light);margin-top:-10px;">for next month</div>
@@ -1203,14 +1203,14 @@
         <button class="home-card-btn home-card-btn-avail">Submit</button>
       </div>
 
-      <div class="home-card" onclick="showView('request', document.querySelector('nav button:nth-child(4)'))">
+      <div class="home-card" onclick="showView('request', document.querySelector('nav [data-view=request]'))">
         <div class="home-card-icon">🎾</div>
         <div class="home-card-title">I need a sub</div>
         <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
         <button class="home-card-btn">Request a Sub</button>
       </div>
 
-      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav button:nth-child(5)'))">
+      <div class="home-card home-card-alt" onclick="showView('volunteer', document.querySelector('nav [data-view=volunteer]'))">
         <div class="home-card-icon">🙋</div>
         <div class="home-card-title">I can sub</div>
         <div class="home-card-desc">Available to play? Sign up as a volunteer and get matched when someone needs you.</div>
@@ -1443,7 +1443,7 @@
         <div style="background:var(--teal-light);border-radius:var(--radius);padding:16px 20px;text-align:left;">
           <div style="font-size:16px;font-weight:700;color:var(--court);margin-bottom:6px;">Available to play right now?</div>
           <div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:12px;">If you're free to cover for someone, sign up as a volunteer. You'll be contacted when there's a match that fits your schedule.</div>
-          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav button:nth-child(5)'))">Go to Volunteer to Sub</button>
+          <button class="btn btn-primary" onclick="showView('volunteer', document.querySelector('nav [data-view=volunteer]'))">Go to Volunteer to Sub</button>
         </div>
       </div>
     </div>
@@ -1464,13 +1464,10 @@
     <div id="avail-open-panel" style="display:none;">
       <div id="avail-alert" class="hidden" style="margin-bottom:1rem;"></div>
 
-      <div class="card" style="margin-bottom:1rem;">
-        <div id="avail-window-banner" style="font-size:15px;color:var(--ink-mid);margin-bottom:1.25rem;"></div>
-
-        <div class="field" style="margin-bottom:1.25rem;">
-          <label style="font-size:17px;">Your name</label>
-          <div style="font-size:14px;color:var(--ink-light);margin-bottom:6px;">Select your name and we'll load any dates you already submitted.</div>
-          <div class="typeahead-wrap">
+      <div style="background:white;border-bottom:2px solid var(--line);padding:10px 20px;margin:-1.5rem -1.5rem 0.75rem;border-radius:var(--radius-lg) var(--radius-lg) 0 0;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
+          <div class="typeahead-wrap" style="flex:1;max-width:340px;">
             <div id="av-selected-state" style="display:none;">
               <div class="selected-pill">
                 <span id="av-selected-name"></span>
@@ -1487,26 +1484,22 @@
               <div class="typeahead-dropdown" id="av-dropdown" style="display:none;"></div>
             </div>
           </div>
-          <input type="email" id="av-email" style="display:none;" />
-          <div id="avail-load-status" style="display:none;margin-top:8px;font-size:14px;color:var(--ink-light);"></div>
+          <div id="avail-window-banner" style="font-size:13px;color:var(--ink-mid);flex-shrink:0;"></div>
         </div>
+        <input type="email" id="av-email" style="display:none;" />
+        <div id="avail-load-status" style="display:none;margin-top:6px;font-size:13px;color:var(--ink-light);"></div>
       </div>
 
       <div id="avail-calendar-wrap" style="display:none;">
-        <div class="card" style="padding:1.25rem 1.5rem;">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.5rem;">
-            <div style="font-size:18px;font-weight:700;color:var(--ink);" id="avail-month-label">Dates</div>
-            <div style="display:flex;gap:12px;">
-              <button class="avail-util-btn" onclick="availSelectAll()">Select all dates</button>
+        <div class="card" style="padding:1rem 1.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem;">
+            <div style="font-size:16px;font-weight:700;color:var(--ink);" id="avail-month-label">Dates</div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button class="avail-util-btn" onclick="availSelectAll()">Select all</button>
               <button class="avail-util-btn" onclick="availClearAll()">Clear all</button>
+              <button class="btn btn-primary" id="avail-submit-btn-top" style="font-size:13px;padding:7px 14px;" onclick="submitAvailability()">Submit</button>
             </div>
           </div>
-          <div style="font-size:14px;color:var(--ink-light);margin-bottom:1rem;">Tap <strong>Y</strong> to mark yourself available on that date. Tap again to change it to <strong>N</strong>.</div>
-
-          <div class="mt12 flex gap8" style="margin-bottom:1rem;">
-            <button class="btn btn-primary" id="avail-submit-btn-top" onclick="submitAvailability()">Submit availability</button>
-          </div>
-
           <div id="avail-grid-wrap" style="overflow-x:auto;">
             <table class="avail-grid" id="avail-grid"></table>
           </div>
@@ -3707,9 +3700,15 @@ async function loadMyAvailability(email) {
 
     const existing = data && data.submission;
     if (existing && existing.availableDates && existing.availableDates.length) {
-      existing.availableDates.forEach(date => { availSelections[date] = true; });
+      // Only count and pre-select dates that belong to the current target month
+      const monthDates = existing.availableDates.filter(d => d.startsWith(targetMonth));
+      monthDates.forEach(date => { availSelections[date] = true; });
       buildAvailabilityGrid();
-      setStatus('Your previous submission loaded — ' + existing.availableDates.length + ' date(s) selected.', 'var(--success)');
+      if (monthDates.length) {
+        setStatus('Your previous submission loaded — ' + monthDates.length + ' date(s) selected.', 'var(--success)');
+      } else {
+        setStatus('No previous submission found for ' + (targetMonthLabel || targetMonth) + '. Select your available dates below.');
+      }
     } else {
       setStatus('No previous submission found for ' + (targetMonthLabel || targetMonth) + '. Select your available dates below.');
     }
