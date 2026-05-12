@@ -1538,29 +1538,24 @@
 
   <!-- ── DIRECTORY VIEW ── -->
   <div id="view-directory" class="view">
-    <div class="section-header">
-      <div class="section-title">Player Directory</div>
-    </div>
-
-
-<div id="dir-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading directory…</div>
+    <div id="dir-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading directory…</div>
     <div id="dir-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No players found.</div>
     <div id="dir-table-wrap" style="display:none;">
-      <!-- Toolbar: stays in normal page flow, always visible -->
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;cursor:pointer;">
+      <!-- Toolbar -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;cursor:pointer;">
           <input type="checkbox" id="dir-select-all" onchange="dirToggleAll(this.checked)" style="width:16px;height:16px;">
           Select all
         </label>
-        <button class="btn btn-secondary" onclick="dirSendEmail()" style="font-size:13px;padding:6px 14px;">Send Email</button>
+        <button class="btn btn-secondary" onclick="dirSendEmail()" style="font-size:13px;padding:5px 14px;">Send Email</button>
         <span id="dir-selected-count" style="font-size:13px;color:var(--ink-light);"></span>
       </div>
-      <!-- Scrollable table: thead is sticky within this container -->
-      <div style="overflow-y:auto;max-height:calc(100vh - 300px);overflow-x:auto;">
+      <!-- Scrollable table -->
+      <div style="overflow-y:auto;max-height:calc(100vh - 170px);overflow-x:auto;">
         <table class="dir-table" id="dir-table"></table>
       </div>
-      <!-- Email panel: static, shown/hidden by dirSendEmail() -->
-      <div id="dir-email-panel" style="display:none;margin-top:12px;padding:14px 16px;background:var(--chalk);border:1px solid var(--line);border-radius:10px;"></div>
+      <!-- Email panel -->
+      <div id="dir-email-panel" style="display:none;margin-top:10px;padding:12px 16px;background:var(--chalk);border:1px solid var(--line);border-radius:10px;"></div>
     </div>
   </div>
 
