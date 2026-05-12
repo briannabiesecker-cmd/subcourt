@@ -1396,8 +1396,10 @@
             <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
           </div>
         </div>
-        <button class="btn btn-clay" style="flex-shrink:0;font-size:14px;padding:8px 16px;" onclick="submitVolunteer()">Submit availability</button>
-        <button class="btn btn-secondary" style="flex-shrink:0;font-size:14px;padding:8px 14px;" onclick="clearVolForm()">Clear</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <button class="btn btn-clay" style="font-size:14px;padding:8px 16px;" onclick="submitVolunteer()">Submit availability</button>
+          <button class="btn btn-secondary" style="font-size:14px;padding:8px 14px;" onclick="clearVolForm()">Clear</button>
+        </div>
       </div>
       <input type="email" id="vol-email" style="display:none;" disabled />
     </div>
@@ -1919,7 +1921,14 @@ function showView(name, btn) {
     myVolunteerMap = {};
     document.getElementById('my-vol-section').style.display = 'none';
     document.getElementById('my-vol-list').innerHTML = '';
-    buildCalendar().then(() => prefillIdentity('vol'));
+    buildCalendar().then(() => {
+      const existingEmail = document.getElementById('vol-email').value;
+      if (existingEmail) {
+        loadMySubmissions(existingEmail);  // name already selected — reload their data
+      } else {
+        prefillIdentity('vol');
+      }
+    });
   }
   if (name === 'availability') { loadAvailabilityView().then(() => prefillIdentity('av')); }
   if (name === 'schedule') loadScheduleView();
@@ -2056,7 +2065,11 @@ function selectTypeaheadPlayer(prefix, name, email) {
   if (['req', 'vol', 'av'].includes(prefix)) {
     try { localStorage.setItem('rally_user_identity', JSON.stringify({ name, email })); } catch(e) {}
   }
-  if (prefix === 'vol') loadMySubmissions(email);
+  if (prefix === 'vol') {
+    document.getElementById('my-vol-section').style.display = 'none';
+    document.getElementById('my-vol-list').innerHTML = '';
+    loadMySubmissions(email);
+  }
   if (prefix === 'req') loadMyRequests(email, name);
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
