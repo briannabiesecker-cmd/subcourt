@@ -1048,14 +1048,47 @@ function confirmSub(params) {
     volSheet.getRange(parseInt(params.volunteerRowIndex), 7).setValue('matched');
   }
 
-  // 3. Parse group players
+  // 3. Replace requestor's slot in MatchGroups with the sub's name/email
+  updateScheduleForSub(ss, params);
+
+  // 4. Parse group players
   var groupPlayers = [];
   try { groupPlayers = JSON.parse(params.groupPlayers || '[]'); } catch(e) {}
 
-  // 4. Send email
+  // 5. Send email
   sendConfirmationEmails(params, groupPlayers);
 
   return { success: true };
+}
+
+// Replaces the requestor's player slot in MatchGroups with the confirmed sub.
+function updateScheduleForSub(ss, params) {
+  var matchDate      = (params.matchDate      || '').toString().trim();
+  var requestorEmail = (params.requestorEmail || '').toLowerCase().trim();
+  var subName        = (params.subName        || '').toString().trim();
+  var subEmail       = (params.subEmail       || '').toString().trim();
+  if (!matchDate || !requestorEmail || !subName || !subEmail) return;
+
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== matchDate) continue;
+
+    // Player slots: pi=0→cols 5,6  pi=1→cols 7,8  pi=2→cols 9,10  pi=3→cols 11,12
+    for (var pi = 0; pi < 4; pi++) {
+      var em = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
+      if (em === requestorEmail) {
+        sheet.getRange(i + 2, 5 + pi * 2, 1, 2).setValues([[subName, subEmail]]);
+        return;
+      }
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────
