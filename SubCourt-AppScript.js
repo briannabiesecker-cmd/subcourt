@@ -1172,10 +1172,10 @@ function runMatch(params) {
     // Note: rating itself is NOT included — only the diff
   });
 
-  // Sort: closest rating first, then earliest submission
+  // Sort: earliest submission first, then closest rating as tiebreaker
   candidates.sort((a, b) => {
-    if (a.ratingDiff !== b.ratingDiff) return a.ratingDiff - b.ratingDiff;
-    return a.timestamp.localeCompare(b.timestamp);
+    if (a.timestamp !== b.timestamp) return a.timestamp.localeCompare(b.timestamp);
+    return a.ratingDiff - b.ratingDiff;
   });
 
   return {
@@ -2524,12 +2524,13 @@ function publishScheduleSlot(params) {
     var volSheet = ss.getSheetByName(TABS.volunteers);
     var volRange = volSheet.getRange(volSheet.getLastRow() + 1, 1, 1, 7);
     volRange.setNumberFormats([['@','@','@','@','@','@','@']]);
+    var thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     volRange.setValues([[
-      uid(), new Date().toISOString(),
+      uid(), thirtyDaysAgo,
       sitOutName, sitOutEmail.toLowerCase(),
       slot.date, sitOutTimes, 'pending'
     ]]);
-    Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes);
+    Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes + ' (timestamp backdated 30 days)');
   }
 
   return { success: true, groupsWritten: saved };
