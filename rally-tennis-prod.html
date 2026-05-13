@@ -1414,7 +1414,7 @@
           </div>
         </div>
         <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <button class="btn btn-clay" style="font-size:14px;padding:8px 16px;" onclick="submitVolunteer()">Submit availability</button>
+          <button class="btn btn-clay" id="vol-submit-btn-top" style="font-size:14px;padding:8px 16px;" onclick="submitVolunteer()">Submit availability</button>
           <button class="btn btn-secondary" style="font-size:14px;padding:8px 14px;" onclick="clearVolForm()">Clear</button>
         </div>
       </div>
@@ -2551,9 +2551,19 @@ async function submitVolunteer() {
     return;
   }
 
-  const btn = document.getElementById('vol-submit-btn');
-  btn.disabled = true;
-  btn.textContent = 'Submitting…';
+  const btns = [
+    document.getElementById('vol-submit-btn'),
+    document.getElementById('vol-submit-btn-top')
+  ].filter(Boolean);
+
+  const setBtns = (text, disabled, success) => btns.forEach(b => {
+    b.disabled = disabled;
+    b.textContent = text;
+    b.style.background    = success ? '#3A8A5C' : '';
+    b.style.borderColor   = success ? '#3A8A5C' : '';
+  });
+
+  setBtns('Submitting…', true, false);
 
   try {
     const toUpdate = [];
@@ -2564,34 +2574,29 @@ async function submitVolunteer() {
       if (ex && ex.status === 'pending') toUpdate.push({ rowIndex: ex.rowIndex, times });
       else toCreate.push({ date, times });
     }
-    // Delete records where player removed all times
     for (const [, ex] of toDelete) {
       await apiPost({ action: 'deleteVolunteer', rowIndex: ex.rowIndex });
     }
-    // Update existing pending records with changed times
     for (const u of toUpdate) {
       await apiPost({ action: 'updateVolunteer', rowIndex: u.rowIndex, times: JSON.stringify(u.times) });
     }
-    // Create new records
     if (toCreate.length) {
       await apiPost({
         action: 'submitVolunteer', name, email,
         entries: toCreate.map(({ date, times }) => ({ date, times: times.map(t => t.replace(':', '_')) }))
       });
     }
-    const changes = toUpdate.length + toCreate.length + toDelete.length;
     const msg = toDelete.length && !entries.length
       ? `${toDelete.length} date(s) removed.`
-      : `Availability saved for ${toUpdate.length + toCreate.length} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`;
+      : `Saved ${toUpdate.length + toCreate.length} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`;
     showAlert('vol-alert', 'success', msg);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    buildCalendar().then(() => loadMySubmissions(email));
+    setBtns('✓ Saved', false, true);
+    setTimeout(() => setBtns('Submit availability', false, false), 3000);
     clearCache();
+    buildCalendar().then(() => loadMySubmissions(email));
   } catch(e) {
     showAlert('vol-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Submit availability';
+    setBtns('Submit availability', false, false);
   }
 }
 
