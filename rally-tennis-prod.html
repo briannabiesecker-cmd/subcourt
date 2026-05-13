@@ -3011,7 +3011,7 @@ function renderDispatchFilled(log) {
 
 function renderDispatchOpen(requests, log) {
   const open = requests
-    .filter(r => r.status !== 'expired' && r.status !== 'filled')
+    .filter(r => r.status !== 'expired' && r.status !== 'filled' && r.status !== 'cancelled')
     .sort((a, b) => (a.matchDate || '').localeCompare(b.matchDate || ''));
   const noCandidate = new Set((log || []).filter(e => e.result === 'no_candidates').map(e => e.requestId));
 
