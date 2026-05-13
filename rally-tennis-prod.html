@@ -2229,9 +2229,15 @@ async function submitRequest() {
 
     await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    clearRequestForm();
+    // Clear form fields but keep the player name so the updated request list loads
+    clearTypeahead('p2');
+    clearTypeahead('p3');
+    clearTypeahead('p4');
+    document.getElementById('req-date').value = '';
+    document.getElementById('req-time').value = '';
     clearCache();
+    loadMyRequests(email, name);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch(e) {
     showAlert('req-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
   } finally {
