@@ -29,6 +29,26 @@ function setEmailEnabled(params) {
   return { success: true, emailEnabled: enabled };
 }
 
+// Run once from Apps Script editor after deploying the 4-window dispatch update.
+// Updates Config B4-B9 with correct labels and default values for the new system.
+function setupDispatchConfig() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  var rows = [
+    ['B4', 'A4', 'Skill Window >72 hrs',         0.5],
+    ['B5', 'A5', 'Skill Window 48-72 hrs',        1.0],
+    ['B6', 'A6', 'Skill Window 24-48 hrs',        2.0],
+    ['B7', 'A7', 'Last-Minute Threshold (hrs)',    24 ],
+    ['B8', 'A8', 'Urgent Threshold (hrs)',         48 ],
+    ['B9', 'A9', 'Pre-Schedule Threshold (hrs)',   72 ],
+  ];
+  rows.forEach(function(r) {
+    sheet.getRange(r[1]).setValue(r[2]);
+    sheet.getRange(r[0]).setValue(r[3]);
+  });
+  Logger.log('setupDispatchConfig: Config B4-B9 updated for 4-window dispatch.');
+  return { success: true };
+}
+
 function saveSenderEmail(params) {
   var email = (params.email || '').toString().trim();
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
@@ -86,11 +106,15 @@ function getConfig() {
   try {
     const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
     return {
-      // Matching engine — rows 4–7
-      skillWindowPreSchedule:   parseFloat(sheet.getRange('B4').getValue())  || 0.5,
-      skillWindowPostSchedule:  parseFloat(sheet.getRange('B5').getValue())  || 2.0,
-      preScheduleThresholdHrs:  parseInt(sheet.getRange('B6').getValue())    || 48,
+      // Matching engine — rows 4–9 (4 skill windows)
+      // B4: skill window >72 hrs (far-out), B5: 48-72 hrs, B6: 24-48 hrs (urgent)
+      // B7: last-minute threshold, B8: urgent threshold, B9: pre-schedule threshold
+      skillWindowFarOut:        parseFloat(sheet.getRange('B4').getValue())  || 0.5,
+      skillWindowMid:           parseFloat(sheet.getRange('B5').getValue())  || 1.0,
+      skillWindowUrgent:        parseFloat(sheet.getRange('B6').getValue())  || 2.0,
       lastMinuteThresholdHrs:   parseInt(sheet.getRange('B7').getValue())    || 24,
+      urgentThresholdHrs:       parseInt(sheet.getRange('B8').getValue())    || 48,
+      preScheduleThresholdHrs:  parseInt(sheet.getRange('B9').getValue())    || 72,
       // Volunteer calendar — row 10
       calendarLookaheadDays:    parseInt(sheet.getRange('B10').getValue())   || 30,
       // Dispatch automation — rows 13–14
@@ -109,10 +133,12 @@ function getConfig() {
   } catch(e) {
     // If Config tab is missing or unreadable, return safe defaults
     return {
-      skillWindowPreSchedule:  0.5,
-      skillWindowPostSchedule: 2.0,
-      preScheduleThresholdHrs: 48,
+      skillWindowFarOut:       0.5,
+      skillWindowMid:          1.0,
+      skillWindowUrgent:       2.0,
       lastMinuteThresholdHrs:  24,
+      urgentThresholdHrs:      48,
+      preScheduleThresholdHrs: 72,
       calendarLookaheadDays:   30,
       autoDispatchEnabled:      false,
       autoDispatchTimeET:       '08:00',
@@ -399,12 +425,11 @@ function doGet(e) {
         const reqRating       = reqPlayer ? reqPlayer.rating : null;
         const matchDate       = req.matchDate;
         const matchTime       = req.matchTime;
-        const lastMinute      = isLastMinute(req, config.lastMinuteThresholdHrs);
-        const urgent          = isUrgent(req, config.preScheduleThresholdHrs);
-        const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
         const hasTBDTime      = !matchTime;
         const effectiveTime   = (matchTime || '08:00').trim();
-        const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
+        const { phase: _phase, skillWindow } = getDispatchPhase(req, config);
+        const lastMinute      = _phase === 'last-minute';
+        const requireAllTimes = _phase === 'pre-schedule' && !hasTBDTime;
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
           const dateMatch    = v.date.trim() === matchDate.trim();
@@ -1110,14 +1135,11 @@ function runMatch(params) {
   const reqRating    = reqPlayer.rating;
   const matchDate    = req.matchDate;
   const matchTime    = req.matchTime;
-  const lastMinute   = isLastMinute(req, config.lastMinuteThresholdHrs);
-  const urgent       = isUrgent(req, config.preScheduleThresholdHrs);
   const hasTBDTime      = !matchTime;
   const effectiveTime   = (matchTime || '08:00').trim();
-
-  const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
-  const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
-  const phase           = lastMinute ? 'last-minute' : (!urgent ? 'pre-schedule' : 'post-schedule');
+  const { phase, skillWindow } = getDispatchPhase(req, config);
+  const lastMinute      = phase === 'last-minute';
+  const requireAllTimes = phase === 'pre-schedule' && !hasTBDTime;
 
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
@@ -1406,6 +1428,24 @@ function expireUpToToday() {
 // ──────────────────────────────────────────────────
 // HELPERS
 // ──────────────────────────────────────────────────
+
+// Returns the dispatch phase and skill window for a request given the 4-window config.
+// Phase  | Hours until match       | Skill window
+// -------+-------------------------+---------------------------------
+// last-minute  | <= lastMinuteThresholdHrs  | Infinity (no check)
+// urgent       | <= urgentThresholdHrs      | skillWindowUrgent
+// post-schedule| <= preScheduleThresholdHrs | skillWindowMid
+// pre-schedule | > preScheduleThresholdHrs  | skillWindowFarOut
+function getDispatchPhase(req, config) {
+  if (!req.matchDate) return { phase: 'pre-schedule', skillWindow: config.skillWindowFarOut };
+  var timeStr = req.matchTime || '08:00';
+  var matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
+  var diffHrs = (matchDT - new Date()) / 36e5;
+  if (diffHrs <= (config.lastMinuteThresholdHrs  || 24)) return { phase: 'last-minute',  skillWindow: Infinity };
+  if (diffHrs <= (config.urgentThresholdHrs       || 48)) return { phase: 'urgent',        skillWindow: config.skillWindowUrgent  || 2.0 };
+  if (diffHrs <= (config.preScheduleThresholdHrs  || 72)) return { phase: 'post-schedule', skillWindow: config.skillWindowMid     || 1.0 };
+  return { phase: 'pre-schedule', skillWindow: config.skillWindowFarOut || 0.5 };
+}
 
 function isUrgent(req, thresholdHrs) {
   if (!req.matchDate) return false;
