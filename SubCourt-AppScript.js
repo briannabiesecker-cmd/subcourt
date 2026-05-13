@@ -1548,26 +1548,46 @@ function checkAvailabilityWindow() {
   var urgency        = daysUntilClose === 1 ? 'tomorrow' : 'in 2 days';
   var subject        = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes ' + urgency;
   var body =
-    'Hi,\n\n' +
     'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes ' + urgency + ' (' + closeDateLabel + ').\n\n' +
-    'We haven\'t received your availability yet. Please submit before the window closes so we can include you in the schedule.\n\n' +
+    'Please submit your available dates before the window closes so we can include you in the schedule.\n\n' +
     'Open the Rally app to submit:\n' +
     APP_BASE_URL + '#availability\n\n' +
     'See you on the court!\n' +
     'MWF Tennis League';
 
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
-  if (isEmailEnabled()) {
-    // Send individually — bulk to: exceeds per-message recipient limits
-    missing.forEach(function(p) {
-      if (!p.email) return;
-      var personalBody = body.replace('Hi,', 'Hi ' + (p.name || 'there') + ',');
-      try {
-        sendLeagueEmail({ to: p.email, subject: subject, body: personalBody, name: 'MWF Tennis League' });
-      } catch(e) {
-        Logger.log('Reminder email failed for ' + p.email + ': ' + e.message);
+  if (!isEmailEnabled()) return;
+
+  var BATCH   = 50;
+  var batches = Math.ceil(missing.length / BATCH);
+  try {
+    var remaining = MailApp.getRemainingDailyQuota();
+    if (remaining < batches) {
+      Logger.log('checkAvailabilityWindow: quota too low — ' + remaining + ' remaining, need ' + batches);
+      return;
+    }
+  } catch(e) { /* ignore */ }
+
+  var senderEmail = getConfig().senderEmail || '';
+  for (var b = 0; b < batches; b++) {
+    var batch     = missing.slice(b * BATCH, (b + 1) * BATCH);
+    var toEmail   = batch[0].email;
+    var bccEmails = batch.slice(1).map(function(p) { return p.email; }).join(', ');
+    var opts      = { name: 'MWF Tennis League' };
+    if (bccEmails) opts.bcc = bccEmails;
+    try {
+      if (senderEmail) {
+        try {
+          GmailApp.sendEmail(toEmail, subject, body,
+            Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
+          continue;
+        } catch(ge) { Logger.log('GmailApp reminder batch ' + (b+1) + ' failed: ' + ge.message); }
       }
-    });
+      opts.to = toEmail; opts.subject = subject; opts.body = body;
+      MailApp.sendEmail(opts);
+    } catch(e) {
+      Logger.log('Reminder email batch ' + (b+1) + ' failed: ' + e.message);
+    }
   }
 }
 
@@ -1627,7 +1647,6 @@ function openAvailabilityWindow(params) {
       const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
       const body =
-        'Hi,\n\n' +
         'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
         'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
         'Open the Rally app to get started:\n' +
