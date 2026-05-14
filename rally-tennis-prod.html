@@ -2681,6 +2681,8 @@ async function loadMySubmissions(email) {
     if (row) {
       const note = row.querySelector('.matched-note');
       if (note) note.remove();
+      const schedNote = row.querySelector('.scheduled-note');
+      if (schedNote) schedNote.remove();
       TIMES.forEach(t => {
         const chip = document.getElementById('chip-' + k + '-' + t);
         if (chip) {
@@ -2738,8 +2740,46 @@ async function loadMySubmissions(email) {
       if (v.status === 'matched') lockDateRow(v.date, myVolunteerMap[v.date]);
     });
     updateVolSummary();
+
+    // Lock dates where the player is already scheduled to play (from MatchGroups)
+    try {
+      const sched = publishedSchedule
+        || await apiGetWithParams({ action: 'getPublishedSchedule' });
+      if (sched && sched.dates) {
+        const emailLower = email.toLowerCase();
+        sched.dates.forEach(d => {
+          if (!volSelections.hasOwnProperty(d.date)) return; // not in calendar range
+          const isScheduled = (d.groups || []).some(g =>
+            (g.players || []).some(p => (p.email || '').toLowerCase() === emailLower)
+          );
+          if (isScheduled) lockScheduledDateRow(d.date);
+        });
+      }
+    } catch(e) {}
   } catch(e) {
     console.error('loadMySubmissions error:', e);
+  }
+}
+
+function lockScheduledDateRow(k) {
+  const row = document.getElementById('daterow-' + k);
+  if (!row) return;
+  // Don't override an "already matched" lock
+  if (row.querySelector('.matched-note')) return;
+  TIMES.forEach(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
+  });
+  const allChk = document.getElementById('allchk-' + k);
+  if (allChk) allChk.disabled = true;
+  const saw = row.querySelector('.select-all-wrap');
+  if (saw) saw.style.pointerEvents = 'none';
+  if (!row.querySelector('.scheduled-note')) {
+    const note = document.createElement('div');
+    note.className = 'scheduled-note';
+    note.style.cssText = 'font-size:12px;color:var(--warn);font-style:italic;margin-top:4px;width:100%;';
+    note.textContent = 'Already scheduled to play — cannot volunteer';
+    row.appendChild(note);
   }
 }
 
