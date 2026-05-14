@@ -409,6 +409,7 @@ function doGet(e) {
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
+    else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'sendTestEmail')             result = sendTestEmail();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
@@ -1114,6 +1115,103 @@ function updateScheduleForSub(ss, params) {
       }
     }
   }
+}
+
+// Replaces any player slot in MatchGroups that matches oldEmail on matchDate.
+function replaceSchedulePlayer(ss, matchDate, oldEmail, newName, newEmail) {
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== matchDate) continue;
+    for (var pi = 0; pi < 4; pi++) {
+      var em = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
+      if (em === oldEmail.toLowerCase().trim()) {
+        sheet.getRange(i + 2, 5 + pi * 2, 1, 2).setValues([[newName, newEmail]]);
+        return;
+      }
+    }
+  }
+}
+
+// Handles edits from the "Edit Request" modal on the Request a Sub page.
+// Supports three cases: date/time update, requestor replacement (fill sub),
+// and non-requestor player replacement (schedule update).
+function editRequestPlayers(params) {
+  var ss       = SpreadsheetApp.openById(SHEET_ID);
+  var rowIndex = parseInt(params.rowIndex);
+  if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
+
+  var matchDate          = (params.matchDate          || '').toString().trim();
+  var matchTime          = (params.matchTime          || '').toString().trim();
+  var origRequestorEmail = (params.origRequestorEmail || '').toLowerCase().trim();
+  var newP1Email         = (params.newP1Email         || '').toLowerCase().trim();
+  var newP1Name          = (params.newP1Name          || '').toString().trim();
+
+  var origGroupPlayers = [];
+  var newGroupPlayers  = [];
+  try { origGroupPlayers = JSON.parse(params.origGroupPlayers || '[]'); } catch(e) {}
+  try { newGroupPlayers  = JSON.parse(params.newGroupPlayers  || '[]'); } catch(e) {}
+
+  var reqSheet = ss.getSheetByName(TABS.requests);
+
+  // 1. Always update date and time
+  var dateCell = reqSheet.getRange(rowIndex, 5);
+  dateCell.setNumberFormat('@');
+  dateCell.setValue(matchDate);
+  var timeCell = reqSheet.getRange(rowIndex, 6);
+  timeCell.setNumberFormat('@');
+  timeCell.setValue(matchTime);
+
+  // 2. Check if requestor was replaced (fill-sub case)
+  var requestorReplaced = newP1Email && newP1Email !== origRequestorEmail;
+
+  if (requestorReplaced) {
+    reqSheet.getRange(rowIndex, 7).setValue('filled');
+    reqSheet.getRange(rowIndex, 8).setValue(newP1Email);
+
+    // For Anita sub requests the schedule slot belongs to the captain (groupPlayers[0])
+    var isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(origRequestorEmail);
+    var scheduleOldEmail = isAnita && origGroupPlayers.length > 0
+      ? (origGroupPlayers[0].email || '').toLowerCase().trim()
+      : origRequestorEmail;
+
+    if (scheduleOldEmail) {
+      replaceSchedulePlayer(ss, matchDate, scheduleOldEmail, newP1Name, newP1Email);
+    }
+
+    // Send confirmation email (requestorName is P1 original)
+    var requestorName = (params.origRequestorName || '').toString().trim();
+    sendConfirmationEmails({
+      requestorName:  requestorName,
+      requestorEmail: origRequestorEmail,
+      subName:        newP1Name,
+      subEmail:       newP1Email,
+      matchDate:      matchDate,
+      matchTime:      matchTime
+    }, newGroupPlayers);
+  }
+
+  // 3. Update groupPlayers JSON (always, reflects any player changes)
+  var groupPlayersCell = reqSheet.getRange(rowIndex, 9);
+  groupPlayersCell.setValue(JSON.stringify(newGroupPlayers));
+
+  // 4. Update MatchGroups for changed non-requestor players
+  for (var i = 0; i < origGroupPlayers.length; i++) {
+    var orig   = origGroupPlayers[i] || {};
+    var nw     = newGroupPlayers[i]  || {};
+    var oEmail = (orig.email || '').toLowerCase().trim();
+    var nEmail = (nw.email   || '').toLowerCase().trim();
+    if (oEmail && nEmail && oEmail !== nEmail) {
+      replaceSchedulePlayer(ss, matchDate, oEmail, nw.name || '', nw.email || '');
+    }
+  }
+
+  return { success: true, filled: requestorReplaced };
 }
 
 // ──────────────────────────────────────────────────
