@@ -1174,14 +1174,10 @@ function editRequestPlayers(params) {
     reqSheet.getRange(rowIndex, 7).setValue('filled');
     reqSheet.getRange(rowIndex, 8).setValue(newP1Email);
 
-    // For Anita sub requests the schedule slot belongs to the captain (groupPlayers[0])
-    var isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(origRequestorEmail);
-    var scheduleOldEmail = isAnita && origGroupPlayers.length > 0
-      ? (origGroupPlayers[0].email || '').toLowerCase().trim()
-      : origRequestorEmail;
-
-    if (scheduleOldEmail) {
-      replaceSchedulePlayer(ss, matchDate, scheduleOldEmail, newP1Name, newP1Email);
+    // Anita's email is stored directly in the MatchGroups P4 slot, so origRequestorEmail
+    // is always the correct slot to replace (works for both regular and Anita requests).
+    if (origRequestorEmail) {
+      replaceSchedulePlayer(ss, matchDate, origRequestorEmail, newP1Name, newP1Email);
     }
 
     // Send confirmation email (requestorName is P1 original)
