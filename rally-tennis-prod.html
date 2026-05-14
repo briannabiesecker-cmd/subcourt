@@ -2396,8 +2396,8 @@ function showPlayerEditModal(requestId) {
   container.innerHTML = labels.map((label, i) => {
     const slot = i + 1;
     const p    = origPlayers[i];
-    return `<div style="margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:3px;">${label}</div>
+    return `<div style="margin-bottom:7px;">
+      <div style="font-size:11px;font-weight:600;color:var(--ink-light);margin-bottom:2px;">${label}</div>
       <div class="typeahead-wrap">
         <input class="typeahead-input" id="pem-p${slot}-input" type="text"
           value="${(p.name || '').replace(/"/g, '&quot;')}"
@@ -2405,7 +2405,7 @@ function showPlayerEditModal(requestId) {
           oninput="onPemInput(${slot}, this.value)"
           onblur="onPemBlur(${slot})"
           onfocus="onPemFocus(${slot})"
-          autocomplete="off" style="font-size:14px;" />
+          autocomplete="off" style="font-size:13px;padding:6px 10px;" />
         <div class="typeahead-dropdown" id="pem-p${slot}-dropdown" style="display:none;"></div>
       </div>
     </div>`;
@@ -4868,16 +4868,16 @@ function applyAvailConfigToHomeCard(config) {
 
 <!-- ── Player Edit Modal ── -->
 <div id="player-edit-modal" role="dialog" aria-modal="true">
-  <div class="confirm-modal-box" style="max-width:420px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:700;font-size:18px;color:var(--ink);margin-bottom:1.25rem;">Edit Request</div>
-    <div style="display:flex;gap:12px;margin-bottom:16px;">
+  <div class="confirm-modal-box" style="max-width:420px;padding:1.1rem 1.25rem;">
+    <div style="font-weight:700;font-size:15px;color:var(--ink);margin-bottom:0.65rem;">Edit Request</div>
+    <div style="display:flex;gap:10px;margin-bottom:10px;">
       <div style="flex:1;">
-        <label style="font-size:13px;font-weight:600;color:var(--ink-light);">Match date</label>
-        <input type="date" id="pem-date" style="width:100%;margin-top:4px;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;" />
+        <label style="font-size:12px;font-weight:600;color:var(--ink-light);">Match date</label>
+        <input type="date" id="pem-date" style="width:100%;margin-top:3px;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;" />
       </div>
       <div style="flex:1;">
-        <label style="font-size:13px;font-weight:600;color:var(--ink-light);">Match time</label>
-        <select id="pem-time" style="width:100%;margin-top:4px;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+        <label style="font-size:12px;font-weight:600;color:var(--ink-light);">Match time</label>
+        <select id="pem-time" style="width:100%;margin-top:3px;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
           <option value="">Unknown / TBD</option>
           <option value="08:00">8:00 AM</option>
           <option value="09:30">9:30 AM</option>
@@ -4886,11 +4886,11 @@ function applyAvailConfigToHomeCard(config) {
         </select>
       </div>
     </div>
-    <div style="font-size:13px;font-weight:600;color:var(--ink-light);margin-bottom:8px;">Players</div>
+    <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:5px;">Players</div>
     <div id="pem-players"></div>
-    <div class="confirm-modal-btns" style="margin-top:4px;">
-      <button class="confirm-modal-ok"     id="pem-save">Save</button>
-      <button class="confirm-modal-cancel" id="pem-cancel">Cancel</button>
+    <div class="confirm-modal-btns" style="margin-top:6px;gap:8px;">
+      <button class="confirm-modal-ok"     id="pem-save"   style="font-size:14px;padding:9px;min-height:0;">Save</button>
+      <button class="confirm-modal-cancel" id="pem-cancel" style="font-size:14px;padding:9px;min-height:0;">Cancel</button>
     </div>
   </div>
 </div>
