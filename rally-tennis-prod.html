@@ -655,10 +655,7 @@
     cursor: pointer;
     color: var(--ink);
     border-bottom: 1px solid var(--chalk);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
+    text-align: left;
   }
   .typeahead-item:last-child { border-bottom: none; }
   .typeahead-item:hover, .typeahead-item.highlighted { background: var(--chalk); }
@@ -1839,7 +1836,12 @@ function showView(name, btn) {
   // btn = 'this' from nav clicks; fall back to data-view lookup for home card clicks
   (btn || document.querySelector('nav [data-view="' + name + '"]') || null)
     ?.classList.add('active');
-  if (name === 'request') prefillIdentity('req');
+  if (name === 'request') {
+    document.getElementById('req-date').value = '';
+    document.getElementById('req-schedule-lookup').innerHTML = '';
+    reqAutoFill = null;
+    prefillIdentity('req');
+  }
   if (name === 'volunteer') {
     myVolunteerMap = {};
     document.getElementById('my-vol-section').style.display = 'none';
@@ -2389,7 +2391,7 @@ function showPlayerEditModal(requestId) {
   document.getElementById('pem-date').value  = req.matchDate || '';
   document.getElementById('pem-time').value  = req.matchTime || '';
 
-  const labels = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
+  const labels = ['Requester', 'Player 2', 'Player 3', 'Player 4'];
   const container = document.getElementById('pem-players');
   container.innerHTML = labels.map((label, i) => {
     const slot = i + 1;
