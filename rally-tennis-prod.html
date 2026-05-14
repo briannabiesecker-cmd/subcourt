@@ -2104,6 +2104,13 @@ function onTypeaheadTabSelect(prefix, event) {
 // ── Player-Edit Modal typeahead ──────────────────────────────
 async function onPemInput(slot, val) {
   await loadPlayerList();
+  // Only wipe the email when the user is actively changing the name away from the
+  // currently-selected player. Preserves the email on mere focus (onPemFocus calls
+  // onPemInput with the existing text, which would otherwise blank the email and
+  // prevent MatchGroups from being updated on save).
+  if (!epSelections[slot] || epSelections[slot].name !== val) {
+    epSelections[slot] = { name: val, email: '' };
+  }
   const matches = val.trim()
     ? playerList.filter(p => p.name.toLowerCase().includes(val.toLowerCase()))
     : playerList;
@@ -2113,7 +2120,6 @@ async function onPemInput(slot, val) {
   if (!matches.length) {
     dd.innerHTML = '<div class="typeahead-item" style="color:var(--ink-light);">No players found</div>';
     dd.style.display = 'block';
-    epSelections[slot] = { name: val, email: '' };
     return;
   }
   dd.innerHTML = matches.map((p, i) => `
@@ -2122,7 +2128,6 @@ async function onPemInput(slot, val) {
       ${val ? highlightMatch(p.name, val) : p.name}
     </div>`).join('');
   dd.style.display = 'block';
-  epSelections[slot] = { name: val, email: '' };
 }
 
 function selectPemPlayer(slot, idx) {
