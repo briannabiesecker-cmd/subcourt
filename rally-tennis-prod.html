@@ -94,6 +94,9 @@
   nav button[data-view="request"].active      { background: var(--teal);  border-color: var(--teal);  box-shadow: 0 2px 8px rgba(77,189,173,0.35); }
   nav button[data-view="availability"].active { background: #7C6FCD;      border-color: #7C6FCD;      box-shadow: 0 2px 8px rgba(124,111,205,0.35); }
 
+  /* ── Mobile bottom nav (hidden on desktop) ── */
+  #mobile-nav { display: none; }
+
   /* ── Page colour schemes ── */
   #view-request .btn-primary,
   #view-request .btn-clay       { background: var(--teal)  !important; border-color: var(--teal)  !important; }
@@ -151,7 +154,7 @@
   body:has(#view-volunteer.active) main { height: calc(100vh - 68px); overflow: hidden; box-sizing: border-box; }
   #view-volunteer.active { display: flex; flex-direction: column; height: 100%; }
   #vol-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 1.5rem; }
-  @media (max-width: 640px) { body:has(#view-volunteer.active) main { height: calc(100vh - 68px - 2rem); } }
+  @media (min-width: 641px) { body:has(#view-volunteer.active) main { height: calc(100vh - 68px - 2rem); } }
 
   /* ── Confirm modal ── */
   #confirm-modal {
@@ -603,13 +606,60 @@
 
   /* ── Responsive ── */
   @media (max-width: 640px) {
-    header { padding: 0 1rem; }
+    header { padding: 0 1rem; height: 52px; }
     main { padding: 1rem; }
     .form-grid { grid-template-columns: 1fr; }
     .form-grid .span2 { grid-column: span 1; }
     .stats-row { grid-template-columns: repeat(2, 1fr); }
     nav button { padding: 6px 12px; font-size: 13px; }
     .time-grid { grid-template-columns: repeat(2, 1fr); }
+
+    /* Hide header nav; show bottom nav instead */
+    header nav { display: none; }
+    header { justify-content: flex-start; }
+
+    /* Bottom nav bar */
+    #mobile-nav {
+      display: flex;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: white;
+      box-shadow: 0 -1px 0 var(--line), 0 -4px 16px rgba(0,0,0,0.07);
+      z-index: 200;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    #mobile-nav button {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      background: transparent;
+      border: none;
+      padding: 7px 1px 5px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--ink-light);
+      min-height: 56px;
+      line-height: 1.2;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    #mobile-nav button.active                            { color: var(--clay); }
+    #mobile-nav button[data-view="schedule"].active      { color: #6B8F71; }
+    #mobile-nav button[data-view="directory"].active     { color: #B8910A; }
+    #mobile-nav button[data-view="request"].active       { color: var(--teal); }
+    #mobile-nav button[data-view="availability"].active  { color: #7C6FCD; }
+
+    /* Push content up so bottom nav doesn't cover it */
+    main { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+
+    /* Fix locked-view heights (header 52px + bottom nav 56px) */
+    body:has(#view-request.active) main  { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
+    body:has(#view-volunteer.active) main { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
   }
 
   /* ── Utility ── */
@@ -1193,17 +1243,69 @@
 <header>
   <div class="logo">Ral<span>ly</span></div>
   <nav>
-    <button class="active" onclick="showView('home', this)">Home</button>
+    <button data-view="home"         class="active" onclick="showView('home', this)">Home</button>
     <button data-view="schedule"   onclick="showView('schedule', this)">View<br>Schedule</button>
     <button data-view="directory"  onclick="showView('directory', this)">Directory</button>
     <button data-view="request"      onclick="showView('request', this)">Request A Sub</button>
     <button data-view="volunteer"    onclick="showView('volunteer', this)">Volunteer<br>to Sub</button>
     <button data-view="availability" onclick="showView('availability', this)">My<br>Availability</button>
-    <button onclick="showView('admin', this)">Admin</button>
+    <button data-view="admin"        onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
 
+<!-- ── Mobile bottom navigation (visible only on phones) ── -->
+<div id="mobile-nav" role="navigation" aria-label="Main navigation">
 
+  <button data-view="home" onclick="showView('home',this)" class="active">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    <span>Home</span>
+  </button>
+
+  <button data-view="schedule" onclick="showView('schedule',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+    <span>Schedule</span>
+  </button>
+
+  <button data-view="directory" onclick="showView('directory',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+    </svg>
+    <span>Directory</span>
+  </button>
+
+  <button data-view="request" onclick="showView('request',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+    </svg>
+    <span>Request</span>
+  </button>
+
+  <button data-view="volunteer" onclick="showView('volunteer',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/>
+    </svg>
+    <span>Volunteer</span>
+  </button>
+
+  <button data-view="availability" onclick="showView('availability',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    </svg>
+    <span>Avail.</span>
+  </button>
+
+  <button data-view="admin" onclick="showView('admin',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+    </svg>
+    <span>Admin</span>
+  </button>
+
+</div>
 
 <main>
 
@@ -1831,11 +1933,10 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwgaAlca17-7cywpr0b7
 // ══════════════════════════════════════════════════
 function showView(name, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('nav button, #mobile-nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
-  // btn = 'this' from nav clicks; fall back to data-view lookup for home card clicks
-  (btn || document.querySelector('nav [data-view="' + name + '"]') || null)
-    ?.classList.add('active');
+  // Activate matching button in both header nav and mobile bottom nav
+  document.querySelectorAll('[data-view="' + name + '"]').forEach(b => b.classList.add('active'));
   if (name === 'request') {
     document.getElementById('req-date').value = '';
     document.getElementById('req-schedule-lookup').innerHTML = '';
