@@ -1567,11 +1567,10 @@
 
     </div>
 
-    <div class="card" style="margin-bottom:1.25rem;">
-      <div class="field" style="margin-bottom:0;">
-        <label style="font-size:17px;">Find my dates</label>
-        <div style="font-size:14px;color:var(--ink-light);margin-bottom:6px;">Enter your name to see only the dates you're scheduled to play.</div>
-        <div class="typeahead-wrap">
+    <div class="card" style="margin-bottom:1rem;padding:0.75rem 1rem;">
+      <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:12px;">
+        <label style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;">Find my dates</label>
+        <div class="typeahead-wrap" style="flex:1;max-width:320px;">
           <div id="sch-selected-state" style="display:none;">
             <div class="selected-pill">
               <span id="sch-selected-name"></span>
@@ -4563,6 +4562,13 @@ async function loadScheduleView() {
   const empty   = document.getElementById('sch-empty');
   const wrap    = document.getElementById('sch-table-wrap');
   const label   = document.getElementById('sch-month-label');
+
+  // Reset filter on every visit so the schedule opens unfiltered
+  document.getElementById('sch-input-state').style.display    = 'block';
+  document.getElementById('sch-selected-state').style.display = 'none';
+  document.getElementById('sch-name-input').value             = '';
+  document.getElementById('sch-email').value                  = '';
+  document.getElementById('sch-dropdown').style.display       = 'none';
 
   loading.style.display = '';
   empty.style.display   = 'none';
