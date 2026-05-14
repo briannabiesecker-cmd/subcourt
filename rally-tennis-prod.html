@@ -1288,96 +1288,13 @@
     <div class="card">
       <div id="req-alert" class="hidden"></div>
 
-      <div class="form-grid">
-        <div class="field">
-          <label>Match date</label>
-          <input type="date" id="req-date" />
-        </div>
-        <div class="field">
-          <label>Match time</label>
-          <select id="req-time">
-            <option value="">Unknown / TBD</option>
-            <option value="08:00">8:00 AM</option>
-            <option value="09:30">9:30 AM</option>
-            <option value="11:00">11:00 AM</option>
-            <option value="12:30">12:30 PM</option>
-          </select>
-        </div>
-
-        <!-- Partners 2, 3, 4 — all on one row -->
-        <div class="field span2" style="margin-top:4px;">
-          <label>Who else is in your group?</label>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
-
-            <div style="width:20ch;min-width:130px;">
-              <div style="font-size:12px;color:var(--ink-light);margin-bottom:3px;">Partner 2</div>
-              <div class="typeahead-wrap">
-                <div id="p2-selected-state" style="display:none;">
-                  <div class="selected-pill">
-                    <span id="p2-selected-name"></span>
-                    <button class="clear-btn" onclick="clearTypeahead('p2')" title="Clear">×</button>
-                  </div>
-                </div>
-                <div id="p2-input-state">
-                  <input class="typeahead-input" id="p2-name-input" type="text"
-                    placeholder="Start typing…"
-                    oninput="onTypeaheadInput('p2', this.value)"
-                    onblur="onTypeaheadBlur('p2')"
-                    onfocus="onTypeaheadFocus('p2')"
-                    autocomplete="off" style="width:100%;" />
-                  <div class="typeahead-dropdown" id="p2-dropdown" style="display:none;"></div>
-                </div>
-              </div>
-              <input type="email" id="p2-email" style="display:none;" disabled />
-            </div>
-
-            <div style="width:20ch;min-width:130px;">
-              <div style="font-size:12px;color:var(--ink-light);margin-bottom:3px;">Partner 3</div>
-              <div class="typeahead-wrap">
-                <div id="p3-selected-state" style="display:none;">
-                  <div class="selected-pill">
-                    <span id="p3-selected-name"></span>
-                    <button class="clear-btn" onclick="clearTypeahead('p3')" title="Clear">×</button>
-                  </div>
-                </div>
-                <div id="p3-input-state">
-                  <input class="typeahead-input" id="p3-name-input" type="text"
-                    placeholder="Start typing…"
-                    oninput="onTypeaheadInput('p3', this.value)"
-                    onblur="onTypeaheadBlur('p3')"
-                    onfocus="onTypeaheadFocus('p3')"
-                    autocomplete="off" style="width:100%;" />
-                  <div class="typeahead-dropdown" id="p3-dropdown" style="display:none;"></div>
-                </div>
-              </div>
-              <input type="email" id="p3-email" style="display:none;" disabled />
-            </div>
-
-            <div style="width:20ch;min-width:130px;">
-              <div style="font-size:12px;color:var(--ink-light);margin-bottom:3px;">Partner 4</div>
-              <div class="typeahead-wrap">
-                <div id="p4-selected-state" style="display:none;">
-                  <div class="selected-pill">
-                    <span id="p4-selected-name"></span>
-                    <button class="clear-btn" onclick="clearTypeahead('p4')" title="Clear">×</button>
-                  </div>
-                </div>
-                <div id="p4-input-state">
-                  <input class="typeahead-input" id="p4-name-input" type="text"
-                    placeholder="Start typing…"
-                    oninput="onTypeaheadInput('p4', this.value)"
-                    onblur="onTypeaheadBlur('p4')"
-                    onfocus="onTypeaheadFocus('p4')"
-                    autocomplete="off" style="width:100%;" />
-                  <div class="typeahead-dropdown" id="p4-dropdown" style="display:none;"></div>
-                </div>
-              </div>
-              <input type="email" id="p4-email" style="display:none;" disabled />
-            </div>
-
-          </div>
-        </div>
+      <div class="field" style="margin-bottom:0.75rem;">
+        <label>Match date</label>
+        <input type="date" id="req-date" onchange="onReqDateChange()" style="max-width:200px;" />
       </div>
+
+      <!-- Auto-filled from schedule; populated by onReqDateChange() -->
+      <div id="req-schedule-lookup" style="margin-bottom:0.75rem;"></div>
 
       <div class="mt12 flex gap8">
         <button class="btn btn-primary" id="req-submit-btn" onclick="submitRequest()">Submit request</button>
@@ -2003,6 +1920,8 @@ let myRequestsData    = [];  // visible requests in loadMyRequests, keyed by id 
 let epSelections      = {};  // {1..4} → {name, email} for player-edit-modal
 let epDropdownMatches = {};  // {1..4} → matches array for index-based selection
 const epBlurTimers    = {};
+let reqAutoFill       = null; // schedule lookup result for the new-request form
+let reqLookupSeq      = 0;   // increments each lookup so stale responses are ignored
 
 async function loadPlayerList() {
   if (playerList.length) return playerList;
@@ -2079,7 +1998,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
     document.getElementById('my-vol-list').innerHTML = '';
     loadMySubmissions(email);
   }
-  if (prefix === 'req') loadMyRequests(email, name);
+  if (prefix === 'req') { loadMyRequests(email, name); onReqDateChange(); }
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email, name);
@@ -2178,6 +2097,9 @@ function clearTypeahead(prefix) {
   if (prefix === 'req') {
     document.getElementById('my-req-section').style.display = 'none';
     document.getElementById('my-req-list').innerHTML = '';
+    reqAutoFill = null;
+    const lw = document.getElementById('req-schedule-lookup');
+    if (lw) lw.innerHTML = '';
   }
   if (prefix === 'av') {
     availSelections = {};
@@ -2234,37 +2156,78 @@ function clearCache() {
 // ══════════════════════════════════════════════════
 // SUB REQUESTS
 // ══════════════════════════════════════════════════
+
+async function onReqDateChange() {
+  const matchDate = document.getElementById('req-date').value;
+  const { email } = getTypeaheadValue('req');
+  const wrap = document.getElementById('req-schedule-lookup');
+  reqAutoFill = null;
+
+  if (!email || !matchDate) { wrap.innerHTML = ''; return; }
+
+  const seq = ++reqLookupSeq;
+  wrap.innerHTML = `<div class="loading" style="padding:4px 0;justify-content:flex-start;gap:8px;">
+    <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
+    <span style="font-size:14px;color:var(--ink-light);">Looking up your match…</span>
+  </div>`;
+
+  try {
+    const result = await apiGetWithParams({ action: 'getMatchSlot', playerEmail: email, matchDate });
+    if (seq !== reqLookupSeq) return;
+
+    if (!result.found || !result.players || !result.players.length) {
+      wrap.innerHTML = `<div class="alert alert-error" style="margin:0;">No match scheduled for this date — please check the date or contact your coordinator.</div>`;
+      return;
+    }
+
+    reqAutoFill = {
+      found:     true,
+      matchTime: result.matchTime || '',
+      players:   result.players,
+      partners:  result.players.filter(p => (p.email || '').toLowerCase() !== email.toLowerCase())
+    };
+
+    const timeLabel = reqAutoFill.matchTime
+      ? (TIME_LABELS[reqAutoFill.matchTime] || reqAutoFill.matchTime)
+      : 'TBD';
+
+    const playerTags = result.players.map(p => {
+      const isMe = (p.email || '').toLowerCase() === email.toLowerCase();
+      return `<span style="font-weight:${isMe ? '700' : '500'};color:${isMe ? 'var(--clay)' : 'var(--ink)'};white-space:nowrap;">${p.name}${isMe ? ' ★' : ''}</span>`;
+    }).join('<span style="color:var(--line);margin:0 5px;">|</span>');
+
+    wrap.innerHTML = `<div style="background:var(--chalk);border-radius:var(--radius);padding:0.75rem 1rem;">
+      <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:6px;">Match from schedule</div>
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
+        <div><span style="font-size:12px;color:var(--ink-light);">Time</span><br><span style="font-weight:600;font-size:14px;">${timeLabel}</span></div>
+        <div><span style="font-size:12px;color:var(--ink-light);">Group</span><br><span style="font-size:14px;line-height:1.6;">${playerTags}</span></div>
+      </div>
+    </div>`;
+  } catch(e) {
+    if (seq !== reqLookupSeq) return;
+    wrap.innerHTML = `<div class="alert alert-error" style="margin:0;">Could not look up match. Please try again.</div>`;
+  }
+}
+
 async function submitRequest() {
   const { name, email } = getTypeaheadValue('req');
   const matchDate = document.getElementById('req-date').value;
-  const matchTime = document.getElementById('req-time').value;
 
   if (!name || !email) {
     showAlert('req-alert', 'error', 'Please select your name from the dropdown.');
     return;
   }
-
   if (!matchDate) {
-    showAlert('req-alert', 'error', 'Please fill in the match date.');
+    showAlert('req-alert', 'error', 'Please select a match date.');
+    return;
+  }
+  if (!reqAutoFill || !reqAutoFill.found) {
+    showAlert('req-alert', 'error', 'No match found for this date — please select a scheduled match date.');
     return;
   }
 
-  const dow = new Date(matchDate + 'T12:00:00').getDay();
-  if (![1, 3, 5].includes(dow)) {
-    showAlert('req-alert', 'error', 'Match dates must be Monday, Wednesday, or Friday.');
-    return;
-  }
-
-  const partners = ['p2', 'p3', 'p4'].map(prefix => getTypeaheadValue(prefix));
-  if (partners.some(p => !p.name || !p.email)) {
-    showAlert('req-alert', 'error', 'Please select all 3 group partners from the dropdown.');
-    return;
-  }
-  const allEmails = [email.toLowerCase(), ...partners.map(p => p.email.toLowerCase())];
-  if (new Set(allEmails).size !== allEmails.length) {
-    showAlert('req-alert', 'error', 'Each group member must be a different player.');
-    return;
-  }
+  const matchTime = reqAutoFill.matchTime || '';
+  const partners  = reqAutoFill.partners.filter(p => p.name && p.email);
 
   const btn = document.getElementById('req-submit-btn');
   btn.disabled = true;
@@ -2286,12 +2249,9 @@ async function submitRequest() {
 
     await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
-    // Clear form fields but keep the player name so the updated request list loads
-    clearTypeahead('p2');
-    clearTypeahead('p3');
-    clearTypeahead('p4');
     document.getElementById('req-date').value = '';
-    document.getElementById('req-time').value = '';
+    document.getElementById('req-schedule-lookup').innerHTML = '';
+    reqAutoFill = null;
     clearCache();
     loadMyRequests(email, name);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2305,11 +2265,9 @@ async function submitRequest() {
 
 function clearRequestForm() {
   clearTypeahead('req');
-  clearTypeahead('p2');
-  clearTypeahead('p3');
-  clearTypeahead('p4');
   document.getElementById('req-date').value = '';
-  document.getElementById('req-time').value = '';
+  document.getElementById('req-schedule-lookup').innerHTML = '';
+  reqAutoFill = null;
 }
 
 async function loadMyRequests(email, playerName) { // v2

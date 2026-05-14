@@ -410,6 +410,7 @@ function doGet(e) {
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
+    else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
     else if (action === 'sendTestEmail')             result = sendTestEmail();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
@@ -1136,6 +1137,63 @@ function replaceSchedulePlayer(ss, matchDate, oldEmail, newName, newEmail) {
       }
     }
   }
+}
+
+// Looks up a player's scheduled match group for a given date.
+// Returns all 4 players in the group plus any known match time.
+function getMatchSlot(params) {
+  var playerEmail = (params.playerEmail || '').toLowerCase().trim();
+  var matchDate   = (params.matchDate   || '').toString().trim();
+  if (!playerEmail || !matchDate) return { found: false };
+
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return { found: false };
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== matchDate) continue;
+
+    for (var pi = 0; pi < 4; pi++) {
+      var em = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
+      if (em !== playerEmail) continue;
+
+      // Found the player — collect all 4 slots (skip empty)
+      var players = [];
+      for (var pj = 0; pj < 4; pj++) {
+        var nm = (r[4 + pj * 2] || '').toString().trim();
+        var ev = (r[5 + pj * 2] || '').toString().toLowerCase().trim();
+        if (nm) players.push({ name: nm, email: ev });
+      }
+
+      // Try to find a match time from any existing sub request on this date
+      // by any player in this group who already submitted with a known time.
+      var matchTime = '';
+      var groupEmails = players.map(function(p) { return p.email; });
+      var reqSheet = ss.getSheetByName(TABS.requests);
+      if (reqSheet && reqSheet.getLastRow() >= 2) {
+        var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 6).getValues();
+        for (var j = 0; j < reqRows.length; j++) {
+          var rr = reqRows[j];
+          var reqDate  = formatSheetDate(rr[4]);
+          var reqTime  = (rr[5] ? rr[5].toString().trim() : '');
+          var reqEmail = (rr[3] || '').toString().toLowerCase().trim();
+          if (reqDate === matchDate && reqTime && groupEmails.indexOf(reqEmail) !== -1) {
+            matchTime = reqTime;
+            break;
+          }
+        }
+      }
+
+      return { found: true, matchTime: matchTime, players: players };
+    }
+  }
+
+  return { found: false };
 }
 
 // Handles edits from the "Edit Request" modal on the Request a Sub page.
