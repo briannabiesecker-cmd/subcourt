@@ -658,8 +658,9 @@
     main { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 
     /* Fix locked-view heights (header 52px + bottom nav 56px) */
-    body:has(#view-request.active) main  { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
-    body:has(#view-volunteer.active) main { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
+    body:has(#view-request.active) main      { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
+    body:has(#view-volunteer.active) main    { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
+    body:has(#view-availability.active) main { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
   }
 
   /* ── Utility ── */
@@ -966,9 +967,17 @@
     background: var(--ink-light);
   }
 
+  /* ── Availability — two-zone layout (name bar frozen, calendar scrolls) ── */
+  #view-availability .section-header { margin-bottom: 0.25rem; padding-bottom: 6px; }
+  #view-availability .section-title   { font-size: 20px; }
+  body:has(#view-availability.active) { overflow: hidden; }
+  body:has(#view-availability.active) main { height: calc(100vh - 68px); overflow: hidden; box-sizing: border-box; }
+  #view-availability.active { display: flex; flex-direction: column; height: 100%; }
+  #avail-loading-panel, #avail-closed-panel, #avail-readonly-panel { flex: 1; min-height: 0; overflow-y: auto; }
+  #avail-open-panel   { flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+  #avail-calendar-wrap { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 1.5rem; }
+
   /* ── Availability grid ── */
-  #view-availability .section-header { margin-bottom: 0.5rem; }
-  #avail-grid-wrap { overflow-y: auto; max-height: 60vh; }
   .avail-grid {
     width: 100%;
     border-collapse: collapse;
@@ -1511,7 +1520,7 @@
     <div id="avail-open-panel" style="display:none;">
       <div id="avail-alert" class="hidden" style="margin-bottom:1rem;"></div>
 
-      <div style="background:white;border-bottom:2px solid var(--line);padding:10px 20px;margin:-1.5rem -1.5rem 0.75rem;border-radius:var(--radius-lg) var(--radius-lg) 0 0;">
+      <div style="background:white;border-bottom:2px solid var(--line);padding:6px 16px;margin:-1.5rem -1.5rem 0.5rem;border-radius:var(--radius-lg) var(--radius-lg) 0 0;flex-shrink:0;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
           <div class="typeahead-wrap" style="flex:1;max-width:340px;">
@@ -3855,7 +3864,7 @@ function renderAvailabilityView() {
   applyAvailConfigToHomeCard(availConfig);
 
   if (isOpen) {
-    document.getElementById('avail-open-panel').style.display = 'block';
+    document.getElementById('avail-open-panel').style.display = 'flex';
     const closeFmt = closeDate ? formatDateShort(closeDate) : '';
     document.getElementById('avail-window-banner').innerHTML =
       'Submit your available dates for <strong>' + (targetMonthLabel || 'next month') + '</strong>' +
