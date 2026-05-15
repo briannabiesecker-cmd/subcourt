@@ -967,6 +967,8 @@
   }
 
   /* ── Availability grid ── */
+  #view-availability .section-header { margin-bottom: 0.5rem; }
+  #avail-grid-wrap { overflow-y: auto; max-height: 60vh; }
   .avail-grid {
     width: 100%;
     border-collapse: collapse;
@@ -979,6 +981,11 @@
     letter-spacing: 0.04em;
     padding: 0 6px 10px;
     text-align: center;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 2;
+    box-shadow: 0 1px 0 var(--line);
   }
   .avail-grid thead th:first-child {
     text-align: left;
@@ -4010,6 +4017,13 @@ async function submitAvailability() {
     }
     showAlert('avail-alert', 'success', 'Your availability has been submitted. A confirmation email is on its way!');
     document.getElementById('avail-alert').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const count = availableDates.length;
+    const statusEl = document.getElementById('avail-load-status');
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.color   = 'var(--success)';
+      statusEl.textContent   = 'Submitted — ' + count + ' date' + (count !== 1 ? 's' : '') + ' selected.';
+    }
   } catch(e) {
     showAlert('avail-alert', 'error', 'Could not submit: ' + e.message);
   } finally {
