@@ -958,7 +958,18 @@ function saveCoordinatorRatings(params) {
       var v = allData[row][ci];
       return (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
     }).filter(function(v) { return v !== null; });
-    allData[row][col.rating] = vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : '';
+    if (vals.length) {
+      // Weighted average: min and max × 1, all middle values × 2
+      var sorted = vals.slice().sort(function(a, b) { return a - b; });
+      var wSum = 0, wTotal = 0;
+      sorted.forEach(function(v, i) {
+        var w = (sorted.length === 1 || i === 0 || i === sorted.length - 1) ? 1 : 2;
+        wSum += v * w; wTotal += w;
+      });
+      allData[row][col.rating] = Math.round((wSum / wTotal) * 10) / 10;
+    } else {
+      allData[row][col.rating] = '';
+    }
   }
 
   var dataRows   = allData.slice(1);
