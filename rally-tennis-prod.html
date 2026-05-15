@@ -1252,6 +1252,38 @@
     .avail-grid tbody td:first-child { min-width: 90px; font-size: 14px; }
     .scheduler-row { grid-template-columns: 1fr; }
   }
+
+  /* ── Print (View Schedule → landscape) ── */
+  @media print {
+    @page { size: landscape; margin: 0.5in; }
+
+    /* Reset any full-viewport layout constraints */
+    body, main { height: auto !important; overflow: visible !important; background: white !important; }
+    main { padding: 0.5rem !important; }
+
+    /* Hide all chrome */
+    header, #mobile-nav { display: none !important; }
+
+    /* Hide all views except schedule */
+    .view { display: none !important; }
+    #view-schedule { display: block !important; }
+
+    /* Within schedule view: hide Find My Dates card and print button */
+    #view-schedule > .card,
+    #sch-print-btn,
+    #sch-loading,
+    #sch-empty { display: none !important; }
+
+    /* Compact section header */
+    #view-schedule .section-header { margin-bottom: 0.4rem !important; padding-bottom: 4px !important; }
+
+    /* Show table full-width */
+    #sch-table-wrap { display: block !important; overflow: visible !important; }
+
+    /* Print-friendly table */
+    .sched-table { font-size: 11px; }
+    .sched-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head>
 <body>
@@ -1594,9 +1626,14 @@
   <!-- ── SCHEDULE VIEW ── -->
   <div id="view-schedule" class="view">
     <div class="section-header">
-      <div class="section-title">Match Schedule</div>
-      <span class="section-sub" id="sch-month-label"></span>
-
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <div class="section-title">Match Schedule</div>
+        <span class="section-sub" id="sch-month-label"></span>
+      </div>
+      <button id="sch-print-btn" onclick="window.print()"
+        class="btn btn-secondary" style="display:none;font-size:13px;padding:6px 14px;">
+        Print Preview
+      </button>
     </div>
 
     <div class="card" style="margin-bottom:1rem;padding:0.75rem 1rem;">
@@ -4702,6 +4739,7 @@ async function loadScheduleView() {
   loading.style.display = '';
   empty.style.display   = 'none';
   wrap.style.display    = 'none';
+  document.getElementById('sch-print-btn').style.display = 'none';
 
   try {
     const result = await apiGetWithParams({ action: 'getPublishedSchedule' });
@@ -4716,6 +4754,7 @@ async function loadScheduleView() {
     label.textContent = new Date(parseInt(yr), parseInt(mo) - 1, 1)
       .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     renderPublishedSchedule(null);
+    document.getElementById('sch-print-btn').style.display = '';
   } catch(e) {
     loading.style.display = 'none';
     empty.style.display = '';
