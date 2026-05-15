@@ -966,7 +966,7 @@ function saveCoordinatorRatings(params) {
         var w = (sorted.length === 1 || i === 0 || i === sorted.length - 1) ? 1 : 2;
         wSum += v * w; wTotal += w;
       });
-      allData[row][col.rating] = Math.round((wSum / wTotal) * 10) / 10;
+      allData[row][col.rating] = Math.round((wSum / wTotal) * 100) / 100;
     } else {
       allData[row][col.rating] = '';
     }
@@ -2651,7 +2651,7 @@ function publishScheduleSlot(params) {
         partnerRating = poolAvg;
         avgOf3        = poolAvg;
       }
-      var anitaRating = Math.round(((partnerRating + avgOf3) / 2) * 10) / 10;
+      var anitaRating = Math.round(((partnerRating + avgOf3) / 2) * 100) / 100;
 
       // Add Anita to Players sheet — build row using getColMap so it works for both layouts
       var anitaCol = getColMap(pSheet);
