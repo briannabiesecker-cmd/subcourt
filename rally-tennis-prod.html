@@ -1645,12 +1645,12 @@
       </button>
     </div>
 
-    <div class="card" style="margin-bottom:1rem;padding:0.75rem 1rem;">
-      <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:12px;">
+    <div class="card" style="margin-bottom:0.75rem;padding:0.35rem 0.75rem;">
+      <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;">Find my dates</label>
         <div class="typeahead-wrap" style="flex:1;max-width:320px;">
           <div id="sch-selected-state" style="display:none;">
-            <div class="selected-pill">
+            <div class="selected-pill" style="padding:4px 10px;">
               <span id="sch-selected-name"></span>
               <button class="clear-btn" onclick="clearTypeahead('sch')" title="Clear">×</button>
             </div>
@@ -1661,7 +1661,7 @@
               oninput="onTypeaheadInput('sch', this.value)"
               onblur="onTypeaheadBlur('sch')"
               onfocus="onTypeaheadFocus('sch')"
-              autocomplete="off" />
+              autocomplete="off" style="padding:5px 10px;" />
             <div class="typeahead-dropdown" id="sch-dropdown" style="display:none;"></div>
           </div>
         </div>
