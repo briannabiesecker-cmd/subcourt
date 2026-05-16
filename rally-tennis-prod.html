@@ -4484,16 +4484,17 @@ async function exportScheduleExcel() {
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
-  // Collect active dates (columns) and all players (rows)
+  // Collect active dates (columns) and all players (rows), including sit-out players
   const dates = [];
   const playerMap = {};
   scheduleData.slots.forEach(slot => {
     if (slot.skipped) return;
     dates.push(slot.date);
     slot.groups.forEach(group => group.forEach(p => { if (p.email) playerMap[p.email] = p.name; }));
+    if (slot.sitOut && slot.sitOut.email) playerMap[slot.sitOut.email] = slot.sitOut.name;
   });
 
-  // Build cell lookup: cellData[email][date] = "A" or "A [C]"
+  // Build cell lookup: cellData[email][date] = "A", "A [C]", or "Avail"
   const cellData = {};
   scheduleData.slots.forEach(slot => {
     if (slot.skipped) return;
@@ -4506,6 +4507,10 @@ async function exportScheduleExcel() {
         cellData[p.email][slot.date] = letter + (p.email === captainEmail ? ' [C]' : '');
       });
     });
+    if (slot.sitOut && slot.sitOut.email) {
+      if (!cellData[slot.sitOut.email]) cellData[slot.sitOut.email] = {};
+      cellData[slot.sitOut.email][slot.date] = 'Avail';
+    }
   });
 
   const players = Object.entries(playerMap).sort((a, b) => a[1].localeCompare(b[1]));
