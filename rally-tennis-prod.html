@@ -4874,7 +4874,9 @@ function renderPublishedSchedule(filterEmail, filterName) {
   const no8amList = (publishedSchedule.no8amEmails || []).map(e => e.toLowerCase());
   const starHtml = '<span style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">*</span>';
 
-  let dates = publishedSchedule.dates;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  let dates = publishedSchedule.dates.filter(d => d.date >= todayStr);
   if (filterEmailLower || filterNameLower) {
     dates = dates.map(d => {
       const filteredGroups = d.groups.filter(g =>
