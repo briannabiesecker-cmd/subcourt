@@ -2763,17 +2763,13 @@ function getPublishedSchedule() {
 
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 14).getValues();
 
-  // Single pass: find latest month and build dateMap simultaneously
+  // Build dateMap across all months; track latestMonth for the header label only
   var latestMonth = '';
   var dateMap = {};
   rows.forEach(function(r) {
     var m = normalizeMonth(r[1]);
     if (!m) return;
-    if (m > latestMonth) {
-      latestMonth = m;
-      dateMap = {}; // reset — new latest month found
-    }
-    if (m !== latestMonth) return;
+    if (m > latestMonth) latestMonth = m;
 
     var date = r[2] instanceof Date
       ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
