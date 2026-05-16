@@ -4572,17 +4572,18 @@ function exportSchedulePDF() {
         .toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : (scheduleData.month || 'Schedule');
 
-  // Build tbody: one row per player, rowspan date/sitout across whole date block,
-  // rowspan group cell across players within that group.
+  // One row per group: date (rowspanned) | grp letter | P1 | P2 | P3 | P4
+  // Alt row follows all group rows for the date.
   let tbody = '';
   let isFirstSlot = true;
 
   scheduleData.slots.filter(s => !s.skipped).forEach(slot => {
-    const dateLabel   = new Date(slot.date + 'T12:00:00')
+    const dateLabel  = new Date(slot.date + 'T12:00:00')
       .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const sitOutName  = slot.sitOut ? slot.sitOut.name : '';
+    const sitOutName = slot.sitOut ? slot.sitOut.name : '';
+    const hasAlt     = !!sitOutName;
 
-    // Sort each group so captain is first
+    // Sort each group so captain comes first
     const groupPlayers = (slot.groups || []).map((group, gi) => {
       const captEmail = ((slot.captains || [])[gi] || '').toLowerCase();
       return [...group].sort((a, b) =>
@@ -4590,41 +4591,34 @@ function exportSchedulePDF() {
         (b.email || '').toLowerCase() === captEmail ?  1 : 0);
     });
 
-    const hasAlt     = !!sitOutName;
-    const playerRows = groupPlayers.reduce((n, gp) => n + gp.length, 0);
-    const totalRows  = playerRows + (hasAlt ? 1 : 0);
+    const totalRows = groupPlayers.length + (hasAlt ? 1 : 0);
     if (!totalRows) return;
 
-    let absRow = 0;
     groupPlayers.forEach((players, gi) => {
-      const letter       = String.fromCharCode(65 + gi);
-      const isGroupFirst = gi > 0;
-      players.forEach((p, pi) => {
-        const isVeryFirst = absRow === 0;
-        const nameHtml    = (p.name || '') +
-          (pi === 0 ? ' <span class="capt">(C)</span>' : '');
-        let trClass = '';
-        if (!isFirstSlot && isVeryFirst) trClass = 'date-first';
-        else if (isGroupFirst && pi === 0) trClass = 'group-first';
+      const letter      = String.fromCharCode(65 + gi);
+      const isVeryFirst = gi === 0;
+      let trClass = '';
+      if (!isFirstSlot && isVeryFirst) trClass = 'date-first';
+      else if (!isVeryFirst) trClass = 'group-next';
 
-        tbody += '<tr' + (trClass ? ' class="' + trClass + '"' : '') + '>';
-        if (isVeryFirst) {
-          tbody += '<td rowspan="' + totalRows + '" class="date-cell">' + dateLabel + '</td>';
-        }
-        if (pi === 0) {
-          tbody += '<td rowspan="' + players.length + '" class="group-cell">' + letter + '</td>';
-        }
-        tbody += '<td class="player-cell">' + nameHtml + '</td>';
-        tbody += '</tr>';
-        absRow++;
-      });
+      tbody += '<tr' + (trClass ? ' class="' + trClass + '"' : '') + '>';
+      if (isVeryFirst) {
+        tbody += '<td rowspan="' + totalRows + '" class="date-cell">' + dateLabel + '</td>';
+      }
+      tbody += '<td class="grp-cell">' + letter + '</td>';
+      for (let pi = 0; pi < 4; pi++) {
+        const p        = players[pi];
+        const name     = p ? (p.name || '') : '';
+        const captMark = pi === 0 && p ? ' <span class="capt">(C)</span>' : '';
+        tbody += '<td class="p-cell">' + name + captMark + '</td>';
+      }
+      tbody += '</tr>';
     });
 
-    // Alternate sits below all group rows; date cell is already rowspanned
     if (hasAlt) {
       tbody += '<tr class="alt-row">' +
         '<td class="alt-label">Alt</td>' +
-        '<td class="alt-name">' + sitOutName + '</td>' +
+        '<td class="alt-name" colspan="4">' + sitOutName + '</td>' +
         '</tr>';
     }
     isFirstSlot = false;
@@ -4639,23 +4633,27 @@ function exportSchedulePDF() {
     'body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#111}' +
     'h2{font-size:16px;margin-bottom:14px}' +
     'table{width:100%;border-collapse:collapse;table-layout:fixed}' +
-    'col.c-date{width:16%}col.c-group{width:6%}col.c-player{width:78%}' +
+    'col.c-date{width:14%}col.c-grp{width:5%}col.c-p{width:20.25%}' +
     'thead th{background:#f0f0f0;padding:6px 10px;text-align:left;font-size:11px;' +
       'text-transform:uppercase;letter-spacing:.04em;color:#555;border-bottom:2px solid #bbb}' +
     'thead th.th-grp{text-align:center}' +
-    'tbody td{padding:2px 10px;vertical-align:top;white-space:nowrap;overflow:hidden}' +
-    '.date-cell{font-weight:700;padding-top:8px}' +
-    '.group-cell{font-weight:700;color:#2a7a5a;padding-top:8px;text-align:center}' +
-    '.alt-label{color:#888;font-style:italic;font-size:11px;text-align:center;padding:3px 10px 6px}' +
-    '.alt-name{color:#888;font-style:italic;font-size:11px;padding:3px 10px 6px}' +
+    'tbody td{padding:4px 10px;vertical-align:middle;white-space:nowrap;overflow:hidden}' +
+    '.date-cell{font-weight:700}' +
+    '.grp-cell{font-weight:700;color:#2a7a5a;text-align:center}' +
+    '.p-cell{}' +
+    '.alt-label{color:#888;font-style:italic;font-size:11px;text-align:center;padding-bottom:6px}' +
+    '.alt-name{color:#888;font-style:italic;font-size:11px;padding-bottom:6px}' +
     '.capt{font-size:10px;color:#888}' +
     'tr.date-first td{border-top:2px solid #c96048}' +
-    'tr.group-first td{border-top:1px solid #e0e0e0;padding-top:5px}' +
+    'tr.group-next td{border-top:1px solid #ececec}' +
+    'tr.alt-row td{border-top:none;padding-top:1px}' +
     '</style></head><body>' +
     '<h2>MWF Tennis League — ' + monthLabel + ' Schedule</h2>' +
     '<table>' +
-    '<colgroup><col class="c-date"><col class="c-group"><col class="c-player"></colgroup>' +
-    '<thead><tr><th>Date</th><th class="th-grp">Grp</th><th>Players</th></tr></thead>' +
+    '<colgroup><col class="c-date"><col class="c-grp">' +
+    '<col class="c-p"><col class="c-p"><col class="c-p"><col class="c-p"></colgroup>' +
+    '<thead><tr><th>Date</th><th class="th-grp">Grp</th>' +
+    '<th colspan="4">Players</th></tr></thead>' +
     '<tbody>' + tbody + '</tbody>' +
     '</table>' +
     '<script>window.onload=function(){window.print();}<\/script>' +
