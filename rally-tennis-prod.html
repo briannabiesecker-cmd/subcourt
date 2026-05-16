@@ -4710,8 +4710,8 @@ async function publishScheduleToSheet() {
     if (draftResult && draftResult.success) {
       showAlert('scheduler-alert', 'success',
         'Schedule published — ' + totalGroups + ' group(s). ' +
-        'A Gmail draft with the schedule and CSV attachment has been created — ' +
-        'open <strong>Gmail → Drafts</strong> to preview and send.');
+        'A Gmail draft has been created — open <strong>Gmail → Drafts</strong>, ' +
+        'copy the BCC addresses shown at the top of the draft into the BCC field, then send.');
     } else {
       const errMsg = draftResult && draftResult.error ? draftResult.error : 'unknown error';
       showAlert('scheduler-alert', 'warning',

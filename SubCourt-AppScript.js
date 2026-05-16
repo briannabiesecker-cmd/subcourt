@@ -1353,11 +1353,19 @@ function createScheduleDraft(params) {
   var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
 
   // ── Create Gmail draft ──────────────────────────────────────────────
-  var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule';
+  // BCC is intentionally omitted from createDraft() — GmailApp has a
+  // per-message recipient limit that the full player list can exceed.
+  // Instead, the player email list is prepended to the body as a
+  // copy-paste block so the admin adds it in Gmail before sending.
+  var subject    = 'MWF Tennis League — ' + monthLabel + ' Schedule';
+  var bccBlock   = '<div style="font-family:Arial,sans-serif;font-size:12px;' +
+    'background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 14px;margin-bottom:20px;">' +
+    '<strong>BCC these addresses before sending</strong> (select all, copy, paste into BCC field):<br>' +
+    '<span style="color:#333;word-break:break-all;">' + playerEmails.join(', ') + '</span></div>';
+  var fullHtml   = bccBlock + htmlBody;
   try {
     GmailApp.createDraft('', subject, '', {
-      htmlBody:    htmlBody,
-      bcc:         playerEmails.join(','),
+      htmlBody:    fullHtml,
       attachments: [csvBlob]
     });
     return { success: true, month: monthLabel };
