@@ -1381,11 +1381,10 @@ function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
   var thStyle = 'padding:8px 12px;text-align:left;color:white;';
   var tdBase  = 'padding:6px 12px;vertical-align:top;';
 
-  var html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:700px;">' +
+  var html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:750px;">' +
     '<h2 style="color:#1a5c3a;margin-bottom:12px;">MWF Tennis League — ' + monthLabel + ' Schedule</h2>' +
-    '<p style="margin-bottom:8px;">The ' + monthLabel + ' schedule has been published.' +
-    (scheduleUrl ? ' <a href="' + scheduleUrl + '">View it online</a>.' : '') + '</p>' +
-    '<p style="margin-bottom:20px;color:#555;font-size:13px;">Court times will be announced separately as each date approaches.</p>' +
+    '<p style="margin-bottom:20px;">The ' + monthLabel + ' schedule has been published.' +
+    (scheduleUrl ? ' <a href="' + scheduleUrl + '">View Schedule</a>.' : '') + '</p>' +
     '<table style="border-collapse:collapse;width:100%;">' +
     '<tr style="background:#1a5c3a;">' +
     '<th style="' + thStyle + 'width:20%">Date</th>' +
@@ -1426,10 +1425,85 @@ function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
     }
   });
 
-  html += '</table>' +
-    '<p style="margin-top:24px;color:#888;font-size:12px;">MWF Tennis League</p>' +
+  html += '</table>';
+
+  // Player × date grid (inline "CSV")
+  html += buildPlayerGridHtml(dateMap, sortedDates);
+
+  html += '<p style="margin-top:24px;color:#888;font-size:12px;">MWF Tennis League</p>' +
     '</div>';
   return html;
+}
+
+// Renders the player × date schedule matrix as an HTML table for the email body.
+function buildPlayerGridHtml(dateMap, sortedDates) {
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var anitaRe = /^anita\.sub\d+@xgmail\.com$/i;
+
+  // Collect cellData and player name map from dateMap
+  var cellData   = {};  // email → { date → value }
+  var nameMap    = {};  // email → display name (Last, First)
+
+  sortedDates.forEach(function(date) {
+    var entry = dateMap[date];
+    Object.keys(entry.groups).forEach(function(letter) {
+      entry.groups[letter].forEach(function(p) {
+        if (!p.email || anitaRe.test(p.email)) return;
+        nameMap[p.email] = csvLastFirst(p.name);
+        if (!cellData[p.email]) cellData[p.email] = {};
+        cellData[p.email][date] = letter + (p.isCaptain ? ' [C]' : '');
+      });
+    });
+    if (entry.sitOut && entry.sitOut.email && !anitaRe.test(entry.sitOut.email)) {
+      nameMap[entry.sitOut.email] = csvLastFirst(entry.sitOut.name);
+      if (!cellData[entry.sitOut.email]) cellData[entry.sitOut.email] = {};
+      cellData[entry.sitOut.email][date] = 'Avail';
+    }
+  });
+
+  var emails = Object.keys(cellData).sort(function(a, b) {
+    return (nameMap[a] || a).localeCompare(nameMap[b] || b);
+  });
+
+  // Date headers (short: "Mon 5/18")
+  var dateCols = sortedDates.map(function(date) {
+    var dp = date.split('-');
+    var d  = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+    return DAYS[d.getDay()].slice(0,3) + ' ' + (parseInt(dp[1])) + '/' + parseInt(dp[2]);
+  });
+
+  var thBg  = '#1a5c3a';
+  var thTxt = 'color:white;font-size:11px;padding:5px 7px;text-align:center;white-space:nowrap;';
+  var tdSty = 'font-size:11px;padding:4px 7px;text-align:center;border-top:1px solid #e0e0e0;';
+  var nameSty = 'font-size:11px;padding:4px 7px;text-align:left;border-top:1px solid #e0e0e0;white-space:nowrap;';
+
+  var out = '<h3 style="font-family:Arial,sans-serif;font-size:13px;color:#1a5c3a;margin:28px 0 8px;">Player Schedule</h3>' +
+    '<div style="overflow-x:auto;">' +
+    '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:11px;">' +
+    '<tr style="background:' + thBg + ';">' +
+    '<th style="' + thTxt + 'text-align:left;min-width:130px;">Player</th>';
+  dateCols.forEach(function(col) {
+    out += '<th style="' + thTxt + '">' + col + '</th>';
+  });
+  out += '</tr>';
+
+  emails.forEach(function(email, i) {
+    var bg = i % 2 === 0 ? '#f5f9f7' : '#ffffff';
+    out += '<tr style="background:' + bg + ';">';
+    out += '<td style="' + nameSty + 'background:' + bg + ';">' + (nameMap[email] || email) + '</td>';
+    sortedDates.forEach(function(date) {
+      var val = (cellData[email] || {})[date] || '';
+      var bold = val.indexOf('[C]') !== -1 ? 'font-weight:bold;' : '';
+      var clr  = val === 'Avail' ? 'color:#888;font-style:italic;' : '';
+      out += '<td style="' + tdSty + 'background:' + bg + ';' + bold + clr + '">' + val + '</td>';
+    });
+    out += '</tr>';
+  });
+
+  out += '</table></div>';
+  return out;
 }
 
 function buildScheduleCsv(dateMap, sortedDates, monthLabel, playerNameMap) {

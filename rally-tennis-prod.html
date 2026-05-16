@@ -4696,7 +4696,7 @@ async function publishScheduleToSheet() {
     }
 
     // Step 3: create Gmail draft server-side (no popup, CSV attached automatically)
-    const scheduleUrl = window.location.href.split('#')[0];
+    const scheduleUrl = window.location.href.split('#')[0] + '#schedule';
     const draftResult = await apiPost({ action: 'createScheduleDraft', month: scheduleData.month, scheduleUrl });
 
     btn.textContent = 'Published ✓';
