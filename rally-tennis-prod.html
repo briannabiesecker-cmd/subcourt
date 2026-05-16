@@ -4666,84 +4666,12 @@ function exportSchedulePDF() {
   win.document.close();
 }
 
-function openScheduleEmailDraft(activeSlots, gmailWin) {
-  const parts      = scheduleData.month.split('-');
-  const monthLabel = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1)
-    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const scheduleUrl = window.location.href.split('#')[0] + '#schedule';
-  const anitaRe    = /^anita\.sub\d+@xgmail\.com$/i;
-
-  // Build CSV and PDF HTML from schedule data
-  const csvLines  = ['"MWF Tennis League — ' + monthLabel + ' Schedule"', ''];
-  let   pdfGroups = '';
-
-  activeSlots.forEach(slot => {
-    const dateLabel = new Date(slot.date + 'T12:00:00').toLocaleDateString('en-US',
-      { weekday: 'long', month: 'long', day: 'numeric' });
-    csvLines.push('"' + dateLabel.replace(/"/g, '""') + '"');
-    pdfGroups += '<div class="date">' + dateLabel + '</div>';
-    slot.groups.forEach((group, gi) => {
-      const letter = String.fromCharCode(65 + gi);
-      const real   = group.filter(p => p.name && !anitaRe.test(p.email || ''));
-      const names  = real.map(p => p.name).join(', ');
-      const subTag = real.length < 4 ? ' <em>(sub needed)</em>' : '';
-      pdfGroups += '<div class="group"><span class="ltr">Group ' + letter + '</span>' + names + subTag + '</div>';
-      const row = ['Group ' + letter].concat(real.map(p => p.name));
-      while (row.length < 5) row.push('');
-      if (real.length < 4) row.push('(sub needed)');
-      csvLines.push(row.map(v => '"' + (v || '').replace(/"/g, '""') + '"').join(','));
-    });
-    csvLines.push('');
-  });
-
-  // Collect all player emails — playerList if loaded, else gather from schedule
-  let emails = playerList.filter(p => p.email && !anitaRe.test(p.email)).map(p => p.email);
-  if (!emails.length) {
-    const seen = new Set();
-    activeSlots.forEach(s => s.groups.forEach(g => g.forEach(p => {
-      if (p.email && !anitaRe.test(p.email)) seen.add(p.email.toLowerCase());
-    })));
-    emails = [...seen];
-  }
-
-  // ── CSV: auto-download (no popup needed) ──
-  const csvBlob = new Blob(['﻿' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const dlLink  = document.createElement('a');
-  const safe    = monthLabel.replace(/\s/g, '_');
-  dlLink.href     = URL.createObjectURL(csvBlob);
-  dlLink.download = safe + '_Schedule.csv';
-  document.body.appendChild(dlLink);
-  dlLink.click();
-  document.body.removeChild(dlLink);
-  setTimeout(() => URL.revokeObjectURL(dlLink.href), 2000);
-
-  // ── Gmail compose: short body, no schedule text ──
-  const subject  = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
-  const body     = 'The MWF Tennis League schedule for ' + monthLabel + ' has been published.\n\n' +
-    'View the schedule online: ' + scheduleUrl + '\n\n' +
-    'Court times will be announced separately as each date approaches.\n\n' +
-    'The Excel schedule file is attached.';
-  const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1' +
-    '&bcc='  + encodeURIComponent(emails.join(',')) +
-    '&su='   + encodeURIComponent(subject) +
-    '&body=' + encodeURIComponent(body);
-  if (gmailWin && !gmailWin.closed) {
-    gmailWin.location.href = gmailUrl;
-  } else {
-    showAlert('scheduler-alert', 'warning',
-      'Schedule published, but Gmail was blocked by your browser. ' +
-      '<a href="' + gmailUrl + '" target="_blank" style="font-weight:600;">Click here to open Gmail compose</a> — attach the downloaded Excel file and send.');
-  }
-}
 
 async function publishScheduleToSheet() {
   if (!scheduleData || !scheduleData.slots) return;
   const btn = document.getElementById('sched-save-btn');
   btn.disabled = true;
   btn.textContent = 'Publishing…';
-
-  // Open ONE blank window now (synchronous, inside click handler) — browsers only allow one popup per gesture
-  const gmailWin = window.open('', '_blank');
 
   const activeSlots = scheduleData.slots
     .filter(s => !s.skipped)
@@ -4767,22 +4695,31 @@ async function publishScheduleToSheet() {
       totalGroups += res.groupsWritten || 0;
     }
 
-    // CSV + Excel downloads (no popup), then Gmail compose in pre-opened tab
-    openScheduleEmailDraft(activeSlots, gmailWin);
-    await exportScheduleExcel();
-    showAlert('scheduler-alert', 'success',
-      'Schedule published — ' + totalGroups + ' group(s). ' +
-      'Excel and CSV files have been downloaded. Attach them to the Gmail compose tab and send.');
+    // Step 3: create Gmail draft server-side (no popup, CSV attached automatically)
+    const scheduleUrl = window.location.href.split('#')[0];
+    const draftResult = await apiPost({ action: 'createScheduleDraft', month: scheduleData.month, scheduleUrl });
+
     btn.textContent = 'Published ✓';
-    // Unlock exports now that published version is in sync
     const excelBtn = document.getElementById('sched-excel-btn');
     const pdfBtn   = document.getElementById('sched-pdf-btn');
     excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.pointerEvents = '';
     pdfBtn.disabled = false;   pdfBtn.style.opacity = '';   pdfBtn.style.pointerEvents = '';
     document.getElementById('sched-excel-wrap').title = '';
     document.getElementById('sched-pdf-wrap').title = '';
+
+    if (draftResult && draftResult.success) {
+      showAlert('scheduler-alert', 'success',
+        'Schedule published — ' + totalGroups + ' group(s). ' +
+        'A Gmail draft with the schedule and CSV attachment has been created — ' +
+        'open <strong>Gmail → Drafts</strong> to preview and send.');
+    } else {
+      const errMsg = draftResult && draftResult.error ? draftResult.error : 'unknown error';
+      showAlert('scheduler-alert', 'warning',
+        'Schedule published — ' + totalGroups + ' group(s). ' +
+        'Could not create Gmail draft (' + errMsg + '). ' +
+        'Use the Export buttons below to download files and email manually.');
+    }
   } catch(e) {
-    if (gmailWin && !gmailWin.closed) gmailWin.close();
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Publish';

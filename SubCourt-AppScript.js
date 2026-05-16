@@ -411,6 +411,7 @@ function doGet(e) {
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
+    else if (action === 'createScheduleDraft')         result = createScheduleDraft(e.parameter);
     else if (action === 'sendTestEmail')             result = sendTestEmail();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
@@ -1277,6 +1278,204 @@ function editRequestPlayers(params) {
   }
 
   return { success: true, filled: requestorReplaced };
+}
+
+// ──────────────────────────────────────────────────
+// GMAIL DRAFT — SCHEDULE EMAIL
+// ──────────────────────────────────────────────────
+
+// Creates a Gmail draft in the admin's account with the published schedule
+// as an HTML table in the body and a CSV attachment (player × date matrix).
+// The admin then opens Gmail Drafts, previews, and sends.
+function createScheduleDraft(params) {
+  var scheduleUrl = (params.scheduleUrl || '').toString().trim();
+  var ss      = SpreadsheetApp.openById(SHEET_ID);
+  var mgSheet = ss.getSheetByName(TABS.matchGroups);
+  if (!mgSheet || mgSheet.getLastRow() < 2) return { success: false, error: 'No schedule data.' };
+
+  // ── Read player directory ──────────────────────────────────────────
+  var anitaRe    = /^anita\.sub\d+@xgmail\.com$/i;
+  var pSheet     = ss.getSheetByName(TABS.players);
+  var playerRows = pSheet.getLastRow() > 1
+    ? pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 2).getValues() : [];
+  var playerNameMap = {};   // email → name (Players sheet)
+  var playerEmails  = [];   // all non-Anita player emails for BCC
+  playerRows.forEach(function(r) {
+    var email = (r[1] || '').toString().toLowerCase().trim();
+    var name  = (r[0] || '').toString().trim();
+    if (!email || anitaRe.test(email)) return;
+    playerNameMap[email] = name;
+    playerEmails.push(email);
+  });
+
+  // ── Build dateMap from MatchGroups ──────────────────────────────────
+  var rows = mgSheet.getRange(2, 1, mgSheet.getLastRow() - 1, 14).getValues();
+  var latestMonth = '';
+  rows.forEach(function(r) {
+    var m = normalizeMonth(r[1]);
+    if (m > latestMonth) latestMonth = m;
+  });
+  if (!latestMonth) return { success: false, error: 'No published month found.' };
+
+  var dateParts  = latestMonth.split('-');
+  var monthDate  = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, 1);
+  var monthLabel = Utilities.formatDate(monthDate, Session.getScriptTimeZone(), 'MMMM yyyy');
+
+  var dateMap = {};  // date → { groups: { letter: [players] }, sitOut: {name,email} }
+  rows.forEach(function(r) {
+    if (normalizeMonth(r[1]) !== latestMonth) return;
+    var date = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : r[2].toString();
+    var letter      = r[3] ? r[3].toString() : '';
+    var sitOutName  = r[12] ? r[12].toString().trim() : '';
+    var sitOutEmail = r[13] ? r[13].toString().toLowerCase().trim() : '';
+    if (!date || !letter) return;
+    if (!dateMap[date]) dateMap[date] = { groups: {}, sitOut: { name: sitOutName, email: sitOutEmail } };
+    var players = [];
+    for (var pi = 0; pi < 4; pi++) {
+      var nm = r[4 + pi * 2] ? r[4 + pi * 2].toString().trim() : '';
+      var em = r[5 + pi * 2] ? r[5 + pi * 2].toString().toLowerCase().trim() : '';
+      if (nm && !anitaRe.test(em)) players.push({ name: nm, email: em, isCaptain: pi === 0 });
+    }
+    dateMap[date].groups[letter] = players;
+  });
+
+  var sortedDates = Object.keys(dateMap).sort();
+  if (!sortedDates.length) return { success: false, error: 'No dates in schedule.' };
+
+  // ── Build email body (HTML table) ───────────────────────────────────
+  var htmlBody = buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl);
+
+  // ── Build CSV attachment (player × date matrix) ─────────────────────
+  var csvContent = buildScheduleCsv(dateMap, sortedDates, monthLabel, playerNameMap);
+  var csvFileName = monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
+  var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
+
+  // ── Create Gmail draft ──────────────────────────────────────────────
+  var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule';
+  try {
+    GmailApp.createDraft('', subject, '', {
+      htmlBody:    htmlBody,
+      bcc:         playerEmails.join(','),
+      attachments: [csvBlob]
+    });
+    return { success: true, month: monthLabel };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var thStyle = 'padding:8px 12px;text-align:left;color:white;';
+  var tdBase  = 'padding:6px 12px;vertical-align:top;';
+
+  var html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:700px;">' +
+    '<h2 style="color:#1a5c3a;margin-bottom:12px;">MWF Tennis League — ' + monthLabel + ' Schedule</h2>' +
+    '<p style="margin-bottom:8px;">The ' + monthLabel + ' schedule has been published.' +
+    (scheduleUrl ? ' <a href="' + scheduleUrl + '">View it online</a>.' : '') + '</p>' +
+    '<p style="margin-bottom:20px;color:#555;font-size:13px;">Court times will be announced separately as each date approaches.</p>' +
+    '<table style="border-collapse:collapse;width:100%;">' +
+    '<tr style="background:#1a5c3a;">' +
+    '<th style="' + thStyle + 'width:20%">Date</th>' +
+    '<th style="' + thStyle + 'width:6%;text-align:center">Grp</th>' +
+    '<th style="' + thStyle + '">Players</th>' +
+    '</tr>';
+
+  sortedDates.forEach(function(date, di) {
+    var entry   = dateMap[date];
+    var dp      = date.split('-');
+    var d       = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+    var dateLabel = DAYS[d.getDay()].slice(0,3) + ', ' + MONTHS[d.getMonth()].slice(0,3) + ' ' + parseInt(dp[2]);
+    var letters   = Object.keys(entry.groups).sort();
+    var rowBg     = di % 2 === 0 ? '#f5f9f7' : '#ffffff';
+    var totalRows = letters.length + (entry.sitOut && entry.sitOut.name ? 1 : 0);
+
+    letters.forEach(function(letter, gi) {
+      var players    = entry.groups[letter];
+      var playerStr  = players.map(function(p) {
+        return p.name + (p.isCaptain ? ' <strong>(C)</strong>' : '');
+      }).join(', ');
+      var borderTop  = (di > 0 && gi === 0) ? '2px solid #c96048' : (gi > 0 ? '1px solid #ddd' : 'none');
+
+      html += '<tr style="background:' + rowBg + ';border-top:' + borderTop + ';">';
+      if (gi === 0) {
+        html += '<td rowspan="' + totalRows + '" style="' + tdBase + 'font-weight:bold;white-space:nowrap;">' + dateLabel + '</td>';
+      }
+      html += '<td style="' + tdBase + 'text-align:center;font-weight:bold;color:#1a5c3a;">' + letter + '</td>';
+      html += '<td style="' + tdBase + '">' + playerStr + '</td>';
+      html += '</tr>';
+    });
+
+    if (entry.sitOut && entry.sitOut.name) {
+      html += '<tr style="background:' + rowBg + ';">' +
+        '<td style="' + tdBase + 'text-align:center;color:#888;font-style:italic;font-size:12px;">Alt</td>' +
+        '<td style="' + tdBase + 'color:#888;font-style:italic;font-size:12px;">' + entry.sitOut.name + '</td>' +
+        '</tr>';
+    }
+  });
+
+  html += '</table>' +
+    '<p style="margin-top:24px;color:#888;font-size:12px;">MWF Tennis League</p>' +
+    '</div>';
+  return html;
+}
+
+function buildScheduleCsv(dateMap, sortedDates, monthLabel, playerNameMap) {
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var anitaRe = /^anita\.sub\d+@xgmail\.com$/i;
+
+  // Header row: Player, then each date formatted short
+  var headerCols = ['Player'].concat(sortedDates.map(function(date) {
+    var dp = date.split('-');
+    var d  = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+    return DAYS[d.getDay()].slice(0,3) + ', ' + MONTHS[d.getMonth()].slice(0,3) + ' ' + parseInt(dp[2]);
+  }));
+
+  // Build cellData[email][date] = value
+  var cellData = {};
+  sortedDates.forEach(function(date) {
+    var entry = dateMap[date];
+    Object.keys(entry.groups).forEach(function(letter) {
+      entry.groups[letter].forEach(function(p) {
+        if (!p.email || anitaRe.test(p.email)) return;
+        if (!cellData[p.email]) cellData[p.email] = {};
+        cellData[p.email][date] = letter + (p.isCaptain ? ' [C]' : '');
+      });
+    });
+    if (entry.sitOut && entry.sitOut.email && !anitaRe.test(entry.sitOut.email)) {
+      if (!cellData[entry.sitOut.email]) cellData[entry.sitOut.email] = {};
+      cellData[entry.sitOut.email][date] = 'Avail';
+    }
+  });
+
+  // Sort players by Last, First
+  var emails = Object.keys(cellData).sort(function(a, b) {
+    return csvLastFirst(playerNameMap[a] || a).localeCompare(csvLastFirst(playerNameMap[b] || b));
+  });
+
+  function csvQ(v) { return '"' + (v || '').replace(/"/g, '""') + '"'; }
+
+  var lines = [headerCols.map(csvQ).join(',')];
+  emails.forEach(function(email) {
+    var name = csvLastFirst(playerNameMap[email] || email);
+    var row  = [csvQ(name)].concat(sortedDates.map(function(d) {
+      return csvQ((cellData[email] || {})[d] || '');
+    }));
+    lines.push(row.join(','));
+  });
+  return lines.join('\r\n');
+}
+
+function csvLastFirst(name) {
+  var parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return name;
+  return parts[parts.length - 1] + ', ' + parts.slice(0, -1).join(' ');
 }
 
 // ──────────────────────────────────────────────────
