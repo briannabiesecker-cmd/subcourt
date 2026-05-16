@@ -1081,6 +1081,10 @@
     font-size: 15px;
   }
 
+  /* ── Schedule — compact Find My Dates card ── */
+  #view-schedule > .card { padding: 0.3rem 0.75rem !important; margin-bottom: 0.75rem !important; }
+  #sch-name-input         { padding: 5px 10px !important; }
+
   /* ── Schedule results table ── */
   .sched-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .sched-table th {
@@ -1645,7 +1649,7 @@
       </button>
     </div>
 
-    <div class="card" style="margin-bottom:0.75rem;padding:0.35rem 0.75rem;">
+    <div class="card">
       <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;">Find my dates</label>
         <div class="typeahead-wrap" style="flex:1;max-width:320px;">
@@ -1661,7 +1665,7 @@
               oninput="onTypeaheadInput('sch', this.value)"
               onblur="onTypeaheadBlur('sch')"
               onfocus="onTypeaheadFocus('sch')"
-              autocomplete="off" style="padding:5px 10px;" />
+              autocomplete="off" />
             <div class="typeahead-dropdown" id="sch-dropdown" style="display:none;"></div>
           </div>
         </div>
