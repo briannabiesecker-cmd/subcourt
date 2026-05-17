@@ -2753,35 +2753,57 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
 function clearAnitaRecords() {
   var ss           = SpreadsheetApp.openById(SHEET_ID);
   var anitaPattern = /^Anita Sub\d+$/;
+  var anitaEmailRe = /^anita\.sub\d+@xgmail\.com$/i;
+  var today        = formatSheetDate(new Date());
 
-  // Players: read-filter-rewrite (one read + one write instead of N deleteRow calls)
+  // ── Step 1: find which Anita emails still have open FUTURE sub requests ──
+  // We must preserve those players and requests so current-month play continues.
+  var rSheet           = ss.getSheetByName(TABS.requests);
+  var activeAnitaEmails = {};   // email → true
+  if (rSheet && rSheet.getLastRow() >= 2) {
+    var reqAll = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, 7).getValues();
+    reqAll.forEach(function(r) {
+      var email     = (r[3] || '').toString().trim().toLowerCase();
+      var matchDate = formatSheetDate(r[4]);
+      var status    = (r[6] || '').toString();
+      if (anitaEmailRe.test(email) && status === 'open' && matchDate > today) {
+        activeAnitaEmails[email] = true;
+      }
+    });
+  }
+
+  // ── Step 2: remove only Anita players with no active future requests ──
   var pSheet = ss.getSheetByName(TABS.players);
   if (pSheet && pSheet.getLastRow() >= 2) {
-    var numCols  = Math.max(pSheet.getLastColumn(), 1);
-    var allData  = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, numCols).getValues();
-    var keep     = allData.filter(function(r) {
-      return !anitaPattern.test((r[0] || '').toString().trim());
+    var numCols = Math.max(pSheet.getLastColumn(), 1);
+    var allData = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, numCols).getValues();
+    var keep = allData.filter(function(r) {
+      if (!anitaPattern.test((r[0] || '').toString().trim())) return true;
+      var email = (r[1] || '').toString().trim().toLowerCase();
+      return !!activeAnitaEmails[email]; // keep if still needed
     });
-    var removed  = allData.length - keep.length;
+    var removed = allData.length - keep.length;
     if (removed > 0) {
       pSheet.getRange(2, 1, allData.length, numCols).clearContent();
       if (keep.length > 0) pSheet.getRange(2, 1, keep.length, numCols).setValues(keep);
-      if (removed > 0) pSheet.deleteRows(keep.length + 2, removed); // remove leftover blank rows
+      pSheet.deleteRows(keep.length + 2, removed);
     }
   }
 
-  // SubRequests: batch-set status to 'cancelled' (one read + one setValues instead of N deleteRow)
-  var rSheet = ss.getSheetByName(TABS.requests);
+  // ── Step 3: cancel only PAST Anita sub requests (future ones stay open) ──
   if (rSheet && rSheet.getLastRow() >= 2) {
-    var nameCol   = rSheet.getRange(2, 3, rSheet.getLastRow() - 1, 1).getValues();
-    var statusCol = rSheet.getRange(2, 7, rSheet.getLastRow() - 1, 1).getValues();
+    var rows      = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, 7).getValues();
+    var statusCol = rows.map(function(r) { return [r[6]]; });
     var changed   = false;
-    for (var i = 0; i < nameCol.length; i++) {
-      if (anitaPattern.test((nameCol[i][0] || '').toString().trim())) {
+    rows.forEach(function(r, i) {
+      var name      = (r[2] || '').toString().trim();
+      var matchDate = formatSheetDate(r[4]);
+      var status    = (r[6] || '').toString();
+      if (anitaPattern.test(name) && status === 'open' && matchDate <= today) {
         statusCol[i][0] = 'cancelled';
         changed = true;
       }
-    }
+    });
     if (changed) rSheet.getRange(2, 7, statusCol.length, 1).setValues(statusCol);
   }
 }
