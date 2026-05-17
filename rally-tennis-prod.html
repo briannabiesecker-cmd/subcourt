@@ -2476,7 +2476,7 @@ async function loadMyRequests(email, playerName) { // v2
     const mine = requests.filter(r =>
       (r.email.toLowerCase() === emailLower || isAnitaForPlayer(r)) &&
       r.status !== 'cancelled' &&
-      r.matchDate > todayStr
+      r.matchDate >= todayStr
     ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
     myRequestsData = mine;
 
@@ -2501,7 +2501,9 @@ async function loadMyRequests(email, playerName) { // v2
         statusCell = '<span class="badge badge-open">Looking for sub</span>';
       }
 
-      const subCell = (r.status === 'filled' && r.assignedSub) ? `<strong>${r.assignedSub}</strong>` : '';
+      const subCell = r.status === 'filled' && r.assignedSub
+        ? `<strong>${r.assignedSub}</strong>`
+        : r.status === 'expired' ? '<span style="color:var(--ink-light);font-style:italic;">No sub found</span>' : '';
 
       const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
 
