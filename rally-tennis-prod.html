@@ -2417,7 +2417,11 @@ async function submitRequest() {
       return;
     }
 
-    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
+    const result = await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
+    if (result && result.dispatchRan) {
+      showAlert('req-alert', 'error', result.message);
+      return;
+    }
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     document.getElementById('req-date').value = '';
     document.getElementById('req-schedule-lookup').innerHTML = '';
