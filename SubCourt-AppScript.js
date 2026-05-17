@@ -1358,11 +1358,10 @@ function createScheduleDraft(params) {
   // to the coordinator so it appears in their own Gmail inbox for review.
   var coordinatorEmail = 'marobria@gmail.com';
   var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule';
-  var bccBlock = '<div style="font-family:Arial,sans-serif;font-size:12px;' +
-    'background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 14px;margin-bottom:20px;">' +
-    '<strong>BCC addresses for sending to players</strong> ' +
-    '(select all, copy, paste into BCC field of a new email):<br>' +
-    '<span style="color:#333;word-break:break-all;">' + playerEmails.join(', ') + '</span></div>';
+  var bccBlock = '<p style="font-family:Arial,sans-serif;font-size:13px;margin-bottom:6px;">' +
+    '<strong>BCC addresses:</strong></p>' +
+    '<p style="font-family:Arial,sans-serif;font-size:13px;margin-bottom:20px;word-break:break-all;">' +
+    playerEmails.join(', ') + '</p>';
   var fullHtml = bccBlock + htmlBody;
   try {
     GmailApp.sendEmail(coordinatorEmail, subject, '', {
