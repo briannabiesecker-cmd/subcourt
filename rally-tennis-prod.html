@@ -4710,8 +4710,8 @@ async function publishScheduleToSheet() {
     if (draftResult && draftResult.success) {
       showAlert('scheduler-alert', 'success',
         'Schedule published — ' + totalGroups + ' group(s). ' +
-        'A Gmail draft has been created — open <strong>Gmail → Drafts</strong>, ' +
-        'copy the BCC addresses shown at the top of the draft into the BCC field, then send.');
+        'A preview email has been sent to marobria@gmail.com — ' +
+        'review it, then compose a new email to players using the BCC list it contains.');
     } else {
       const errMsg = draftResult && draftResult.error ? draftResult.error : 'unknown error';
       showAlert('scheduler-alert', 'warning',

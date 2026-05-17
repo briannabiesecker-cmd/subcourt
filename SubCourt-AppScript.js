@@ -1352,21 +1352,23 @@ function createScheduleDraft(params) {
   var csvFileName = monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
   var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
 
-  // ── Create Gmail draft ──────────────────────────────────────────────
-  // BCC is intentionally omitted from createDraft() — GmailApp has a
-  // per-message recipient limit that the full player list can exceed.
-  // Instead, the player email list is prepended to the body as a
-  // copy-paste block so the admin adds it in Gmail before sending.
-  var subject    = 'MWF Tennis League — ' + monthLabel + ' Schedule';
-  var bccBlock   = '<div style="font-family:Arial,sans-serif;font-size:12px;' +
+  // ── Send preview email to coordinator ───────────────────────────────
+  // GmailApp.createDraft() only creates drafts in the script owner's account
+  // (mwfmtctennis@gmail.com). Instead, send the full preview email directly
+  // to the coordinator so it appears in their own Gmail inbox for review.
+  var coordinatorEmail = 'marobria@gmail.com';
+  var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule';
+  var bccBlock = '<div style="font-family:Arial,sans-serif;font-size:12px;' +
     'background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 14px;margin-bottom:20px;">' +
-    '<strong>BCC these addresses before sending</strong> (select all, copy, paste into BCC field):<br>' +
+    '<strong>BCC addresses for sending to players</strong> ' +
+    '(select all, copy, paste into BCC field of a new email):<br>' +
     '<span style="color:#333;word-break:break-all;">' + playerEmails.join(', ') + '</span></div>';
-  var fullHtml   = bccBlock + htmlBody;
+  var fullHtml = bccBlock + htmlBody;
   try {
-    GmailApp.createDraft('', subject, '', {
+    GmailApp.sendEmail(coordinatorEmail, subject, '', {
       htmlBody:    fullHtml,
-      attachments: [csvBlob]
+      attachments: [csvBlob],
+      name:        'MWF Tennis League'
     });
     return { success: true, month: monthLabel };
   } catch(e) {
