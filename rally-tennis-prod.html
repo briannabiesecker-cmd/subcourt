@@ -1314,7 +1314,7 @@
     <button data-view="request"      onclick="showView('request', this)">Request A Sub</button>
     <button data-view="volunteer"    onclick="showView('volunteer', this)">Volunteer<br>to Sub</button>
     <button data-view="availability" onclick="showView('availability', this)">My<br>Availability</button>
-    <button onclick="window.open('https://docs.google.com/document/d/e/2PACX-1vT_pn_Shq81mAAObYLF4-PJ1yQdg-OEyzexiTD3Wp59I_dcvBrHSaTc8uqThyWRLK0JHYnVtL1TIU5p/pub','_blank','noopener')">Instructions</button>
+    <button onclick="openInstructions()">Instructions</button>
     <button data-view="admin"        onclick="showView('admin', this)">Admin</button>
   </nav>
 </header>
@@ -1364,7 +1364,7 @@
     <span>Avail.</span>
   </button>
 
-  <button onclick="window.open('https://docs.google.com/document/d/e/2PACX-1vT_pn_Shq81mAAObYLF4-PJ1yQdg-OEyzexiTD3Wp59I_dcvBrHSaTc8uqThyWRLK0JHYnVtL1TIU5p/pub','_blank','noopener')">
+  <button onclick="openInstructions()">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
     </svg>
@@ -2003,6 +2003,10 @@ const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:
 // CONFIG — paste your Apps Script URL here after deploying
 // ══════════════════════════════════════════════════
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwgaAlca17-7cywpr0b7m5zpHF9fQZPfSxOztrr-mupnrcnZ3wz6ppqXTs3cfjfsKUReg/exec';
+function openInstructions() {
+  window.open(SCRIPT_URL + '?page=instructions', '_blank', 'noopener');
+}
+
 // ══════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════

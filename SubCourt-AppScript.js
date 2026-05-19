@@ -354,10 +354,49 @@ function runAutoDispatch() {
 }
 
 // ──────────────────────────────────────────────────
+// INSTRUCTIONS PAGE
+// ──────────────────────────────────────────────────
+
+var INSTRUCTIONS_URL = 'https://docs.google.com/document/d/e/2PACX-1vT_pn_Shq81mAAObYLF4-PJ1yQdg-OEyzexiTD3Wp59I_dcvBrHSaTc8uqThyWRLK0JHYnVtL1TIU5p/pub';
+
+function serveInstructions() {
+  try {
+    // Use cache to avoid fetching on every request (5-minute TTL)
+    var cache  = CacheService.getScriptCache();
+    var html   = cache.get('instructions_html');
+    if (!html) {
+      html = UrlFetchApp.fetch(INSTRUCTIONS_URL).getContentText();
+      try { cache.put('instructions_html', html, 300); } catch(e) {}
+    }
+
+    // Strip Google redirect wrappers: href="https://www.google.com/url?q=ENCODED_URL&..."
+    // Replace with the decoded target URL directly, opening in a new tab.
+    html = html.replace(
+      /href="https:\/\/www\.google\.com\/url\?q=([^&"]+)[^"]*"/g,
+      function(_, encoded) {
+        try { return 'href="' + decodeURIComponent(encoded) + '" target="_blank" rel="noopener"'; }
+        catch(e) { return 'href="#"'; }
+      }
+    );
+
+    return HtmlService.createHtmlOutput(html).setTitle('Rally — Instructions');
+  } catch(err) {
+    return HtmlService.createHtmlOutput(
+      '<p style="font-family:sans-serif;padding:2rem;color:#c00;">Could not load instructions: ' +
+      err.message + '</p>');
+  }
+}
+
+// ──────────────────────────────────────────────────
 // ROUTING
 // ──────────────────────────────────────────────────
 
 function doGet(e) {
+  // Serve the instructions page as a plain HTML response (not JSONP)
+  if (e && e.parameter && e.parameter.page === 'instructions') {
+    return serveInstructions();
+  }
+
   const action   = e.parameter.action;
   const callback = e.parameter.callback;
   let result;
