@@ -2032,37 +2032,8 @@ function checkAvailabilityWindow() {
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
   if (!isEmailEnabled()) return;
 
-  var BATCH   = 50;
-  var batches = Math.ceil(missing.length / BATCH);
-  try {
-    var remaining = MailApp.getRemainingDailyQuota();
-    if (remaining < batches) {
-      Logger.log('checkAvailabilityWindow: quota too low — ' + remaining + ' remaining, need ' + batches);
-      return;
-    }
-  } catch(e) { /* ignore */ }
-
-  var senderEmail = getConfig().senderEmail || '';
-  for (var b = 0; b < batches; b++) {
-    var batch     = missing.slice(b * BATCH, (b + 1) * BATCH);
-    var toEmail   = batch[0].email;
-    var bccEmails = batch.slice(1).map(function(p) { return p.email; }).join(', ');
-    var opts      = { name: 'MWF Tennis League' };
-    if (bccEmails) opts.bcc = bccEmails;
-    try {
-      if (senderEmail) {
-        try {
-          GmailApp.sendEmail(toEmail, subject, body,
-            Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
-          continue;
-        } catch(ge) { Logger.log('GmailApp reminder batch ' + (b+1) + ' failed: ' + ge.message); }
-      }
-      opts.to = toEmail; opts.subject = subject; opts.body = body;
-      MailApp.sendEmail(opts);
-    } catch(e) {
-      Logger.log('Reminder email batch ' + (b+1) + ' failed: ' + e.message);
-    }
-  }
+  var toList = missing.map(function(p) { return p.email; }).join(', ');
+  sendLeagueEmail({ to: toList, subject: subject, body: body, name: 'MWF Tennis League' });
 }
 
 function testAvailabilityEmail() {
@@ -2109,14 +2080,6 @@ function openAvailabilityWindow(params) {
     });
     emailCount = allPlayers.length;
     if (allPlayers.length && isEmailEnabled()) {
-      // BCC batches of 50 — 1 quota point per sendEmail call regardless of BCC count.
-      // 76 players = 2 calls = 2 quota points instead of 76.
-      var BATCH_SIZE   = 50;
-      var batchesNeeded = Math.ceil(allPlayers.length / BATCH_SIZE);
-      var remaining    = MailApp.getRemainingDailyQuota();
-      if (remaining < batchesNeeded) {
-        throw new Error('Insufficient email quota — ' + remaining + ' sends remaining, need ' + batchesNeeded + ' (batched). Try again tomorrow or contact your Google Workspace admin.');
-      }
       const config         = getAvailabilityConfig();
       const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
@@ -2127,18 +2090,8 @@ function openAvailabilityWindow(params) {
         APP_BASE_URL + '#availability\n\n' +
         'See you on the court!\n' +
         'MWF Tennis League';
-      for (var i = 0; i < allPlayers.length; i += BATCH_SIZE) {
-        var batch      = allPlayers.slice(i, i + BATCH_SIZE);
-        var toEmail    = batch[0].email;
-        var bccEmails  = batch.slice(1).map(function(p) { return p.email; }).join(', ');
-        var emailParams = { to: toEmail, subject: subject, body: body, name: 'MWF Tennis League' };
-        if (bccEmails) emailParams.bcc = bccEmails;
-        try {
-          sendLeagueEmail(emailParams);
-        } catch(sendErr) {
-          Logger.log('Batch email failed (batch ' + Math.floor(i/BATCH_SIZE + 1) + '): ' + sendErr.message);
-        }
-      }
+      const toList = allPlayers.map(function(p) { return p.email; }).join(', ');
+      sendLeagueEmail({ to: toList, subject: subject, body: body, name: 'MWF Tennis League' });
     }
   } catch(e) {
     emailError = e.message;
