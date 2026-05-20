@@ -2035,7 +2035,19 @@ function showView(name, btn) {
       }
     });
   }
-  if (name === 'availability') { loadAvailabilityView().then(() => prefillIdentity('av')); }
+  if (name === 'availability') {
+    loadAvailabilityView().then(() => {
+      const existingEmail = document.getElementById('av-email').value;
+      if (existingEmail) {
+        // Name already filled — always re-fetch selections so the grid reflects
+        // the actual submission (prefillIdentity would skip loadMyAvailability
+        // when av-email is set, leaving the grid blank on fresh page loads).
+        loadMyAvailability(existingEmail);
+      } else {
+        prefillIdentity('av');
+      }
+    });
+  }
   if (name === 'schedule') loadScheduleView();
   if (name === 'directory') loadDirectoryView();
   if (name === 'admin') {
