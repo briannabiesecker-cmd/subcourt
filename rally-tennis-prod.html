@@ -2683,8 +2683,9 @@ async function deleteRequest(requestId) {
 // ══════════════════════════════════════════════════
 // VOLUNTEERS
 // ══════════════════════════════════════════════════
-let volSelections   = {};
-let myVolunteerMap  = {}; // date → {rowIndex, status, times} for pre-existing submissions
+let volSelections      = {};
+let myVolunteerMap     = {}; // date → {rowIndex, status, times} for pre-existing submissions
+let nearScheduledDates = new Set(); // dates ≤2 days away where player is already scheduled
 
 async function buildCalendar() {
   try {
@@ -2761,8 +2762,15 @@ function toggleAllTimes(k) {
 function toggleTime(k, time) {
   const arr = volSelections[k];
   const idx = arr.indexOf(time);
-  if (idx > -1) arr.splice(idx, 1);
-  else arr.push(time);
+  if (idx > -1) {
+    arr.splice(idx, 1);
+  } else {
+    if (nearScheduledDates.has(k) && arr.length >= 3) {
+      showAlert('vol-alert', 'error', 'You can select at most 3 time slots on a day you are already scheduled to play.');
+      return;
+    }
+    arr.push(time);
+  }
   refreshDateRow(k);
   updateVolSummary();
 }
@@ -2870,6 +2878,7 @@ function clearVolForm() {
 
 async function loadMySubmissions(email) {
   myVolunteerMap = {};
+  nearScheduledDates.clear();
   // Clear alert message and summary
   document.getElementById('vol-alert').className = 'hidden';
   document.getElementById('vol-summary').classList.add('hidden');
@@ -2881,6 +2890,8 @@ async function loadMySubmissions(email) {
       if (note) note.remove();
       const schedNote = row.querySelector('.scheduled-note');
       if (schedNote) schedNote.remove();
+      const nearNote = row.querySelector('.near-scheduled-note');
+      if (nearNote) nearNote.remove();
       TIMES.forEach(t => {
         const chip = document.getElementById('chip-' + k + '-' + t);
         if (chip) {
@@ -2945,12 +2956,19 @@ async function loadMySubmissions(email) {
         || await apiGetWithParams({ action: 'getPublishedSchedule' });
       if (sched && sched.dates) {
         const emailLower = email.toLowerCase();
+        const todayMs    = new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00').getTime();
         sched.dates.forEach(d => {
           if (!volSelections.hasOwnProperty(d.date)) return; // not in calendar range
           const isScheduled = (d.groups || []).some(g =>
             (g.players || []).some(p => (p.email || '').toLowerCase() === emailLower)
           );
-          if (isScheduled) lockScheduledDateRow(d.date);
+          if (!isScheduled) return;
+          const daysAway = Math.round((new Date(d.date + 'T12:00:00').getTime() - todayMs) / 86400000);
+          if (daysAway <= 2) {
+            warnScheduledDateRow(d.date);
+          } else {
+            lockScheduledDateRow(d.date);
+          }
         });
       }
     } catch(e) {}
@@ -2977,6 +2995,25 @@ function lockScheduledDateRow(k) {
     note.className = 'scheduled-note';
     note.style.cssText = 'font-size:12px;color:var(--warn);font-style:italic;margin-top:4px;width:100%;';
     note.textContent = 'Already scheduled to play — cannot volunteer';
+    row.appendChild(note);
+  }
+}
+
+function warnScheduledDateRow(k) {
+  const row = document.getElementById('daterow-' + k);
+  if (!row) return;
+  if (row.querySelector('.matched-note')) return;
+  nearScheduledDates.add(k);
+  // Disable "All times" — player can pick at most 3
+  const allChk = document.getElementById('allchk-' + k);
+  if (allChk) allChk.disabled = true;
+  const saw = row.querySelector('.select-all-wrap');
+  if (saw) saw.style.pointerEvents = 'none';
+  if (!row.querySelector('.near-scheduled-note')) {
+    const note = document.createElement('div');
+    note.className = 'near-scheduled-note';
+    note.style.cssText = 'font-size:12px;color:var(--warn);font-style:italic;margin-top:4px;width:100%;';
+    note.textContent = 'You’re scheduled to play — select only times that don’t conflict with your match (max 3).';
     row.appendChild(note);
   }
 }
