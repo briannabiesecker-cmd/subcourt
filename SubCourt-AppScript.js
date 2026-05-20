@@ -3128,7 +3128,7 @@ function sendTestEmail() {
   }
 }
 
-// Sends the published schedule to ALL players (BCC batches of 50) with CSV attachment.
+// Sends the published schedule to ALL players in one email (all addresses on To line) with CSV attachment.
 function sendScheduleEmails(params) {
   if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
 
@@ -3183,46 +3183,27 @@ function sendScheduleEmails(params) {
     .map(function(p) { return p.email; });
   if (!allEmails.length) return { success: true, emailsSent: 0 };
 
-  var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
-  var BATCH   = 50;
-  var batches = Math.ceil(allEmails.length / BATCH);
-
-  try {
-    var remaining = MailApp.getRemainingDailyQuota();
-    if (remaining < allEmails.length) {
-      return { success: false, error: 'Insufficient email quota — ' + remaining +
-        ' recipient slots remaining today, need ' + allEmails.length + '. Try again tomorrow.' };
-    }
-  } catch(e) { /* ignore */ }
-
+  var subject    = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
+  var toList     = allEmails.join(', ');
   var senderEmail = getConfig().senderEmail || '';
-  var sent = 0;
-  for (var b = 0; b < batches; b++) {
-    var batch     = allEmails.slice(b * BATCH, (b + 1) * BATCH);
-    var toEmail   = batch[0];
-    var bccEmails = batch.slice(1).join(', ');
-    var opts = { name: 'MWF Tennis League', htmlBody: htmlBody };
-    if (bccEmails) opts.bcc = bccEmails;
-    try {
-      if (senderEmail) {
-        try {
-          GmailApp.sendEmail(toEmail, subject, body,
-            Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
-          sent += batch.length;
-          continue;
-        } catch(ge) {
-          Logger.log('GmailApp batch ' + (b+1) + ' failed (' + ge.message + '), falling back to MailApp');
-        }
+  var opts = { name: 'MWF Tennis League', htmlBody: htmlBody };
+  try {
+    if (senderEmail) {
+      try {
+        GmailApp.sendEmail(toList, subject, body,
+          Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
+        return { success: true, emailsSent: allEmails.length };
+      } catch(ge) {
+        Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
       }
-      opts.to = toEmail; opts.subject = subject; opts.body = body;
-      MailApp.sendEmail(opts);
-      sent += batch.length;
-    } catch(e) {
-      return { success: false, error: 'Email batch ' + (b + 1) + ' failed: ' + e.message };
     }
+    opts.to = toList; opts.subject = subject; opts.body = body;
+    MailApp.sendEmail(opts);
+  } catch(e) {
+    return { success: false, error: 'Email failed: ' + e.message };
   }
 
-  return { success: true, emailsSent: sent };
+  return { success: true, emailsSent: allEmails.length };
 }
 
 // ── Sheet helper ────────────────────────────────────
