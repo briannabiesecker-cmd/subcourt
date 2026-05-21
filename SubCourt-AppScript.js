@@ -1628,8 +1628,19 @@ function runMatch(params) {
     // Note: rating itself is NOT included — only the diff
   });
 
-  // Sort: earliest submission first, then closest rating as tiebreaker
+  // For tomorrow's requests there is no rating restriction, so large skill gaps are possible.
+  // Sort by closest rating to minimize variation; use timestamp only as tiebreaker.
+  // For all other dates keep the original behavior: earliest submission first.
+  var tomorrowD = new Date();
+  tomorrowD.setDate(tomorrowD.getDate() + 1);
+  var tomorrowStr  = Utilities.formatDate(tomorrowD, 'America/New_York', 'yyyy-MM-dd');
+  var isTomorrow   = matchDate === tomorrowStr;
+
   candidates.sort((a, b) => {
+    if (isTomorrow) {
+      if (a.ratingDiff !== b.ratingDiff) return a.ratingDiff - b.ratingDiff;
+      return a.timestamp.localeCompare(b.timestamp);
+    }
     if (a.timestamp !== b.timestamp) return a.timestamp.localeCompare(b.timestamp);
     return a.ratingDiff - b.ratingDiff;
   });
