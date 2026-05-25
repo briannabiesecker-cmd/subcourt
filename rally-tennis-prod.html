@@ -1633,6 +1633,51 @@
 
   <!-- ── DIRECTORY VIEW ── -->
   <div id="view-directory" class="view">
+    <!-- My Info card -->
+    <div class="card" style="margin-bottom:14px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--ink-dark);">My Info</div>
+      <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;">Your name</label>
+        <div class="typeahead-wrap" style="flex:1;max-width:340px;">
+          <div id="dir-selected-state" style="display:none;">
+            <div class="selected-pill" style="padding:4px 10px;">
+              <span id="dir-selected-name"></span>
+              <button class="clear-btn" onclick="clearTypeahead('dir')" title="Clear">×</button>
+            </div>
+          </div>
+          <div id="dir-input-state">
+            <input class="typeahead-input" id="dir-name-input" type="text"
+              placeholder="Start typing your name…"
+              oninput="onTypeaheadInput('dir', this.value)"
+              onblur="onTypeaheadBlur('dir')"
+              onfocus="onTypeaheadFocus('dir')"
+              onkeydown="onTypeaheadTabSelect('dir', event)"
+              autocomplete="off" />
+            <div class="typeahead-dropdown" id="dir-dropdown" style="display:none;"></div>
+          </div>
+        </div>
+        <input type="hidden" id="dir-email" />
+      </div>
+      <div id="dir-profile-fields" style="display:none;margin-top:14px;border-top:1px solid var(--line);padding-top:14px;">
+        <div class="field" style="margin-bottom:10px;">
+          <label>Email</label>
+          <input type="email" id="dir-profile-email" style="max-width:340px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;width:100%;box-sizing:border-box;" />
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Phone</label>
+          <input type="tel" id="dir-phone" placeholder="nnn-nnn-nnnn" style="max-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;width:100%;box-sizing:border-box;" />
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+          <input type="checkbox" id="dir-no8am" style="width:18px;height:18px;cursor:pointer;accent-color:#B8910A;">
+          <label for="dir-no8am" style="font-size:14px;margin:0;cursor:pointer;">No 8 am &mdash; exclude from 8:00 AM court time slots</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-secondary" onclick="dirSaveMyInfo()" id="dir-save-btn">Save</button>
+          <span id="dir-save-msg" style="font-size:13px;color:var(--success);display:none;">Saved!</span>
+          <span id="dir-save-err" style="font-size:13px;color:var(--danger);display:none;"></span>
+        </div>
+      </div>
+    </div>
     <div id="dir-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading directory…</div>
     <div id="dir-empty" style="display:none;padding:2rem 0;text-align:center;color:var(--ink-light);font-size:15px;">No players found.</div>
     <div id="dir-table-wrap" style="display:none;">
@@ -2116,6 +2161,8 @@ async function apiGetWithParams(params) {
 let playerList     = []; // Anita Sub filtered out — used by vol/av/dir/sch typeaheads
 let fullPlayerList = []; // includes Anita Sub — used by req typeahead only
 const taBlurTimers = {};
+let dirEnrichedPlayers = []; // from getPlayersForAdmin — includes rowIndex, phone, no8am
+let dirCurrentPlayer   = null; // player currently shown in My Info card
 let myRequestsData    = [];  // visible requests in loadMyRequests, keyed by id for modal lookup
 let epSelections      = {};  // {1..4} → {name, email} for player-edit-modal
 let epDropdownMatches = {};  // {1..4} → matches array for index-based selection
@@ -2202,6 +2249,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email, name);
+  if (prefix === 'dir') dirLoadProfile(name, email);
 }
 
 function onTypeaheadTabSelect(prefix, event) {
@@ -2314,6 +2362,12 @@ function clearTypeahead(prefix) {
     document.getElementById('adm-code-input').value = '';
   }
   if (prefix === 'sch') renderPublishedSchedule(null, null);
+  if (prefix === 'dir') {
+    dirCurrentPlayer = null;
+    document.getElementById('dir-profile-fields').style.display = 'none';
+    document.getElementById('dir-save-msg').style.display = 'none';
+    document.getElementById('dir-save-err').style.display = 'none';
+  }
 }
 
 function getTypeaheadValue(prefix) {
@@ -4847,11 +4901,12 @@ async function loadDirectoryView() {
   wrap.style.display    = 'none';
 
   try {
-    const allPlayers = await apiGet('getPlayers');
+    const allPlayers = await apiPost({ action: 'getPlayersForAdmin' });
     loading.style.display = 'none';
 
     // Exclude fictitious Anita Sub players
     const players = (allPlayers || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+    dirEnrichedPlayers = players;
 
     if (!players.length) {
       empty.style.display = '';
@@ -4879,6 +4934,7 @@ async function loadDirectoryView() {
     if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
     dirUpdateCount();
     wrap.style.display = '';
+    if (!dirCurrentPlayer) prefillIdentity('dir');
   } catch(e) {
     loading.style.display = 'none';
     empty.style.display = '';
@@ -4934,6 +4990,68 @@ function dirCopyAddresses() {
     const msg = document.getElementById('dir-copy-msg');
     if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2500); }
   }).catch(() => { ta.select(); document.execCommand('copy'); });
+}
+
+async function dirLoadProfile(name, email) {
+  if (!dirEnrichedPlayers.length) {
+    try {
+      const all = await apiPost({ action: 'getPlayersForAdmin' });
+      dirEnrichedPlayers = (all || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
+    } catch(e) { return; }
+  }
+  const p = dirEnrichedPlayers.find(x => x.email === email.toLowerCase());
+  if (!p) return;
+  dirCurrentPlayer = p;
+  document.getElementById('dir-profile-email').value = p.email || '';
+  document.getElementById('dir-phone').value          = p.phone || '';
+  document.getElementById('dir-no8am').checked        = !!p.no8am;
+  document.getElementById('dir-save-msg').style.display = 'none';
+  document.getElementById('dir-save-err').style.display = 'none';
+  document.getElementById('dir-profile-fields').style.display = '';
+}
+
+async function dirSaveMyInfo() {
+  if (!dirCurrentPlayer) return;
+  const btn   = document.getElementById('dir-save-btn');
+  const msg   = document.getElementById('dir-save-msg');
+  const err   = document.getElementById('dir-save-err');
+  const email = document.getElementById('dir-profile-email').value.trim();
+  const phone = document.getElementById('dir-phone').value.trim();
+  const no8am = document.getElementById('dir-no8am').checked;
+  const name  = document.getElementById('dir-selected-name').textContent.trim();
+
+  msg.style.display = 'none';
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const result = await apiPost({
+      action: 'updatePlayer',
+      rowIndex: dirCurrentPlayer.rowIndex,
+      name,
+      email,
+      phone,
+      no8am
+    });
+    if (result && result.success) {
+      dirCurrentPlayer.email = email.toLowerCase();
+      dirCurrentPlayer.phone = phone;
+      dirCurrentPlayer.no8am = no8am;
+      document.getElementById('dir-email').value = email.toLowerCase();
+      msg.style.display = '';
+      setTimeout(() => { msg.style.display = 'none'; }, 3000);
+    } else {
+      err.textContent = (result && result.error) || 'Save failed.';
+      err.style.display = '';
+    }
+  } catch(e) {
+    err.textContent = 'Save failed. Please try again.';
+    err.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
 }
 
 function renderPublishedSchedule(filterEmail, filterName) {
