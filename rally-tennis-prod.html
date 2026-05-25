@@ -3933,6 +3933,7 @@ function useNormDistRatings() {
   if (!confirm('Replace all your ratings with their normal distribution values?')) return;
   normDists.forEach((nd, i) => { if (nd !== '') playerRatings[i].myRating = nd; });
   renderRatingsTable();
+  saveAllRatings();
 }
 
 async function loadCoordinatorRatings(forceRefresh) {
