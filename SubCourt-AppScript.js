@@ -1415,24 +1415,27 @@ function createScheduleDraft(params) {
   var csvFileName = monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
   var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
 
-  // ── Send preview email to coordinator ───────────────────────────────
-  // GmailApp.createDraft() only creates drafts in the script owner's account
-  // (mwfmtctennis@gmail.com). Instead, send the full preview email directly
-  // to the coordinator so it appears in their own Gmail inbox for review.
-  var coordinatorEmail = 'marobria@gmail.com';
-  var subject = 'MWF Tennis League — ' + monthLabel + ' Schedule';
-  var bccBlock = '<p style="font-family:Arial,sans-serif;font-size:13px;margin-bottom:6px;">' +
-    '<strong>BCC addresses:</strong></p>' +
-    '<p style="font-family:Arial,sans-serif;font-size:13px;margin-bottom:20px;word-break:break-all;">' +
-    playerEmails.join(', ') + '</p>';
-  var fullHtml = bccBlock + htmlBody;
+  // ── Send schedule email to all players ──────────────────────────────
+  if (!playerEmails.length) return { success: false, error: 'No player emails found.' };
+  var subject  = 'MWF Tennis League — ' + monthLabel + ' Schedule';
+  var toList   = playerEmails.join(', ');
+  var senderEmail = getConfig().senderEmail || '';
+  var opts = {
+    htmlBody:    htmlBody,
+    attachments: [csvBlob],
+    name:        'MWF Tennis League'
+  };
   try {
-    GmailApp.sendEmail(coordinatorEmail, subject, '', {
-      htmlBody:    fullHtml,
-      attachments: [csvBlob],
-      name:        'MWF Tennis League'
-    });
-    return { success: true, month: monthLabel };
+    if (senderEmail) {
+      try {
+        GmailApp.sendEmail(toList, subject, '', Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
+        return { success: true, month: monthLabel, emailsSent: playerEmails.length };
+      } catch(ge) {
+        Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
+      }
+    }
+    MailApp.sendEmail(Object.assign({}, opts, { to: toList, subject: subject, body: '' }));
+    return { success: true, month: monthLabel, emailsSent: playerEmails.length };
   } catch(e) {
     return { success: false, error: e.toString() };
   }

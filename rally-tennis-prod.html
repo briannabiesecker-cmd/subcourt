@@ -4837,15 +4837,13 @@ async function publishScheduleToSheet() {
     document.getElementById('sched-pdf-wrap').title = '';
 
     if (draftResult && draftResult.success) {
-      showAlert('scheduler-alert', 'success',
-        'Schedule published — ' + totalGroups + ' group(s). ' +
-        'A preview email has been sent to marobria@gmail.com — ' +
-        'review it, then compose a new email to players using the BCC list it contains.');
+      const sent = draftResult.emailsSent ? ` Email sent to ${draftResult.emailsSent} player(s).` : ' Schedule email sent.';
+      showAlert('scheduler-alert', 'success', 'Schedule published — ' + totalGroups + ' group(s).' + sent);
     } else {
       const errMsg = draftResult && draftResult.error ? draftResult.error : 'unknown error';
       showAlert('scheduler-alert', 'warning',
         'Schedule published — ' + totalGroups + ' group(s). ' +
-        'Could not create Gmail draft (' + errMsg + '). ' +
+        'Could not send schedule email (' + errMsg + '). ' +
         'Use the Export buttons below to download files and email manually.');
     }
   } catch(e) {
