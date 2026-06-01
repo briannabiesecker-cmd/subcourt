@@ -2618,41 +2618,16 @@ function showPlayerEditModal(requestId) {
   const req = myRequestsData.find(r => r.id === requestId);
   if (!req) return;
 
-  // Build initial player list: P1 = requestor, P2-P4 = groupPlayers
-  const origPlayers = [
-    { name: req.name,  email: req.email },
-    ...((req.groupPlayers || []).slice(0, 3).map(p => ({ name: p.name || '', email: p.email || '' })))
-  ];
-  while (origPlayers.length < 4) origPlayers.push({ name: '', email: '' });
-
-  // Seed epSelections with originals so unchanged fields pass validation
-  epSelections = {};
-  origPlayers.forEach((p, i) => { epSelections[i + 1] = { ...p }; });
-  epDropdownMatches = {};
-
   const modal = document.getElementById('player-edit-modal');
-  document.getElementById('pem-date').value  = req.matchDate || '';
-  document.getElementById('pem-time').value  = req.matchTime || '';
 
-  const labels = ['Requester', 'Player 2', 'Player 3', 'Player 4'];
-  const container = document.getElementById('pem-players');
-  container.innerHTML = labels.map((label, i) => {
-    const slot = i + 1;
-    const p    = origPlayers[i];
-    return `<div style="margin-bottom:7px;">
-      <div style="font-size:11px;font-weight:600;color:var(--ink-light);margin-bottom:2px;">${label}</div>
-      <div class="typeahead-wrap">
-        <input class="typeahead-input" id="pem-p${slot}-input" type="text"
-          value="${(p.name || '').replace(/"/g, '&quot;')}"
-          placeholder="Type name…"
-          oninput="onPemInput(${slot}, this.value)"
-          onblur="onPemBlur(${slot})"
-          onfocus="onPemFocus(${slot})"
-          autocomplete="off" style="font-size:13px;padding:6px 10px;" />
-        <div class="typeahead-dropdown" id="pem-p${slot}-dropdown" style="display:none;"></div>
-      </div>
-    </div>`;
-  }).join('');
+  // Show time only — hide date and players fields
+  document.getElementById('pem-date').closest('div').style.display = 'none';
+  document.getElementById('pem-time').closest('div').style.display = '';
+  const pemPlayersLabel = document.getElementById('pem-players').previousElementSibling;
+  if (pemPlayersLabel) pemPlayersLabel.style.display = 'none';
+  document.getElementById('pem-players').style.display = 'none';
+
+  document.getElementById('pem-time').value = req.matchTime || '';
 
   modal.classList.add('open');
 
@@ -2662,43 +2637,29 @@ function showPlayerEditModal(requestId) {
     modal.classList.remove('open');
     saveBtn.onclick = null; cancelBtn.onclick = null;
     saveBtn.textContent = 'Save'; saveBtn.disabled = false;
-    epSelections = {}; epDropdownMatches = {};
   };
   cancelBtn.onclick = close;
   modal.onclick = e => { if (e.target === modal) close(); };
 
   saveBtn.onclick = async () => {
-    const newDate = document.getElementById('pem-date').value;
     const newTime = document.getElementById('pem-time').value;
-    if (!newDate) { alert('Please select a match date.'); return; }
-
-    // Validate each slot: if name differs from original, email must be set (selected from dropdown)
-    for (let i = 1; i <= 4; i++) {
-      const sel  = epSelections[i] || {};
-      const orig = origPlayers[i - 1] || {};
-      if (!sel.name) { alert(`Player ${i} name cannot be empty.`); return; }
-      if (sel.name !== orig.name && !sel.email) {
-        alert(`Please select Player ${i} from the dropdown list.`); return;
-      }
-    }
-
     saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
     try {
-      const newP1 = epSelections[1];
-      const newGroupPlayers = [epSelections[2], epSelections[3], epSelections[4]];
+      const origGroupPlayers = (req.groupPlayers || []).slice(0, 3).map(p => ({ name: p.name || '', email: p.email || '' }));
+      while (origGroupPlayers.length < 3) origGroupPlayers.push({ name: '', email: '' });
 
       await apiPost({
         action:              'editRequestPlayers',
         rowIndex:            req.rowIndex,
         requestId:           req.id,
-        matchDate:           newDate,
+        matchDate:           req.matchDate,
         matchTime:           newTime,
         origRequestorName:   req.name,
         origRequestorEmail:  req.email,
-        newP1Name:           newP1.name,
-        newP1Email:          newP1.email || req.email,
+        newP1Name:           req.name,
+        newP1Email:          req.email,
         origGroupPlayers:    JSON.stringify(req.groupPlayers || []),
-        newGroupPlayers:     JSON.stringify(newGroupPlayers)
+        newGroupPlayers:     JSON.stringify(origGroupPlayers)
       });
 
       close();
@@ -5277,7 +5238,7 @@ function applyAvailConfigToHomeCard(config) {
 <!-- ── Player Edit Modal ── -->
 <div id="player-edit-modal" role="dialog" aria-modal="true">
   <div class="confirm-modal-box" style="max-width:420px;padding:1.1rem 1.25rem;">
-    <div style="font-weight:700;font-size:15px;color:var(--ink);margin-bottom:0.65rem;">Edit Request</div>
+    <div style="font-weight:700;font-size:15px;color:var(--ink);margin-bottom:0.65rem;">Edit Match Time</div>
     <div style="display:flex;gap:10px;margin-bottom:10px;">
       <div style="flex:1;">
         <label style="font-size:12px;font-weight:600;color:var(--ink-light);">Match date</label>
