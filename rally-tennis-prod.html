@@ -2620,14 +2620,34 @@ function showPlayerEditModal(requestId) {
 
   const modal = document.getElementById('player-edit-modal');
 
-  // Show time only — hide date and players fields
+  // Hide the native date input row and players typeahead section
   document.getElementById('pem-date').closest('div').style.display = 'none';
-  document.getElementById('pem-time').closest('div').style.display = '';
   const pemPlayersLabel = document.getElementById('pem-players').previousElementSibling;
   if (pemPlayersLabel) pemPlayersLabel.style.display = 'none';
   document.getElementById('pem-players').style.display = 'none';
 
+  // Time dropdown — keep editable
+  document.getElementById('pem-time').closest('div').style.display = '';
   document.getElementById('pem-time').value = req.matchTime || '';
+
+  // Build view-only info block
+  const allPlayers = [
+    req.name,
+    ...((req.groupPlayers || []).slice(0, 3).map(p => p.name || '').filter(Boolean))
+  ];
+  const labels = ['Requester', 'Player 2', 'Player 3', 'Player 4'];
+  const viewStyle = 'font-size:13px;color:var(--ink);padding:4px 0;';
+  const labelStyle = 'font-size:11px;font-weight:600;color:var(--ink-light);margin-bottom:1px;';
+  document.getElementById('pem-players').insertAdjacentHTML('afterend',
+    `<div id="pem-readonly-info" style="margin-bottom:10px;border-top:1px solid var(--line);padding-top:10px;">
+      <div style="${labelStyle}">Match date</div>
+      <div style="${viewStyle}margin-bottom:8px;">${formatDate(req.matchDate)}</div>
+      ${allPlayers.map((name, i) => `
+        <div style="${labelStyle}">${labels[i]}</div>
+        <div style="${viewStyle}${i < allPlayers.length - 1 ? 'margin-bottom:4px;' : ''}">${name}</div>
+      `).join('')}
+    </div>`
+  );
 
   modal.classList.add('open');
 
@@ -2637,6 +2657,7 @@ function showPlayerEditModal(requestId) {
     modal.classList.remove('open');
     saveBtn.onclick = null; cancelBtn.onclick = null;
     saveBtn.textContent = 'Save'; saveBtn.disabled = false;
+    document.getElementById('pem-readonly-info')?.remove();
   };
   cancelBtn.onclick = close;
   modal.onclick = e => { if (e.target === modal) close(); };
