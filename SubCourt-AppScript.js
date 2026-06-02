@@ -1699,7 +1699,9 @@ function saveMatchTimeReminderSettings(params) {
   var enabled = params.enabled === 'true' || params.enabled === true;
   var time    = (params.time || '10:00').trim();
 
+  sheet.getRange('A28').setValue('Match Time Reminder Enabled');
   sheet.getRange('B28').setValue(enabled);
+  sheet.getRange('A29').setValue('Match Time Reminder Time (ET)');
   var timeCell = sheet.getRange('B29');
   timeCell.setNumberFormat('@');
   timeCell.setValue(time);
