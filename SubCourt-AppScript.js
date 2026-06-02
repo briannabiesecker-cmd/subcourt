@@ -2286,7 +2286,7 @@ function cleanupOldAvailability() {
 // ══════════════════════════════════════════════════
 
 // ── Settings ──────────────────────────────────────
-// Reads scheduler weight rows from Config tab (B20–B25).
+// Reads scheduler weight rows from Config tab (B20–B25, B31–B32).
 // Coordinators can tune these directly in the sheet.
 function getSchedulerSettings() {
   try {
@@ -2299,13 +2299,18 @@ function getSchedulerSettings() {
     var wRec  = parseFloat(raw[3][0]);
     var iters = parseInt(raw[4][0]);
     var rests = parseInt(raw[5][0]);
+    var rrRaw  = configSheet.getRange('B31:B32').getValues();
+    var rrLimit = parseFloat(rrRaw[0][0]);
+    var wMRR    = parseFloat(rrRaw[1][0]);
     var settings = {
-      weightTeamVariance:  isNaN(wTV)   ? 1.0 : wTV,
-      weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
-      weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,
-      weightRecency:       isNaN(wRec)  ? 1.5 : wRec,
-      solverIterations:    isNaN(iters) ? 800  : iters,
-      solverRestarts:      isNaN(rests) ? 10   : rests
+      weightTeamVariance:    isNaN(wTV)     ? 1.0 : wTV,
+      weightGroupVariance:   isNaN(wGV)     ? 0.5 : wGV,
+      weightSocialVariety:   isNaN(wSV)     ? 2.0 : wSV,
+      weightRecency:         isNaN(wRec)    ? 1.5 : wRec,
+      solverIterations:      isNaN(iters)   ? 800  : iters,
+      solverRestarts:        isNaN(rests)   ? 10   : rests,
+      ratingRangeLimit:      isNaN(rrLimit) ? 2.0  : rrLimit,
+      weightMaxRatingRange:  isNaN(wMRR)   ? 0.0  : wMRR
     };
 
     var availConfig = getAvailabilityConfig();
@@ -2340,15 +2345,17 @@ function getSchedulerSettings() {
     return settings;
   } catch(e) {
     return {
-      weightTeamVariance:  1.0,
-      weightGroupVariance: 0.5,
-      weightSocialVariety: 2.0,
-      weightRecency:       1.5,
-      solverIterations:    800,
-      solverRestarts:      10,
-      targetMonth:         '',
-      targetMonthLabel:    '',
-      submissionCount:     0
+      weightTeamVariance:   1.0,
+      weightGroupVariance:  0.5,
+      weightSocialVariety:  2.0,
+      weightRecency:        1.5,
+      solverIterations:     800,
+      solverRestarts:       10,
+      ratingRangeLimit:     2.0,
+      weightMaxRatingRange: 0.0,
+      targetMonth:          '',
+      targetMonthLabel:     '',
+      submissionCount:      0
     };
   }
 }
@@ -2391,7 +2398,7 @@ function getSchedulerDashboard() {
       targetMonthLabel = t.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
 
-    // Scheduler weights (B20–B25)
+    // Scheduler weights (B20–B25) + max rating range (B31–B32)
     var raw = configSheet.getRange('B20:B25').getValues();
     var wTV   = parseFloat(raw[0][0]);
     var wGV   = parseFloat(raw[1][0]);
@@ -2399,6 +2406,20 @@ function getSchedulerDashboard() {
     var wRec  = parseFloat(raw[3][0]);
     var iters = parseInt(raw[4][0]);
     var rests = parseInt(raw[5][0]);
+    var rrRaw  = configSheet.getRange('B31:B32').getValues();
+    var rrLimit = parseFloat(rrRaw[0][0]);
+    var wMRR    = parseFloat(rrRaw[1][0]);
+    // Write labels and defaults the first time (cells empty)
+    if (!rrRaw[0][0] && rrRaw[0][0] !== 0) {
+      configSheet.getRange('A31').setValue('Rating Range Limit');
+      configSheet.getRange('B31').setValue(2.0);
+      rrLimit = 2.0;
+    }
+    if (!rrRaw[1][0] && rrRaw[1][0] !== 0) {
+      configSheet.getRange('A32').setValue('Weight Maximum Rating Range');
+      configSheet.getRange('B32').setValue(0.0);
+      wMRR = 0.0;
+    }
 
     // Submission count
     var submissionCount = 0;
@@ -2443,12 +2464,14 @@ function getSchedulerDashboard() {
       submissionCount: submissionCount,
       rosterCount: rosterCount,
       no8amEmails: no8amEmails,
-      weightTeamVariance:  isNaN(wTV)   ? 1.0 : wTV,
-      weightGroupVariance: isNaN(wGV)   ? 0.5 : wGV,
-      weightSocialVariety: isNaN(wSV)   ? 2.0 : wSV,
-      weightRecency:       isNaN(wRec)  ? 1.5 : wRec,
-      solverIterations:    isNaN(iters) ? 800  : iters,
-      solverRestarts:      isNaN(rests) ? 10   : rests
+      weightTeamVariance:   isNaN(wTV)     ? 1.0 : wTV,
+      weightGroupVariance:  isNaN(wGV)     ? 0.5 : wGV,
+      weightSocialVariety:  isNaN(wSV)     ? 2.0 : wSV,
+      weightRecency:        isNaN(wRec)    ? 1.5 : wRec,
+      solverIterations:     isNaN(iters)   ? 800  : iters,
+      solverRestarts:       isNaN(rests)   ? 10   : rests,
+      ratingRangeLimit:     isNaN(rrLimit) ? 2.0  : rrLimit,
+      weightMaxRatingRange: isNaN(wMRR)   ? 0.0  : wMRR
     };
   } catch(e) {
     return { error: 'Could not load scheduler dashboard.' };
@@ -2645,9 +2668,11 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
 
   var iters    = settings.solverIterations || 800;
   var restarts = settings.solverRestarts   || 10;
-  var wTV = settings.weightTeamVariance  || 1.0;
-  var wGV = settings.weightGroupVariance || 0.5;
-  var wSV = settings.weightSocialVariety || 2.0;
+  var wTV    = settings.weightTeamVariance    || 1.0;
+  var wGV    = settings.weightGroupVariance   || 0.5;
+  var wSV    = settings.weightSocialVariety   || 2.0;
+  var wMRR   = settings.weightMaxRatingRange  || 0.0;
+  var rrLimit = settings.ratingRangeLimit !== undefined ? settings.ratingRangeLimit : 2.0;
 
   var N = pool.length;
 
@@ -2681,19 +2706,24 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
       }
     }
     var r0 = group[0].rating, r1 = group[1].rating, r2 = group[2].rating;
-    var gv, tv;
+    var gv, tv, rMax, rMin;
     if (sz === 4) {
       var r3 = group[3].rating;
       var m4 = (r0 + r1 + r2 + r3) * 0.25;
       gv = ((r0-m4)*(r0-m4) + (r1-m4)*(r1-m4) + (r2-m4)*(r2-m4) + (r3-m4)*(r3-m4)) * 0.25;
       var d01 = r0 - r1, d23 = r2 - r3;
       tv = (d01*d01 + d23*d23) * 0.25;
+      rMax = Math.max(r0, r1, r2, r3);
+      rMin = Math.min(r0, r1, r2, r3);
     } else {
       var m3 = (r0 + r1 + r2) / 3;
       gv = ((r0-m3)*(r0-m3) + (r1-m3)*(r1-m3) + (r2-m3)*(r2-m3)) / 3;
       tv = gv;
+      rMax = Math.max(r0, r1, r2);
+      rMin = Math.min(r0, r1, r2);
     }
-    return tv * wTV + gv * wGV + social;
+    var excess = Math.max(0, (rMax - rMin) - rrLimit);
+    return tv * wTV + gv * wGV + social + excess * excess * wMRR;
   }
 
   var bestGroups  = null;
