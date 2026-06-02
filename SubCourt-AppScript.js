@@ -105,6 +105,11 @@ const TIME_LABELS = {
 function getConfig() {
   try {
     const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+    // Write labels/defaults for B31–B32 on first use (cells empty)
+    var b31 = sheet.getRange('B31').getValue();
+    var b32 = sheet.getRange('B32').getValue();
+    if (b31 === '' || b31 === null) { sheet.getRange('A31').setValue('Rating Range Limit');      sheet.getRange('B31').setValue(2.0); }
+    if (b32 === '' || b32 === null) { sheet.getRange('A32').setValue('Weight Maximum Rating Range'); sheet.getRange('B32').setValue(0.0); }
     return {
       // Matching engine — rows 4–9 (4 skill windows)
       // B4: skill window >72 hrs (far-out), B5: 48-72 hrs, B6: 24-48 hrs (urgent)
@@ -2409,17 +2414,6 @@ function getSchedulerDashboard() {
     var rrRaw  = configSheet.getRange('B31:B32').getValues();
     var rrLimit = parseFloat(rrRaw[0][0]);
     var wMRR    = parseFloat(rrRaw[1][0]);
-    // Write labels and defaults the first time (cells empty)
-    if (!rrRaw[0][0] && rrRaw[0][0] !== 0) {
-      configSheet.getRange('A31').setValue('Rating Range Limit');
-      configSheet.getRange('B31').setValue(2.0);
-      rrLimit = 2.0;
-    }
-    if (!rrRaw[1][0] && rrRaw[1][0] !== 0) {
-      configSheet.getRange('A32').setValue('Weight Maximum Rating Range');
-      configSheet.getRange('B32').setValue(0.0);
-      wMRR = 0.0;
-    }
 
     // Submission count
     var submissionCount = 0;
@@ -2722,8 +2716,8 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
       rMax = Math.max(r0, r1, r2);
       rMin = Math.min(r0, r1, r2);
     }
-    var excess = Math.max(0, (rMax - rMin) - rrLimit);
-    return tv * wTV + gv * wGV + social + excess * excess * wMRR;
+    var rangePenalty = (rMax - rMin) > rrLimit ? wMRR : 0;
+    return tv * wTV + gv * wGV + social + rangePenalty;
   }
 
   var bestGroups  = null;
