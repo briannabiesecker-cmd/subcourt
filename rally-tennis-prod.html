@@ -2666,21 +2666,10 @@ function showPlayerEditModal(requestId) {
     const newTime = document.getElementById('pem-time').value;
     saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
     try {
-      const origGroupPlayers = (req.groupPlayers || []).slice(0, 3).map(p => ({ name: p.name || '', email: p.email || '' }));
-      while (origGroupPlayers.length < 3) origGroupPlayers.push({ name: '', email: '' });
-
       await apiPost({
-        action:              'editRequestPlayers',
-        rowIndex:            req.rowIndex,
-        requestId:           req.id,
-        matchDate:           req.matchDate,
-        matchTime:           newTime,
-        origRequestorName:   req.name,
-        origRequestorEmail:  req.email,
-        newP1Name:           req.name,
-        newP1Email:          req.email,
-        origGroupPlayers:    JSON.stringify(req.groupPlayers || []),
-        newGroupPlayers:     JSON.stringify(origGroupPlayers)
+        action:   'updateRequestTime',
+        rowIndex: req.rowIndex,
+        matchTime: newTime
       });
 
       close();
