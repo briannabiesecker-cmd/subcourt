@@ -809,6 +809,27 @@ function submitRequest(params) {
   sheet.getRange(lastRow, 5).setNumberFormat('@');
   sheet.getRange(lastRow, 6).setNumberFormat('@');
   sheet.getRange(lastRow, 9).setNumberFormat('@');
+
+  // Confirmation email to requester
+  if (params.email && isEmailEnabled()) {
+    var dateStr = formatDate(params.matchDate || '');
+    var timeStr = params.matchTime ? (TIME_LABELS[params.matchTime] || params.matchTime) : 'TBD';
+    var reqUrl  = APP_BASE_URL + '#request';
+    var subject = 'MWF Tennis League — Sub request received for ' + dateStr;
+    var body =
+      'Hi ' + params.name + ',\n\n' +
+      'Your sub request has been received for ' + dateStr + ' at ' + timeStr + '.\n\n' +
+      'Rally will notify you when a sub has been found. You can view or delete your request at:\n' +
+      reqUrl + '\n\n' +
+      'MWF Tennis League';
+    var htmlBody =
+      'Hi ' + params.name + ',<br><br>' +
+      'Your sub request has been received for <strong>' + dateStr + '</strong> at <strong>' + timeStr + '</strong>.<br><br>' +
+      'Rally will notify you when a sub has been found. You can <a href="' + reqUrl + '">view or delete your request</a> at any time.<br><br>' +
+      'MWF Tennis League';
+    sendLeagueEmail({ to: params.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+  }
+
   return { success: true };
 }
 
@@ -830,6 +851,40 @@ function submitVolunteer(params) {
       'pending'
     ]]);
   });
+
+  // Confirmation email to volunteer
+  if (params.email && isEmailEnabled() && entries.length > 0) {
+    var volUrl  = APP_BASE_URL + '#volunteer';
+    var subject = 'MWF Tennis League — Volunteer to sub confirmed';
+    var dateLines = entries.map(function(entry) {
+      var times = entry.times.map(function(t) { return TIME_LABELS[t] || t; }).join(', ');
+      return '  ' + formatDate(entry.date) + ' — ' + times;
+    });
+    var body =
+      'Hi ' + params.name + ',\n\n' +
+      'Thank you for volunteering to sub! Your availability has been recorded for the following date' +
+      (entries.length > 1 ? 's' : '') + ':\n\n' +
+      dateLines.join('\n') + '\n\n' +
+      'Rally will notify you if you are selected as a sub. You can view or update your availability at:\n' +
+      volUrl + '\n\n' +
+      'MWF Tennis League';
+    var htmlDateRows = entries.map(function(entry) {
+      var times = entry.times.map(function(t) { return TIME_LABELS[t] || t; }).join(', ');
+      return '<tr><td style="padding:3px 12px 3px 0;font-weight:600;">' + formatDate(entry.date) +
+             '</td><td style="padding:3px 0;">' + times + '</td></tr>';
+    }).join('');
+    var htmlBody =
+      'Hi ' + params.name + ',<br><br>' +
+      'Thank you for volunteering to sub! Your availability has been recorded for the following date' +
+      (entries.length > 1 ? 's' : '') + ':<br><br>' +
+      '<table style="font-family:Arial,sans-serif;font-size:14px;border-collapse:collapse;">' +
+      htmlDateRows + '</table><br>' +
+      'Rally will notify you if you are selected as a sub. You can <a href="' + volUrl +
+      '">view or update your availability</a> at any time.<br><br>' +
+      'MWF Tennis League';
+    sendLeagueEmail({ to: params.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+  }
+
   return { success: true };
 }
 
