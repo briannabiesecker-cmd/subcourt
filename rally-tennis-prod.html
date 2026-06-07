@@ -1829,8 +1829,6 @@
               style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;opacity:0.4;cursor:not-allowed;font-size:12px;padding:4px 10px;"
               onclick="mpDelete()" disabled>Delete</button>
             <button class="btn btn-secondary btn-sm" onclick="mpClear()">Clear</button>
-            <button class="btn btn-secondary btn-sm" id="mp-fix-anita-btn" onclick="mpFixAnitaRatings()" title="Recalculate ratings for any Anita Sub players whose rating is blank">Fix Anita ratings</button>
-            <span id="mp-fix-anita-msg" style="font-size:12px;color:var(--ink-light);display:none;"></span>
           </div>
         </div>
 
@@ -1851,6 +1849,10 @@
             <button class="btn btn-secondary btn-sm" onclick="useNormDistRatings()" title="Replace your entered ratings with the normal distribution values shown in the Norm Dist column">Use norm dist</button>
             <button class="btn btn-clay" id="save-ratings-bottom" onclick="saveAllRatings()">Save all ratings</button>
           </div>
+        </div>
+        <div style="margin-top:1.5rem;display:flex;align-items:center;gap:10px;">
+          <button class="btn btn-secondary btn-sm" id="mp-fix-anita-btn" onclick="mpFixAnitaRatings()" title="Recalculate ratings for any Anita Sub players whose rating is blank">Fix Anita ratings</button>
+          <span id="mp-fix-anita-msg" style="font-size:12px;color:var(--ink-light);display:none;"></span>
         </div>
       </div>
 
