@@ -2595,7 +2595,7 @@ async function loadReqSchedule(email, name) {
           : `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" />`;
         rows += `<tr>
           <td class="date-cell">${dateStr}</td>
-          <td style="font-weight:600;color:var(--court);">Group ${g.letter}</td>
+          <td style="font-weight:600;color:var(--court);">${g.letter}</td>
           <td><span class="captain-badge">C</span>${mkName(captain)}</td>
           <td style="text-align:center;">${mkName(others[0])}</td>
           <td style="text-align:center;">${mkName(others[1])}</td>
@@ -2827,7 +2827,9 @@ async function deleteRequest(requestId) {
     const result = await apiPost({ action: 'cancelRequest', requestId });
     if (!result.success) throw new Error(result.error || 'Failed');
     const { email } = getTypeaheadValue('req');
-    await loadMyRequests(email, document.getElementById('req-selected-name').textContent.trim());
+    const selName = document.getElementById('req-selected-name').textContent.trim();
+    await loadMyRequests(email, selName);
+    loadReqSchedule(email, selName);
   } catch(e) {
     alert('Could not delete request: ' + e.message);
   }
