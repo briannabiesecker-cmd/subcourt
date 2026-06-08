@@ -338,12 +338,18 @@ function runAutoDispatch() {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
-        // No match found — notify requestor if within 24 hours and cancel the request
+        // No match found — broadcast to all players if within 24 hours and cancel the request
         if (isLastMinute(req, config.lastMinuteThresholdHrs)) {
-          sendRetirementEmail(req);
+          var emailNote = 'broadcast sent — last-minute, no candidates, cancelled';
+          try {
+            sendSubNeededTomorrowEmail(req);
+          } catch(emailErr) {
+            emailNote = 'email failed (' + emailErr.message + ') — last-minute, no candidates, cancelled';
+            Logger.log('sendSubNeededTomorrowEmail failed for ' + req.id + ': ' + emailErr.message);
+          }
           if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
-          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'notified — last-minute, no candidates, cancelled']);
-          Logger.log('No candidates (last-minute, notified, cancelled): ' + req.name);
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', emailNote]);
+          Logger.log('No candidates (last-minute, cancelled): ' + req.name + ' — ' + emailNote);
         } else {
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
           Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
@@ -426,7 +432,8 @@ function doGet(e) {
     else if (action === 'runAutoDispatchNow')             result = scheduleImmediateDispatch();
     else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
     else if (action === 'runMatchTimeReminderNow')        result = runMatchTimeReminder();
-    else if (action === 'updateRequestTime') result = updateRequestTime(e.parameter);
+    else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
+    else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
@@ -1043,6 +1050,74 @@ function getCoordinatorRatings(params) {
   return { players: players, notAssigned: false };
 }
 
+function recalculateAnitaRatings() {
+  var ss     = SpreadsheetApp.openById(SHEET_ID);
+  var pSheet = ss.getSheetByName(TABS.players);
+  if (!pSheet) return { success: false, error: 'Players sheet not found' };
+
+  var col     = getColMap(pSheet);
+  var lastRow = pSheet.getLastRow();
+  if (lastRow < 2) return { success: true, updated: 0 };
+
+  var allData     = pSheet.getRange(1, 1, lastRow, col.totalCols).getValues();
+  var playerRatings = getPlayersWithRatings(); // already excludes Anita rows
+  var ratingMap   = {};
+  playerRatings.forEach(function(p) { ratingMap[p.email.toLowerCase()] = p.rating; });
+
+  // Build lookup: anita email → groupPlayers from sub request
+  var requests   = getRequests();
+  var requestMap = {};
+  requests.forEach(function(req) {
+    if (/^anita\.sub\d+@xgmail\.com$/i.test(req.email || '')) {
+      requestMap[(req.email || '').toLowerCase()] = req;
+    }
+  });
+
+  var updated = 0;
+  for (var row = 1; row < allData.length; row++) {
+    var pe = (allData[row][col.email] || '').toLowerCase().trim();
+    if (!/^anita\.sub\d+@xgmail\.com$/i.test(pe)) continue;
+
+    var existing = allData[row][col.rating];
+    if (existing !== '' && !isNaN(parseFloat(existing))) continue; // already has a rating
+
+    var req = requestMap[pe];
+    if (!req || !req.groupPlayers || !req.groupPlayers.length) continue;
+
+    var ratedGroup = req.groupPlayers.map(function(p) {
+      return ratingMap[(p.email || '').toLowerCase()] || null;
+    }).filter(function(v) { return v !== null && v > 0; });
+    ratedGroup.sort(function(a, b) { return b - a; });
+
+    var partnerRating, avgOf3;
+    if (ratedGroup.length >= 3) {
+      partnerRating = ratedGroup[2];
+      avgOf3        = (ratedGroup[0] + ratedGroup[1] + ratedGroup[2]) / 3;
+    } else if (ratedGroup.length > 0) {
+      var partialAvg = ratedGroup.reduce(function(s, v) { return s + v; }, 0) / ratedGroup.length;
+      partnerRating  = ratedGroup[ratedGroup.length - 1];
+      avgOf3         = partialAvg;
+    } else {
+      var poolRated = playerRatings.filter(function(p) { return p.rating > 0; });
+      var poolAvg   = poolRated.length > 0
+        ? poolRated.reduce(function(s, p) { return s + p.rating; }, 0) / poolRated.length
+        : 3.0;
+      partnerRating = poolAvg;
+      avgOf3        = poolAvg;
+    }
+
+    var anitaRating = Math.round(((partnerRating + avgOf3) / 2) * 100) / 100;
+    var cell = pSheet.getRange(row + 1, col.rating + 1);
+    cell.setNumberFormat('0.0');
+    cell.setValue(anitaRating);
+    updated++;
+  }
+
+  SpreadsheetApp.flush();
+  Logger.log('recalculateAnitaRatings: updated ' + updated + ' Anita Sub rating(s).');
+  return { success: true, updated: updated };
+}
+
 function saveCoordinatorRatings(params) {
   var coordEmail = (params.coordEmail || '').toLowerCase().trim();
   var ratings    = JSON.parse(params.ratings || '[]');
@@ -1074,6 +1149,7 @@ function saveCoordinatorRatings(params) {
 
   for (var row = 1; row < allData.length; row++) {
     var pe = (allData[row][col.email] || '').toLowerCase().trim();
+    if (/^anita\.sub\d+@xgmail\.com$/i.test(pe)) continue; // scheduler-managed rating — don't touch
     if (pe && ratingMap.hasOwnProperty(pe)) {
       allData[row][coordColIdx] = ratingMap[pe];
     }
@@ -1805,11 +1881,18 @@ function runMatchTimeReminder() {
     var diffHrs = (matchDT - now) / 36e5;
     if (diffHrs <= 0 || diffHrs > 60) return;
 
+    var groupPlayers = req.groupPlayers || [];
+    var isAnitaSub = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
+    var captain = isAnitaSub ? (groupPlayers[0] || {}) : null;
+    var recipientEmail = isAnitaSub ? (captain.email || '') : req.email;
+    var greetingName  = isAnitaSub ? (captain.name  || 'Captain') : req.name;
+    if (!recipientEmail) return;
+
     var dateStr = formatDate(req.matchDate);
     var subject = 'MWF Tennis League — Court time needed for your sub request: ' + dateStr;
 
     var body =
-      'Hi ' + req.name + ',\n\n' +
+      'Hi ' + greetingName + ',\n\n' +
       'You have an open sub request for ' + dateStr + ' and no court time has been assigned yet.\n\n' +
       'Once Chelsea has scheduled a court, please add the court time to your request at:\n' + siteUrl + '\n\n' +
       'If you are on Overflow, do nothing. Rally will still try to find a sub.\n\n' +
@@ -1817,17 +1900,16 @@ function runMatchTimeReminder() {
       'MWF Tennis League';
 
     var htmlBody =
-      'Hi ' + req.name + ',<br><br>' +
+      'Hi ' + greetingName + ',<br><br>' +
       'You have an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
       'Once Chelsea has scheduled a court, please <a href="' + siteUrl + '">add the court time to your request</a>.<br><br>' +
       '<em>If you are on Overflow, do nothing. Rally will still try to find a sub.</em><br><br>' +
       '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
       'MWF Tennis League';
 
-    var groupPlayers = req.groupPlayers || [];
-    var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+    var ccList = groupPlayers.map(function(p) { return p.email; }).filter(function(e) { return e && e !== recipientEmail; });
     var emailParams = {
-      to:       req.email,
+      to:       recipientEmail,
       subject:  subject,
       body:     body,
       htmlBody: htmlBody,
@@ -1882,6 +1964,53 @@ function sendRetirementEmail(req) {
   var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) sendLeagueEmail(emailParams);
+}
+
+function sendSubNeededTomorrowEmail(req) {
+  if (!isEmailEnabled()) return;
+
+  var isAnitaSub   = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
+  var groupPlayers = req.groupPlayers || [];
+
+  var toEmail, greetingName, ccPlayers;
+  if (isAnitaSub) {
+    var captain  = groupPlayers[0] || {};
+    toEmail      = captain.email || '';
+    greetingName = captain.name  || 'Captain';
+    ccPlayers    = groupPlayers.slice(1);
+  } else {
+    toEmail      = req.email || '';
+    greetingName = req.name  || 'A player';
+    ccPlayers    = groupPlayers;
+  }
+  if (!toEmail) return;
+
+  var dateStr = formatDate(req.matchDate);
+  var timeStr = req.matchTime ? (TIME_LABELS[req.matchTime] || req.matchTime) : 'TBD';
+
+  var subject = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
+  var directoryUrl = APP_BASE_URL + '#directory';
+  var body =
+    'Hi ' + greetingName + ',\n\n' +
+    'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
+    '  Date: ' + dateStr + '\n' +
+    '  Time: ' + timeStr + '\n\n' +
+    'Player email addresses and phone numbers can be found on the Directory page: ' + directoryUrl + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi ' + greetingName + ',<br><br>' +
+    'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
+    '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
+    '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
+    'Player email addresses and phone numbers can be found on the <a href="' + directoryUrl + '">Directory</a> page.<br><br>' +
+    'MWF Tennis League';
+
+  var ccList = ccPlayers.map(function(p) { return p.email; }).filter(function(e) {
+    return e && !/^anita\.sub\d+@xgmail\.com$/i.test(e);
+  });
+  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  if (ccList.length) emailParams.cc = ccList.join(', ');
+  sendLeagueEmail(emailParams);
 }
 
 function cancelRequest(params) {

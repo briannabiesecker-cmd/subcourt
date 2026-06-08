@@ -1461,23 +1461,28 @@
       <hr id="my-req-divider" class="divider" />
     </div>
 
-    <p style="font-size:13px;color:var(--ink-light);margin:0 0 8px;">Can't make your match? Fill out this form and we'll find someone to cover you.</p>
+    <div id="req-alert" class="hidden" style="margin-bottom:0.5rem;"></div>
 
-    <div class="card">
-      <div id="req-alert" class="hidden"></div>
-
-      <div class="field" style="margin-bottom:0.75rem;">
-        <label>Match date</label>
-        <input type="date" id="req-date" onchange="onReqDateChange()" style="max-width:200px;" />
+    <div id="req-schedule-section" style="display:none;">
+      <div id="req-schedule-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading schedule…</div>
+      <div id="req-schedule-empty" style="display:none;padding:1rem 0;font-size:14px;color:var(--ink-light);text-align:center;"></div>
+      <div id="req-schedule-table-wrap" style="display:none;overflow-x:auto;">
+        <table class="sched-table">
+          <thead><tr>
+            <th>Date</th><th>Group</th><th>Captain</th>
+            <th></th><th></th><th></th>
+            <th style="text-align:center;white-space:normal;line-height:1.3;">Sub<br>Needed?</th>
+          </tr></thead>
+          <tbody id="req-schedule-body"></tbody>
+        </table>
       </div>
+    </div>
 
-      <!-- Auto-filled from schedule; populated by onReqDateChange() -->
-      <div id="req-schedule-lookup" style="margin-bottom:0.75rem;"></div>
-
-      <div class="mt12 flex gap8">
-        <button class="btn btn-primary" id="req-submit-btn" onclick="submitRequest()">Submit request</button>
-        <button class="btn btn-secondary" onclick="clearRequestForm()">Clear</button>
-      </div>
+    <!-- Legacy form elements kept hidden for JS compatibility -->
+    <div style="display:none;" aria-hidden="true">
+      <input type="date" id="req-date" onchange="onReqDateChange()" />
+      <div id="req-schedule-lookup"></div>
+      <button id="req-submit-btn" onclick="submitRequest()"></button>
     </div>
 
     </div><!-- end #req-body -->
@@ -2061,9 +2066,10 @@ function showView(name, btn) {
   // Activate matching button in both header nav and mobile bottom nav
   document.querySelectorAll('[data-view="' + name + '"]').forEach(b => b.classList.add('active'));
   if (name === 'request') {
-    document.getElementById('req-date').value = '';
-    document.getElementById('req-schedule-lookup').innerHTML = '';
-    reqAutoFill = null;
+    const reqSched = document.getElementById('req-schedule-section');
+    if (reqSched) reqSched.style.display = 'none';
+    reqAutoFill    = null;
+    reqScheduleData = {};
     prefillIdentity('req');
   }
   if (name === 'volunteer') {
@@ -2162,6 +2168,7 @@ let epDropdownMatches = {};  // {1..4} → matches array for index-based selecti
 const epBlurTimers    = {};
 let reqAutoFill       = null; // schedule lookup result for the new-request form
 let reqLookupSeq      = 0;   // increments each lookup so stale responses are ignored
+let reqScheduleData   = {};  // keyed by "date|groupLetter" — slot info for Request a Sub table
 
 async function loadPlayerList() {
   if (playerList.length) return playerList;
@@ -2238,7 +2245,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
     document.getElementById('my-vol-list').innerHTML = '';
     loadMySubmissions(email);
   }
-  if (prefix === 'req') { loadMyRequests(email, name); onReqDateChange(); }
+  if (prefix === 'req') { loadMyRequests(email, name); loadReqSchedule(email, name); }
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email, name);
@@ -2338,9 +2345,9 @@ function clearTypeahead(prefix) {
   if (prefix === 'req') {
     document.getElementById('my-req-section').style.display = 'none';
     document.getElementById('my-req-list').innerHTML = '';
-    reqAutoFill = null;
-    const lw = document.getElementById('req-schedule-lookup');
-    if (lw) lw.innerHTML = '';
+    document.getElementById('req-schedule-section').style.display = 'none';
+    reqAutoFill    = null;
+    reqScheduleData = {};
   }
   if (prefix === 'av') {
     availSelections = {};
@@ -2516,9 +2523,131 @@ async function submitRequest() {
 
 function clearRequestForm() {
   clearTypeahead('req');
-  document.getElementById('req-date').value = '';
-  document.getElementById('req-schedule-lookup').innerHTML = '';
-  reqAutoFill = null;
+  document.getElementById('req-schedule-section').style.display = 'none';
+  reqAutoFill    = null;
+  reqScheduleData = {};
+}
+
+async function loadReqSchedule(email, name) {
+  const section   = document.getElementById('req-schedule-section');
+  const loading   = document.getElementById('req-schedule-loading');
+  const empty     = document.getElementById('req-schedule-empty');
+  const tableWrap = document.getElementById('req-schedule-table-wrap');
+  const tbody     = document.getElementById('req-schedule-body');
+
+  reqScheduleData         = {};
+  section.style.display   = '';
+  loading.style.display   = '';
+  empty.style.display     = 'none';
+  tableWrap.style.display = 'none';
+  tbody.innerHTML         = '';
+
+  try {
+    if (!publishedSchedule) {
+      publishedSchedule = await apiGetWithParams({ action: 'getPublishedSchedule' });
+    }
+    if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) {
+      loading.style.display = 'none';
+      empty.style.display   = '';
+      empty.textContent     = 'No schedule is published yet.';
+      return;
+    }
+
+    requestCache = null;
+    const requests = await getRequests();
+    const requestedDates = new Set(
+      requests
+        .filter(r => r.email.toLowerCase() === email.toLowerCase() && r.status !== 'cancelled')
+        .map(r => r.matchDate)
+    );
+
+    const todayStr   = new Date().toISOString().slice(0, 10);
+    const emailLower = email.toLowerCase();
+    const no8amList  = (publishedSchedule.no8amEmails || []).map(e => e.toLowerCase());
+    const starHtml   = '<span style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">*</span>';
+
+    const mkName = p => {
+      if (!p || !p.name) return '';
+      const isMe = p.email && p.email.toLowerCase() === emailLower;
+      const star = p.email && no8amList.includes(p.email.toLowerCase()) ? starHtml : '';
+      const nm   = p.name + star;
+      return isMe ? `<strong>${nm}</strong>` : nm;
+    };
+
+    let rows = '';
+    publishedSchedule.dates.forEach(d => {
+      if (d.date <= todayStr) return;
+      d.groups.forEach(g => {
+        if (!g.players.some(p => p.email && p.email.toLowerCase() === emailLower)) return;
+        const captain = g.players.find(p => p.isCaptain);
+        const others  = g.players.filter(p => !p.isCaptain);
+        const dateStr = formatDateShort(d.date);
+        const key     = d.date + '|' + g.letter;
+        reqScheduleData[key] = {
+          matchDate: d.date,
+          matchTime: '',
+          players:   g.players,
+          partners:  g.players.filter(p => !p.email || p.email.toLowerCase() !== emailLower)
+        };
+        const alreadyRequested = requestedDates.has(d.date);
+        const cbHtml = alreadyRequested
+          ? `<span style="font-size:12px;color:var(--ink-light);">Requested</span>`
+          : `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" />`;
+        rows += `<tr>
+          <td class="date-cell">${dateStr}</td>
+          <td style="font-weight:600;color:var(--court);">Group ${g.letter}</td>
+          <td><span class="captain-badge">C</span>${mkName(captain)}</td>
+          <td style="text-align:center;">${mkName(others[0])}</td>
+          <td style="text-align:center;">${mkName(others[1])}</td>
+          <td style="text-align:center;">${mkName(others[2])}</td>
+          <td style="text-align:center;">${cbHtml}</td>
+        </tr>`;
+      });
+    });
+
+    loading.style.display = 'none';
+    if (!rows) {
+      empty.style.display = '';
+      empty.textContent   = 'No upcoming scheduled matches found.';
+      return;
+    }
+    tbody.innerHTML         = rows;
+    tableWrap.style.display = '';
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display   = '';
+    empty.textContent     = 'Could not load schedule. Please try again.';
+  }
+}
+
+async function onReqScheduleCheck(checkbox, key) {
+  if (!checkbox.checked) return;
+  const slot = reqScheduleData[key];
+  if (!slot) { checkbox.checked = false; return; }
+  const { name, email } = getTypeaheadValue('req');
+  const cell = checkbox.closest('td');
+  checkbox.disabled = true;
+  cell.innerHTML = '<div class="loading" style="justify-content:center;padding:0;gap:4px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>';
+  try {
+    const partners = slot.partners.filter(p => p.name && p.email);
+    const result = await apiPost({
+      action: 'submitRequest',
+      name, email,
+      matchDate:    slot.matchDate,
+      matchTime:    slot.matchTime,
+      groupPlayers: partners
+    });
+    if (result && result.dispatchRan) {
+      cell.innerHTML = `<span style="font-size:12px;color:var(--danger);">${result.message || 'Error'}</span>`;
+      return;
+    }
+    cell.innerHTML = '<span style="font-size:12px;color:var(--success);">Requested ✓</span>';
+    clearCache();
+    const selName = document.getElementById('req-selected-name')?.textContent?.trim() || name;
+    loadMyRequests(email, selName);
+  } catch(e) {
+    cell.innerHTML = `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" title="Failed — click to retry" />`;
+  }
 }
 
 async function loadMyRequests(email, playerName) { // v2
