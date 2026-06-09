@@ -273,13 +273,16 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
 }
 
 function scheduleImmediateDispatch() {
-  // Delete any existing immediate-dispatch triggers to avoid stacking
+  // Delete any existing runAutoDispatch triggers to avoid stacking
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'runAutoDispatch' &&
         t.getTriggerSource() === ScriptApp.TriggerSource.CLOCK) {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
     }
   });
+  // Restore the daily recurring trigger before adding the one-shot,
+  // so "Run Dispatch Now" never accidentally removes the scheduled trigger.
+  updateDispatchTrigger();
   ScriptApp.newTrigger('runAutoDispatch').timeBased().after(60 * 1000).create();
   return { success: true, scheduled: true };
 }
