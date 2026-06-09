@@ -2821,17 +2821,80 @@ function showPlayerEditModal(requestId) {
   };
 }
 
+function showFindSubModal() {
+  const modal = document.getElementById('find-sub-modal');
+  modal.style.display = 'flex';
+  return new Promise(resolve => {
+    const yes = document.getElementById('find-sub-yes');
+    const no  = document.getElementById('find-sub-no');
+    const close = val => {
+      modal.style.display = 'none';
+      yes.onclick = null; no.onclick = null; modal.onclick = null;
+      resolve(val);
+    };
+    yes.onclick   = () => close(true);
+    no.onclick    = () => close(false);
+    modal.onclick = e => { if (e.target === modal) close(false); };
+  });
+}
+
+async function showSubPickerModal() {
+  await loadPlayerList();
+  const modal  = document.getElementById('sub-picker-modal');
+  const select = document.getElementById('sub-picker-select');
+  select.innerHTML = '<option value="">Choose a player…</option>';
+  [...playerList].sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify({ name: p.name, email: p.email });
+    opt.textContent = p.name;
+    select.appendChild(opt);
+  });
+  select.value = '';
+  modal.style.display = 'flex';
+  return new Promise(resolve => {
+    const assign = document.getElementById('sub-picker-assign');
+    const cancel = document.getElementById('sub-picker-cancel');
+    const close = val => {
+      modal.style.display = 'none';
+      assign.onclick = null; cancel.onclick = null; modal.onclick = null;
+      resolve(val);
+    };
+    assign.onclick = () => {
+      if (!select.value) return;
+      try { close(JSON.parse(select.value)); } catch(e) { close(null); }
+    };
+    cancel.onclick = () => close(null);
+    modal.onclick  = e => { if (e.target === modal) close(null); };
+  });
+}
+
 async function deleteRequest(requestId) {
-  await new Promise(resolve => showConfirmModal('Delete this sub request? This cannot be undone.', resolve));
-  try {
-    const result = await apiPost({ action: 'cancelRequest', requestId });
-    if (!result.success) throw new Error(result.error || 'Failed');
-    const { email } = getTypeaheadValue('req');
-    const selName = document.getElementById('req-selected-name').textContent.trim();
-    await loadMyRequests(email, selName);
-    loadReqSchedule(email, selName);
-  } catch(e) {
-    alert('Could not delete request: ' + e.message);
+  const foundSub = await showFindSubModal();
+  if (foundSub) {
+    const subPlayer = await showSubPickerModal();
+    if (!subPlayer) return;
+    try {
+      const result = await apiPost({ action: 'manuallyAssignSub', requestId, subName: subPlayer.name, subEmail: subPlayer.email });
+      if (!result.success) throw new Error(result.error || 'Failed');
+      const { email } = getTypeaheadValue('req');
+      const selName = document.getElementById('req-selected-name').textContent.trim();
+      await loadMyRequests(email, selName);
+      loadReqSchedule(email, selName);
+    } catch(e) {
+      alert('Could not assign sub: ' + e.message);
+    }
+  } else {
+    await new Promise(resolve => showConfirmModal('Delete this sub request? This cannot be undone.', resolve));
+    try {
+      const result = await apiPost({ action: 'cancelRequest', requestId });
+      if (!result.success) throw new Error(result.error || 'Failed');
+      const { email } = getTypeaheadValue('req');
+      const selName = document.getElementById('req-selected-name').textContent.trim();
+      await loadMyRequests(email, selName);
+      loadReqSchedule(email, selName);
+    } catch(e) {
+      alert('Could not delete request: ' + e.message);
+    }
   }
 }
 
@@ -5441,6 +5504,31 @@ function applyAvailConfigToHomeCard(config) {
     <div class="confirm-modal-btns" style="margin-top:6px;gap:8px;">
       <button class="confirm-modal-ok"     id="pem-save"   style="font-size:14px;padding:9px;min-height:0;">Save</button>
       <button class="confirm-modal-cancel" id="pem-cancel" style="font-size:14px;padding:9px;min-height:0;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Find Sub Modal ── -->
+<div id="find-sub-modal" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
+  <div class="confirm-modal-box">
+    <div class="confirm-modal-msg">Did you find a sub?</div>
+    <div class="confirm-modal-btns">
+      <button id="find-sub-yes" class="confirm-modal-ok" style="background:var(--court);">Yes</button>
+      <button id="find-sub-no"  class="confirm-modal-cancel">No</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sub Picker Modal ── -->
+<div id="sub-picker-modal" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
+  <div class="confirm-modal-box" style="max-width:380px;">
+    <div class="confirm-modal-msg" style="margin-bottom:1rem;">Select the sub player</div>
+    <select id="sub-picker-select" style="width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--radius);margin-bottom:1.25rem;background:white;color:var(--ink);appearance:auto;">
+      <option value="">Choose a player…</option>
+    </select>
+    <div class="confirm-modal-btns">
+      <button id="sub-picker-assign" class="confirm-modal-ok" style="background:var(--court);">Assign</button>
+      <button id="sub-picker-cancel" class="confirm-modal-cancel">Cancel</button>
     </div>
   </div>
 </div>

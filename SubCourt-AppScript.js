@@ -428,6 +428,7 @@ function doGet(e) {
     else if (action === 'expireToday')       result = expireToday();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
     else if (action === 'cancelRequest')          result = cancelRequest(e.parameter);
+    else if (action === 'manuallyAssignSub')      result = manuallyAssignSub(e.parameter);
     else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
     else if (action === 'runAutoDispatchNow')             result = scheduleImmediateDispatch();
     else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
@@ -2020,6 +2021,40 @@ function cancelRequest(params) {
   if (req.status === 'filled') return { success: false, error: 'Cannot cancel a filled request.' };
   var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('cancelled');
+  return { success: true };
+}
+
+function manuallyAssignSub(params) {
+  var requestId = (params.requestId || '').toString().trim();
+  var subName   = (params.subName   || '').toString().trim();
+  var subEmail  = (params.subEmail  || '').toString().trim();
+  if (!requestId || !subName || !subEmail) return { success: false, error: 'Missing params' };
+
+  var requests = getRequests();
+  var req = requests.find(function(r) { return r.id === requestId; });
+  if (!req) return { success: false, error: 'Request not found' };
+
+  var ss       = SpreadsheetApp.openById(SHEET_ID);
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('filled');
+  reqSheet.getRange(parseInt(req.rowIndex), 8).setValue(subEmail);
+
+  updateScheduleForSub(ss, {
+    matchDate:      req.matchDate,
+    requestorEmail: req.email,
+    subName:        subName,
+    subEmail:       subEmail
+  });
+
+  sendConfirmationEmails({
+    requestorName:  req.name,
+    requestorEmail: req.email,
+    subName:        subName,
+    subEmail:       subEmail,
+    matchDate:      req.matchDate,
+    matchTime:      req.matchTime
+  }, req.groupPlayers || []);
+
   return { success: true };
 }
 
