@@ -1512,7 +1512,7 @@ function createScheduleDraft(params) {
   });
 
   // ── Build dateMap from MatchGroups ──────────────────────────────────
-  var rows = mgSheet.getRange(2, 1, mgSheet.getLastRow() - 1, 14).getValues();
+  var rows = mgSheet.getRange(2, 1, mgSheet.getLastRow() - 1, 16).getValues();
   var latestMonth = '';
   rows.forEach(function(r) {
     var m = normalizeMonth(r[1]);
@@ -1524,17 +1524,23 @@ function createScheduleDraft(params) {
   var monthDate  = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, 1);
   var monthLabel = Utilities.formatDate(monthDate, Session.getScriptTimeZone(), 'MMMM yyyy');
 
-  var dateMap = {};  // date → { groups: { letter: [players] }, sitOut: {name,email} }
+  var dateMap = {};  // date → { groups: { letter: [players] }, sitOut: {name,email}, sitOut2: {name,email}|null }
   rows.forEach(function(r) {
     if (normalizeMonth(r[1]) !== latestMonth) return;
     var date = r[2] instanceof Date
       ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
       : r[2].toString();
-    var letter      = r[3] ? r[3].toString() : '';
-    var sitOutName  = r[12] ? r[12].toString().trim() : '';
-    var sitOutEmail = r[13] ? r[13].toString().toLowerCase().trim() : '';
+    var letter       = r[3] ? r[3].toString() : '';
+    var sitOutName   = r[12] ? r[12].toString().trim() : '';
+    var sitOutEmail  = r[13] ? r[13].toString().toLowerCase().trim() : '';
+    var sitOut2Name  = r[14] ? r[14].toString().trim() : '';
+    var sitOut2Email = r[15] ? r[15].toString().toLowerCase().trim() : '';
     if (!date || !letter) return;
-    if (!dateMap[date]) dateMap[date] = { groups: {}, sitOut: { name: sitOutName, email: sitOutEmail } };
+    if (!dateMap[date]) dateMap[date] = {
+      groups: {},
+      sitOut:  sitOutName  ? { name: sitOutName,  email: sitOutEmail  } : null,
+      sitOut2: sitOut2Name ? { name: sitOut2Name, email: sitOut2Email } : null
+    };
     var players = [];
     for (var pi = 0; pi < 4; pi++) {
       var nm = r[4 + pi * 2] ? r[4 + pi * 2].toString().trim() : '';
@@ -1606,7 +1612,8 @@ function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
     var dateLabel = DAYS[d.getDay()].slice(0,3) + ', ' + MONTHS[d.getMonth()].slice(0,3) + ' ' + parseInt(dp[2]);
     var letters   = Object.keys(entry.groups).sort();
     var rowBg     = di % 2 === 0 ? '#f5f9f7' : '#ffffff';
-    var totalRows = letters.length + (entry.sitOut && entry.sitOut.name ? 1 : 0);
+    var altCount  = (entry.sitOut && entry.sitOut.name ? 1 : 0) + (entry.sitOut2 && entry.sitOut2.name ? 1 : 0);
+    var totalRows = letters.length + altCount;
 
     letters.forEach(function(letter, gi) {
       var players    = entry.groups[letter];
@@ -1628,6 +1635,12 @@ function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
       html += '<tr style="background:' + rowBg + ';">' +
         '<td style="' + tdBase + 'text-align:center;color:#888;font-style:italic;font-size:12px;">Alt</td>' +
         '<td style="' + tdBase + 'color:#888;font-style:italic;font-size:12px;">' + entry.sitOut.name + '</td>' +
+        '</tr>';
+    }
+    if (entry.sitOut2 && entry.sitOut2.name) {
+      html += '<tr style="background:' + rowBg + ';">' +
+        '<td style="' + tdBase + 'text-align:center;color:#888;font-style:italic;font-size:12px;">Alt</td>' +
+        '<td style="' + tdBase + 'color:#888;font-style:italic;font-size:12px;">' + entry.sitOut2.name + '</td>' +
         '</tr>';
     }
   });
@@ -1666,6 +1679,10 @@ function buildScheduleCsv(dateMap, sortedDates, monthLabel, playerNameMap) {
     if (entry.sitOut && entry.sitOut.email && !anitaRe.test(entry.sitOut.email)) {
       if (!cellData[entry.sitOut.email]) cellData[entry.sitOut.email] = {};
       cellData[entry.sitOut.email][date] = 'Avail';
+    }
+    if (entry.sitOut2 && entry.sitOut2.email && !anitaRe.test(entry.sitOut2.email)) {
+      if (!cellData[entry.sitOut2.email]) cellData[entry.sitOut2.email] = {};
+      cellData[entry.sitOut2.email][date] = 'Avail';
     }
   });
 
@@ -2780,7 +2797,7 @@ function generateSchedule(params) {
     }
 
     var result = optimizeSlot(available, settings, pairCounts, sitOutCounts);
-    slotResults.push({ date: date, skipped: false, groups: result.groups, sitOut: result.sitOut });
+    slotResults.push({ date: date, skipped: false, groups: result.groups, sitOut: result.sitOut, sitOut2: result.sitOut2 || null });
 
     // Update running pairCounts and sitOutCounts for subsequent slots in the same run
     result.groups.forEach(function(group) {
@@ -2793,6 +2810,9 @@ function generateSchedule(params) {
     });
     if (result.sitOut) {
       sitOutCounts[result.sitOut.email] = (sitOutCounts[result.sitOut.email] || 0) + 1;
+    }
+    if (result.sitOut2) {
+      sitOutCounts[result.sitOut2.email] = (sitOutCounts[result.sitOut2.email] || 0) + 1;
     }
   });
 
@@ -2863,12 +2883,13 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   } else if (remainder === 1) {
     groupSizes = fillArray(Math.floor((n - 1) / 4), 4);
   } else if (remainder === 2) {
-    groupSizes = fillArray(Math.floor(n / 4) - 1, 4).concat([3, 3]);
+    groupSizes = fillArray((n - 2) / 4, 4);
   } else {
     groupSizes = fillArray(Math.floor(n / 4), 4).concat([3]);
   }
 
-  var sitOutPlayer = null;
+  var sitOutPlayer  = null;
+  var sitOutPlayer2 = null;
   var pool = available.slice();
 
   if (remainder === 1) {
@@ -2880,6 +2901,18 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
     var candidates = notYetSatOut.length > 0 ? notYetSatOut : pool.slice();
     var chosen     = candidates[Math.floor(Math.random() * candidates.length)];
     sitOutPlayer   = pool.splice(pool.indexOf(chosen), 1)[0];
+  } else if (remainder === 2) {
+    // Pick 2 alternates — prefer players who haven't sat out yet this month
+    var notYet2 = pool.filter(function(p) { return (sitOutCounts[p.email] || 0) === 0; });
+    var pick1From = notYet2.length >= 2 ? notYet2 : pool.slice();
+    var alt1 = pick1From[Math.floor(Math.random() * pick1From.length)];
+    pool.splice(pool.indexOf(alt1), 1);
+    var notYet2b = pool.filter(function(p) { return (sitOutCounts[p.email] || 0) === 0; });
+    var pick2From = notYet2b.length >= 1 ? notYet2b : pool.slice();
+    var alt2 = pick2From[Math.floor(Math.random() * pick2From.length)];
+    pool.splice(pool.indexOf(alt2), 1);
+    sitOutPlayer  = alt1;
+    sitOutPlayer2 = alt2;
   }
 
   var iters    = settings.solverIterations || 800;
@@ -2999,7 +3032,7 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
     });
   });
 
-  return { groups: outputGroups, sitOut: sitOutPlayer };
+  return { groups: outputGroups, sitOut: sitOutPlayer, sitOut2: sitOutPlayer2 };
 }
 
 // ── Chunked Publish Helpers ─────────────────────────
@@ -3081,8 +3114,10 @@ function publishScheduleSlot(params) {
   var ss    = SpreadsheetApp.openById(SHEET_ID);
   var sheet = getOrCreateMatchGroupsSheet();
   var saved = 0;
-  var sitOutName  = slot.sitOut ? slot.sitOut.name  : '';
-  var sitOutEmail = slot.sitOut ? slot.sitOut.email : '';
+  var sitOutName   = slot.sitOut  ? slot.sitOut.name   : '';
+  var sitOutEmail  = slot.sitOut  ? slot.sitOut.email  : '';
+  var sitOut2Name  = slot.sitOut2 ? slot.sitOut2.name  : '';
+  var sitOut2Email = slot.sitOut2 ? slot.sitOut2.email : '';
 
   // Resources for Anita creation — loaded lazily on first 3-player group, then reused
   var playerRatings = null;
@@ -3196,7 +3231,8 @@ function publishScheduleSlot(params) {
       String.fromCharCode(65 + gi),
       p[0].name, p[0].email, p[1].name, p[1].email,
       p[2].name, p[2].email, p[3].name, p[3].email,
-      sitOutName, sitOutEmail
+      sitOutName, sitOutEmail,
+      sitOut2Name, sitOut2Email
     ]);
     saved++;
   });
@@ -3230,6 +3266,34 @@ function publishScheduleSlot(params) {
     Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes + ' (timestamp backdated 30 days)');
   }
 
+  // Create a Volunteer record for the 2nd alternate (remainder===2 case)
+  if (sitOut2Email && sitOut2Name) {
+    var sitOut2Times = '08_00,09_30,11_00,12_30';
+    var lookupSheet2 = pSheet || ss.getSheetByName(TABS.players);
+    if (lookupSheet2 && lookupSheet2.getLastRow() >= 2) {
+      var pLookup2 = lookupSheet2.getRange(2, 1, lookupSheet2.getLastRow() - 1, 5).getValues();
+      for (var pi2 = 0; pi2 < pLookup2.length; pi2++) {
+        if ((pLookup2[pi2][1] || '').toLowerCase().trim() === sitOut2Email.toLowerCase().trim()) {
+          var no8am2 = pLookup2[pi2][4];
+          if (no8am2 === true || (no8am2 && no8am2.toString().toUpperCase() === 'TRUE')) {
+            sitOut2Times = '09_30,11_00,12_30';
+          }
+          break;
+        }
+      }
+    }
+    var volSheet2 = ss.getSheetByName(TABS.volunteers);
+    var volRange2 = volSheet2.getRange(volSheet2.getLastRow() + 1, 1, 1, 7);
+    volRange2.setNumberFormats([['@','@','@','@','@','@','@']]);
+    var thirtyDaysAgo2 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    volRange2.setValues([[
+      uid(), thirtyDaysAgo2,
+      sitOut2Name, sitOut2Email.toLowerCase(),
+      slot.date, sitOut2Times, 'pending'
+    ]]);
+    Logger.log('Created volunteer record for 2nd alternate: ' + sitOut2Name + ' on ' + slot.date + ' times: ' + sitOut2Times + ' (timestamp backdated 30 days)');
+  }
+
   return { success: true, groupsWritten: saved };
 }
 
@@ -3255,7 +3319,7 @@ function getPublishedSchedule() {
     });
   }
 
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 14).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 16).getValues();
 
   // Build dateMap across all months; track latestMonth for the header label only
   var latestMonth = '';
@@ -3269,8 +3333,10 @@ function getPublishedSchedule() {
       ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
       : (r[2] ? r[2].toString() : '');
     var letter = r[3] ? r[3].toString() : '';
-    var sitOutName  = r[12] ? r[12].toString() : '';
-    var sitOutEmail = r[13] ? r[13].toString() : '';
+    var sitOutName   = r[12] ? r[12].toString() : '';
+    var sitOutEmail  = r[13] ? r[13].toString() : '';
+    var sitOut2Name  = r[14] ? r[14].toString() : '';
+    var sitOut2Email = r[15] ? r[15].toString() : '';
 
     if (!date) return;
     if (!dateMap[date]) dateMap[date] = {};
@@ -3282,7 +3348,8 @@ function getPublishedSchedule() {
     }
     dateMap[date][letter] = {
       players: players,
-      sitOut: sitOutName ? { name: sitOutName, email: sitOutEmail } : null
+      sitOut:  sitOutName  ? { name: sitOutName,  email: sitOutEmail  } : null,
+      sitOut2: sitOut2Name ? { name: sitOut2Name, email: sitOut2Email } : null
     };
   });
 
@@ -3297,7 +3364,8 @@ function getPublishedSchedule() {
         return {
           letter: letter,
           players: dateMap[date][letter].players,
-          sitOut:  dateMap[date][letter].sitOut
+          sitOut:  dateMap[date][letter].sitOut,
+          sitOut2: dateMap[date][letter].sitOut2
         };
       })
     };

@@ -4693,7 +4693,9 @@ function renderScheduleTable(slots) {
       const ordered = [...group].sort((a, b) =>
         a.email === captainEmail ? -1 : b.email === captainEmail ? 1 : 0
       ).concat([{},{},{},{}]);
-      const sitOut = (firstRow && slot.sitOut) ? slot.sitOut.name : '';
+      const sitOut = firstRow
+        ? [slot.sitOut, slot.sitOut2].filter(Boolean).map(a => a.name).join(', ')
+        : '';
       html += '<tr class="' + (firstRow && isFirst ? 'date-first' : '') + '">' +
         '<td class="date-cell">' + (firstRow ? dateLabel : '') + '</td>' +
         '<td><span class="group-badge">Group ' + String.fromCharCode(65 + gi) + '</span></td>' +
@@ -5001,7 +5003,8 @@ async function publishScheduleToSheet() {
       date:     s.date,
       groups:   (s.groups || []).map(g => g.map(p => ({ name: p.name, email: p.email }))),
       captains: s.captains || [],
-      sitOut:   s.sitOut ? { name: s.sitOut.name, email: s.sitOut.email } : null
+      sitOut:   s.sitOut  ? { name: s.sitOut.name,  email: s.sitOut.email  } : null,
+      sitOut2:  s.sitOut2 ? { name: s.sitOut2.name, email: s.sitOut2.email } : null
     }));
 
   try {
@@ -5313,7 +5316,8 @@ function renderPublishedSchedule(filterEmail, filterName) {
       firstMonth = false;
     }
     const dateStr = formatDateShort(d.date);
-    if (d.groups[0] && d.groups[0].sitOut) alternates.push({ dateStr, name: d.groups[0].sitOut.name });
+    if (d.groups[0] && d.groups[0].sitOut)  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
+    if (d.groups[0] && d.groups[0].sitOut2) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
     d.groups.forEach((g, gi) => {
       const captain = g.players.find(p => p.isCaptain);
       const others  = g.players.filter(p => !p.isCaptain);
