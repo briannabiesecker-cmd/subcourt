@@ -81,6 +81,26 @@ function sendLeagueEmail(params) {
   MailApp.sendEmail(params);
 }
 
+// Sent to a player who was automatically made an alternate when publishing the schedule.
+function sendSitOutNotification(playerName, playerEmail, matchDate) {
+  if (!playerEmail || !isEmailEnabled()) return;
+  var volUrl   = APP_BASE_URL + '#volunteer';
+  var dateStr  = formatDate(matchDate);
+  var subject  = 'MWF Tennis League — Volunteer to Sub record created for ' + dateStr;
+  var body =
+    'Hi ' + playerName + ',\n\n' +
+    'There was an odd number of players on ' + dateStr + ' and therefore a Volunteer to Sub record has been automatically created for you. ' +
+    'You can edit this record on the Volunteer to Sub page:\n' +
+    volUrl + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi ' + playerName + ',<br><br>' +
+    'There was an odd number of players on ' + dateStr + ' and therefore a Volunteer to Sub record has been automatically created for you. ' +
+    'You can edit this record on the <a href="' + volUrl + '">Volunteer to Sub</a> page.<br><br>' +
+    'MWF Tennis League';
+  sendLeagueEmail({ to: playerEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+}
+
 const TABS = {
   players:      'Players',
   requests:     'SubRequests',
@@ -3264,6 +3284,7 @@ function publishScheduleSlot(params) {
       slot.date, sitOutTimes, 'pending'
     ]]);
     Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes + ' (timestamp backdated 30 days)');
+    sendSitOutNotification(sitOutName, sitOutEmail, slot.date);
   }
 
   // Create a Volunteer record for the 2nd alternate (remainder===2 case)
@@ -3292,6 +3313,7 @@ function publishScheduleSlot(params) {
       slot.date, sitOut2Times, 'pending'
     ]]);
     Logger.log('Created volunteer record for 2nd alternate: ' + sitOut2Name + ' on ' + slot.date + ' times: ' + sitOut2Times + ' (timestamp backdated 30 days)');
+    sendSitOutNotification(sitOut2Name, sitOut2Email, slot.date);
   }
 
   return { success: true, groupsWritten: saved };
