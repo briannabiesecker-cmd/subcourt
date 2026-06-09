@@ -3044,22 +3044,8 @@ function clearAnitaRecords() {
     }
   }
 
-  // ── Step 3: cancel only PAST Anita sub requests (future ones stay open) ──
-  if (rSheet && rSheet.getLastRow() >= 2) {
-    var rows      = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, 7).getValues();
-    var statusCol = rows.map(function(r) { return [r[6]]; });
-    var changed   = false;
-    rows.forEach(function(r, i) {
-      var name      = (r[2] || '').toString().trim();
-      var matchDate = formatSheetDate(r[4]);
-      var status    = (r[6] || '').toString();
-      if (anitaPattern.test(name) && status === 'open' && matchDate <= today) {
-        statusCol[i][0] = 'cancelled';
-        changed = true;
-      }
-    });
-    if (changed) rSheet.getRange(2, 7, statusCol.length, 1).setValues(statusCol);
-  }
+  // Dispatch's expireUpToToday() handles cleanup of past records.
+  // Publishing must never change the status of any sub request or volunteer record.
 }
 
 function publishScheduleStart(params) {
