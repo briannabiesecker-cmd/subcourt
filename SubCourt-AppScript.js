@@ -81,6 +81,31 @@ function sendLeagueEmail(params) {
   MailApp.sendEmail(params);
 }
 
+// Sent to the captain of a 3-player group when their Anita Sub request is auto-created at publish.
+function sendCaptainThreePlayerNotification(captainName, captainEmail, matchDate, anitaSubName) {
+  if (!captainEmail || !isEmailEnabled()) return;
+  var reqUrl    = APP_BASE_URL + '#request';
+  var dateStr   = formatDate(matchDate);
+  var d         = new Date(matchDate + 'T12:00:00');
+  d.setDate(d.getDate() - 1);
+  var dayBefore = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  var subject   = 'MWF Tennis League — 3-player group on ' + dateStr;
+  var body =
+    'Hi ' + captainName + ',\n\n' +
+    'You are the captain of a 3-player group on ' + dateStr + ' and therefore a sub request has automatically been created for ' + anitaSubName + '.\n\n' +
+    'When Chelsea assigns a court time, update the sub request on the Request a Sub page:\n' +
+    reqUrl + '\n\n' +
+    'If Rally is unable to fill the request on ' + dayBefore + ', you will be notified by email. At that time, you should use the email/phone process to find a 4th player.\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi ' + captainName + ',<br><br>' +
+    'You are the captain of a 3-player group on ' + dateStr + ' and therefore a sub request has automatically been created for ' + anitaSubName + '.<br><br>' +
+    'When Chelsea assigns a court time, update the sub request on the <a href="' + reqUrl + '">Request a Sub</a> page.<br><br>' +
+    'If Rally is unable to fill the request on ' + dayBefore + ', you will be notified by email. At that time, you should use the email/phone process to find a 4th player.<br><br>' +
+    'MWF Tennis League';
+  sendLeagueEmail({ to: captainEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+}
+
 // Sent to a player who was automatically made an alternate when publishing the schedule.
 function sendSitOutNotification(playerName, playerEmail, matchDate) {
   if (!playerEmail || !isEmailEnabled()) return;
@@ -3239,6 +3264,8 @@ function publishScheduleSlot(params) {
       rSheet.getRange(lastReqRow, 9).setNumberFormat('@');
 
       Logger.log('Created ' + anitaName + ' (rating ' + anitaRating + ') for ' + slot.date + ' group ' + String.fromCharCode(65 + gi));
+      var captainPlayer = workingGroup.find(function(p) { return p.email.toLowerCase() === captainEmail.toLowerCase(); });
+      sendCaptainThreePlayerNotification(captainPlayer ? captainPlayer.name : '', captainEmail, slot.date, anitaName);
       workingGroup.push({ name: anitaName, email: anitaEmail });
     }
 
