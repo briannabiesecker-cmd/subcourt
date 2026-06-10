@@ -2821,12 +2821,14 @@ function showPlayerEditModal(requestId) {
   };
 }
 
-async function showFillSubModal() {
+async function showFillSubModal(requesterName) {
   await loadPlayerList();
   const modal    = document.getElementById('fill-sub-modal');
   const yesRadio = document.getElementById('fill-sub-yes-radio');
   const noRadio  = document.getElementById('fill-sub-no-radio');
   const select   = document.getElementById('fill-sub-player-select');
+
+  document.getElementById('fill-sub-no-label').textContent = `${requesterName} is playing`;
 
   select.innerHTML = '<option value="">Choose a player…</option>';
   [...playerList].sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
@@ -2867,7 +2869,8 @@ async function showFillSubModal() {
 }
 
 async function deleteRequest(requestId) {
-  const choice = await showFillSubModal();
+  const req = myRequestsData.find(r => r.id === requestId);
+  const choice = await showFillSubModal(req ? req.name : 'Requester');
   if (!choice) return;
   const { email } = getTypeaheadValue('req');
   const selName = document.getElementById('req-selected-name').textContent.trim();
@@ -5509,7 +5512,7 @@ function applyAvailConfigToHomeCard(config) {
 <!-- ── Fill Sub Modal ── -->
 <div id="fill-sub-modal" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
   <div class="confirm-modal-box" style="max-width:380px;">
-    <div class="confirm-modal-msg" style="margin-bottom:1.1rem;">Did you find a player to fill this sub request?</div>
+    <div class="confirm-modal-msg" style="margin-bottom:1.1rem;">Who is playing in this slot?</div>
     <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;cursor:pointer;">
       <input type="radio" name="fill-sub-choice" id="fill-sub-yes-radio" style="width:20px;height:20px;flex-shrink:0;">
       <select id="fill-sub-player-select" style="flex:1;min-width:0;font-size:15px;padding:9px 10px;border:1.5px solid var(--line);border-radius:var(--radius);background:white;color:var(--ink);appearance:auto;">
@@ -5518,7 +5521,7 @@ function applyAvailConfigToHomeCard(config) {
     </label>
     <label style="display:flex;align-items:center;gap:10px;margin-bottom:1.25rem;cursor:pointer;">
       <input type="radio" name="fill-sub-choice" id="fill-sub-no-radio" style="width:20px;height:20px;flex-shrink:0;">
-      <span style="font-size:15px;color:var(--ink);">I no longer need a sub</span>
+      <span id="fill-sub-no-label" style="font-size:15px;color:var(--ink);"></span>
     </label>
     <div class="confirm-modal-btns">
       <button id="fill-sub-submit" class="confirm-modal-ok" style="background:var(--court);">Submit</button>
