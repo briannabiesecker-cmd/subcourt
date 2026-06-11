@@ -1971,6 +1971,23 @@
         </div>
 
         <div class="card mt8" style="max-width:560px;margin-top:1rem;">
+          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Players Email Group</div>
+          <div style="font-size:14px;color:var(--ink-mid);margin-bottom:12px;">
+            A Google Group address (e.g. mwf-players@googlegroups.com) used to email all players at once.
+            Set this after creating the group. Whenever a player is added, removed, or has their email changed,
+            Rally will email the admins a reminder of who to add/remove from the group, with a link to manage members.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="email" id="group-email-input" placeholder="e.g. mwf-players@googlegroups.com"
+              style="flex:1;min-width:220px;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;">
+            <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="saveGroupEmail()">Save</button>
+          </div>
+          <div id="group-email-status" style="font-size:13px;color:var(--ink-light);margin-top:8px;"></div>
+          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;margin-top:10px;" onclick="copyPlayerEmailList()">Copy Player Email List</button>
+          <div id="group-email-copy-result" style="font-size:13px;margin-top:8px;"></div>
+        </div>
+
+        <div class="card mt8" style="max-width:560px;margin-top:1rem;">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
             <div style="flex:1;">
               <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Email Notifications</div>
@@ -3881,7 +3898,7 @@ function showAdminTab(tab, btn) {
   if (tab === 'dispatch')  loadDispatch();
   if (tab === 'players')   { checkDuplicateEmails(); loadManagePlayers(); loadCoordinatorRatings(); }
   if (tab === 'scheduler') loadScheduler();
-  if (tab === 'settings')  { loadSenderEmail(); loadEmailToggle(); }
+  if (tab === 'settings')  { loadSenderEmail(); loadGroupEmail(); loadEmailToggle(); }
 }
 
 // ══════════════════════════════════════════════════
@@ -4476,6 +4493,50 @@ async function saveSenderEmail() {
       : 'Cleared. Using default script account.';
   } catch(e) {
     if (status) status.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function loadGroupEmail() {
+  const input  = document.getElementById('group-email-input');
+  const status = document.getElementById('group-email-status');
+  try {
+    const config = await getAppConfig();
+    if (input && config.playersGroupEmail) input.value = config.playersGroupEmail;
+    if (status) status.textContent = config.playersGroupEmail
+      ? 'Currently set to: ' + config.playersGroupEmail
+      : 'Not set — roster-change emails won\'t include a manage-members link.';
+  } catch(e) {}
+}
+
+async function saveGroupEmail() {
+  const input  = document.getElementById('group-email-input');
+  const status = document.getElementById('group-email-status');
+  const email  = input ? input.value.trim() : '';
+  if (status) status.textContent = 'Saving…';
+  try {
+    const result = await apiPost({ action: 'saveGroupEmail', email });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    configCache = null;
+    if (status) status.textContent = email
+      ? 'Saved. Roster-change emails will link to: ' + email
+      : 'Cleared.';
+  } catch(e) {
+    if (status) status.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function copyPlayerEmailList() {
+  const out = document.getElementById('group-email-copy-result');
+  out.textContent = 'Loading…';
+  try {
+    await loadPlayerList();
+    const emails = playerList.map(p => p.email).join(', ');
+    await navigator.clipboard.writeText(emails);
+    out.style.color = 'var(--success)';
+    out.textContent = `Copied ${playerList.length} player emails to clipboard — paste into the Google Group's "Add members" field.`;
+  } catch(e) {
+    out.style.color = 'var(--danger)';
+    out.textContent = 'Could not copy: ' + e.message;
   }
 }
 

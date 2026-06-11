@@ -57,6 +57,57 @@ function saveSenderEmail(params) {
   return { success: true, senderEmail: email };
 }
 
+function saveGroupEmail(params) {
+  var email = (params.email || '').toString().trim().toLowerCase();
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  sheet.getRange('A33').setValue('Players Email Group');
+  sheet.getRange('B33').setValue(email);
+  return { success: true, playersGroupEmail: email };
+}
+
+// Returns the admin emails (Players sheet isAdmin=true) for internal sync notifications.
+function getAdminEmails() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col   = getColMap(sheet);
+  var rows  = sheet.getDataRange().getValues();
+  rows.shift();
+  return rows
+    .filter(function(r) { return r[col.isAdmin] === true || String(r[col.isAdmin] || '').toUpperCase() === 'TRUE'; })
+    .map(function(r) { return (r[col.email] || '').toString().trim(); })
+    .filter(function(e) { return e; });
+}
+
+// Notifies admins that the Players Email Group needs a manual membership update.
+// changes: { add: [{name, email}], remove: [{name, email}] }
+function notifyGroupRosterChange(changes) {
+  if (!isEmailEnabled()) return;
+  var add    = changes.add    || [];
+  var remove = changes.remove || [];
+  if (!add.length && !remove.length) return;
+
+  var config   = getConfig();
+  var groupEmail = config.playersGroupEmail || '';
+  var manageLink = groupEmail
+    ? 'https://groups.google.com/g/' + groupEmail.split('@')[0] + '/members'
+    : '';
+
+  var lines = ['The Players list changed — update the Players Email Group membership:', ''];
+  add.forEach(function(p)    { lines.push('Add:    ' + p.name + ' <' + p.email + '>'); });
+  remove.forEach(function(p) { lines.push('Remove: ' + p.name + ' <' + p.email + '>'); });
+  if (manageLink) {
+    lines.push('', 'Manage members: ' + manageLink);
+  }
+
+  var admins = getAdminEmails();
+  if (!admins.length) return;
+  sendLeagueEmail({
+    to: admins.join(', '),
+    subject: 'Rally — Players Email Group update needed',
+    body: lines.join('\n'),
+    name: 'MWF Tennis League'
+  });
+}
+
 // Unified email sender — uses GmailApp with configured from: address (requires Gmail alias setup),
 // falls back to MailApp if alias is not configured or not verified.
 function sendLeagueEmail(params) {
@@ -175,6 +226,8 @@ function getConfig() {
       matchTimeReminderTimeET:  formatSheetTime(sheet.getRange('B29').getValue()) || '10:00',
       // Sender email — row 30
       senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
+      // Players Email Group — row 33
+      playersGroupEmail: (sheet.getRange('B33').getValue() || '').toString().trim(),
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -195,6 +248,7 @@ function getConfig() {
       matchTimeReminderEnabled: false,
       matchTimeReminderTimeET:  '10:00',
       senderEmail: '',
+      playersGroupEmail: '',
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -495,6 +549,7 @@ function doGet(e) {
     else if (action === 'getEmailSettings')         result = getEmailSettings();
     else if (action === 'setEmailEnabled')          result = setEmailEnabled(e.parameter);
     else if (action === 'saveSenderEmail')          result = saveSenderEmail(e.parameter);
+    else if (action === 'saveGroupEmail')           result = saveGroupEmail(e.parameter);
     else if (action === 'getAvailabilityConfig')   result = getAvailabilityConfig();
     else if (action === 'openAvailabilityWindow')  result = openAvailabilityWindow(e.parameter);
     else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
@@ -1268,6 +1323,7 @@ function addPlayer(params) {
     : [name, email, '', no8am, false];          // classic:    name,email,rating,no8am,isAdmin
   sheet.appendRow(newRow);
   sortPlayersSheet(sheet);
+  notifyGroupRosterChange({ add: [{ name: name, email: email }] });
   return { success: true };
 }
 
@@ -1282,11 +1338,19 @@ function updatePlayer(params) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
   var col = getColMap(sheet);
+  var oldName  = sheet.getRange(rowIndex, col.name  + 1).getValue();
+  var oldEmail = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
   sheet.getRange(rowIndex, col.name  + 1).setValue(name);
   sheet.getRange(rowIndex, col.email + 1).setValue(email);
   if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
   sortPlayersSheet(sheet);
+  if (oldEmail && oldEmail !== email) {
+    notifyGroupRosterChange({
+      remove: [{ name: oldName, email: oldEmail }],
+      add:    [{ name: name, email: email }]
+    });
+  }
   return { success: true };
 }
 
@@ -1295,7 +1359,11 @@ function deletePlayer(params) {
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
+  var col   = getColMap(sheet);
+  var name  = sheet.getRange(rowIndex, col.name  + 1).getValue();
+  var email = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
   sheet.deleteRow(rowIndex);
+  if (email) notifyGroupRosterChange({ remove: [{ name: name, email: email }] });
   return { success: true };
 }
 
