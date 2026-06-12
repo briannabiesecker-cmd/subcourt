@@ -2867,6 +2867,7 @@ function generateSchedule(params) {
       name:   r[1] || '',
       email:  email,
       rating: playerMap[email] ? playerMap[email].rating : 0,
+      no8am:  playerMap[email] ? playerMap[email].no8am : false,
       dates:  parseDatesField(r[4])  // ["YYYY-MM-DD", ...]
     };
   });
@@ -2982,6 +2983,18 @@ function assignCaptains(slotResults) {
   });
 }
 
+// Picks (and removes) one alternate from pool: prefer no8am players, and among
+// those prefer players who haven't sat out yet this month (max 1 sit-out/month),
+// falling back to the full pool if no candidates meet a preference.
+function pickAlternate(pool, sitOutCounts) {
+  var no8amPool = pool.filter(function(p) { return p.no8am; });
+  var basePool  = no8amPool.length > 0 ? no8amPool : pool;
+  var notYetSatOut = basePool.filter(function(p) { return (sitOutCounts[p.email] || 0) === 0; });
+  var candidates   = notYetSatOut.length > 0 ? notYetSatOut : basePool;
+  var chosen       = candidates[Math.floor(Math.random() * candidates.length)];
+  return pool.splice(pool.indexOf(chosen), 1)[0];
+}
+
 // ── Core Optimizer ─────────────────────────────────
 // Runs local search with random restarts for one date slot.
 // Returns { groups: [[player,...], ...], sitOut: player|null }
@@ -3006,26 +3019,10 @@ function optimizeSlot(available, settings, pairCounts, sitOutCounts) {
   var pool = available.slice();
 
   if (remainder === 1) {
-    // Prefer players who haven't sat out yet this month (max 1 sit-out per player per month).
-    // Among eligible candidates, choose randomly so selection isn't tied to submission order.
-    var notYetSatOut = pool.filter(function(p) {
-      return (sitOutCounts[p.email] || 0) === 0;
-    });
-    var candidates = notYetSatOut.length > 0 ? notYetSatOut : pool.slice();
-    var chosen     = candidates[Math.floor(Math.random() * candidates.length)];
-    sitOutPlayer   = pool.splice(pool.indexOf(chosen), 1)[0];
+    sitOutPlayer = pickAlternate(pool, sitOutCounts);
   } else if (remainder === 2) {
-    // Pick 2 alternates — prefer players who haven't sat out yet this month
-    var notYet2 = pool.filter(function(p) { return (sitOutCounts[p.email] || 0) === 0; });
-    var pick1From = notYet2.length >= 2 ? notYet2 : pool.slice();
-    var alt1 = pick1From[Math.floor(Math.random() * pick1From.length)];
-    pool.splice(pool.indexOf(alt1), 1);
-    var notYet2b = pool.filter(function(p) { return (sitOutCounts[p.email] || 0) === 0; });
-    var pick2From = notYet2b.length >= 1 ? notYet2b : pool.slice();
-    var alt2 = pick2From[Math.floor(Math.random() * pick2From.length)];
-    pool.splice(pool.indexOf(alt2), 1);
-    sitOutPlayer  = alt1;
-    sitOutPlayer2 = alt2;
+    sitOutPlayer  = pickAlternate(pool, sitOutCounts);
+    sitOutPlayer2 = pickAlternate(pool, sitOutCounts);
   }
 
   var iters    = settings.solverIterations || 800;
