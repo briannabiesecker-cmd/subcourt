@@ -5628,6 +5628,7 @@ function applyAvailConfigToHomeCard(config) {
     const descEl = document.getElementById('install-desc');
     
     const showInstallParam = location.search.indexOf('showInstall=1') !== -1;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -5651,11 +5652,19 @@ function applyAvailConfigToHomeCard(config) {
       localStorage.setItem('rally-install-shown','1');
     });
 
-    // Fallback: if no beforeinstallprompt event and user explicitly wants to install
+    // Fallback: if no beforeinstallprompt event (e.g., iOS Safari) and user explicitly wants to install
     if (!('onbeforeinstallprompt' in window) && showInstallParam) {
       setTimeout(()=>{
-        titleEl.textContent = 'Add Rally to Home Screen';
-        descEl.textContent = 'Tap Share → Add to Home Screen';
+        if (isIOS) {
+          // iPhone: show iOS-specific instructions, hide Install button
+          titleEl.textContent = 'Add Rally to Home Screen';
+          descEl.textContent = 'Tap Share → Add to Home Screen';
+          installBtn.style.display = 'none';
+        } else {
+          // Fallback for other browsers
+          titleEl.textContent = 'Install Rally';
+          descEl.textContent = 'Add Rally to your home screen';
+        }
         banner.style.display = 'flex';
       }, 400);
     }
