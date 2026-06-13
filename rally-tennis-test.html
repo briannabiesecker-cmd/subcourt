@@ -5,10 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rally — Tennis League</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23E07A5A'/><path d='M30 10 Q50 50 30 90' stroke='white' stroke-width='3' fill='none'/><path d='M70 10 Q50 50 70 90' stroke='white' stroke-width='3' fill='none'/></svg>">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F7A6E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Rally">
+<link rel="apple-touch-icon" href="icon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+
+<!-- Install banner (PWA) -->
+<div id="install-banner" style="display:none;position:fixed;left:12px;right:12px;bottom:18px;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:12px 14px;z-index:9999;align-items:center;display:flex;gap:12px;justify-content:space-between;">
+  <div style="display:flex;gap:12px;align-items:center;flex:1;">
+    <img src="icon.svg" alt="Rally" style="width:44px;height:44px;border-radius:8px;flex-shrink:0;"/>
+    <div>
+      <div id="install-title" style="font-weight:700;color:#1A1C1E">Install Rally</div>
+      <div id="install-desc" style="font-size:13px;color:#6B7280">Add Rally to your home screen</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+    <button id="install-btn" class="btn btn-primary btn-sm" style="padding:8px 12px">Install</button>
+    <button id="install-dismiss" class="btn btn-secondary btn-sm" style="padding:8px 12px">Close</button>
+  </div>
+</div>
 
   :root {
     --court: #1F7A6E;
@@ -3796,6 +3818,69 @@ function applyAvailConfigToHomeCard(config) {
   }
 }
 
+<!-- Install banner (PWA) -->
+<div id="install-banner" style="display:none;position:fixed;left:12px;right:12px;bottom:18px;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:12px 14px;z-index:9999;align-items:center;display:flex;gap:12px;justify-content:space-between;">
+  <div style="display:flex;gap:12px;align-items:center;flex:1;">
+    <img src="icon.svg" alt="Rally" style="width:44px;height:44px;border-radius:8px;flex-shrink:0;"/>
+    <div>
+      <div id="install-title" style="font-weight:700;color:#1A1C1E">Install Rally</div>
+      <div id="install-desc" style="font-size:13px;color:#6B7280">Add Rally to your home screen</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+    <button id="install-btn" class="btn btn-primary btn-sm" style="padding:8px 12px">Install</button>
+    <button id="install-dismiss" class="btn btn-secondary btn-sm" style="padding:8px 12px">Close</button>
+  </div>
+</div>
+
+<script>
+  (function(){
+    let deferredPrompt = null;
+    const banner = document.getElementById('install-banner');
+    const installBtn = document.getElementById('install-btn');
+    const dismissBtn = document.getElementById('install-dismiss');
+    const titleEl = document.getElementById('install-title');
+    const descEl = document.getElementById('install-desc');
+
+    const showInstallParam = location.search.indexOf('showInstall=1') !== -1;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (showInstallParam || localStorage.getItem('rally-install-shown') === null) {
+        banner.style.display = 'flex';
+      }
+    });
+
+    installBtn && installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      banner.style.display = 'none';
+      localStorage.setItem('rally-install-shown','1');
+    });
+
+    dismissBtn && dismissBtn.addEventListener('click', () => {
+      banner.style.display = 'none';
+      localStorage.setItem('rally-install-shown','1');
+    });
+
+    // Fallback: if no beforeinstallprompt event and user explicitly wants to install
+    if (!('onbeforeinstallprompt' in window) && showInstallParam) {
+      setTimeout(()=>{
+        if (titleEl) titleEl.textContent = 'Add Rally to Home Screen';
+        if (descEl) descEl.textContent = 'Tap Share → Add to Home Screen';
+        if (banner) banner.style.display = 'flex';
+      }, 400);
+    }
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    }
+  })();
+</script>
 
 </script>
 </body>
