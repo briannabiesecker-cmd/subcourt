@@ -930,13 +930,13 @@ function submitRequest(params) {
     var body =
       'Hi ' + params.name + ',\n\n' +
       'Your sub request has been received for ' + dateStr + ' at ' + timeStr + '.\n\n' +
-      'Rally will notify you when a sub has been found. You can view or delete your request at:\n' +
+      'Rally will notify you when a sub has been found. You can view or delete your request on the Request a Sub page:\n' +
       reqUrl + '\n\n' +
       'MWF Tennis League';
     var htmlBody =
       'Hi ' + params.name + ',<br><br>' +
       'Your sub request has been received for <strong>' + dateStr + '</strong> at <strong>' + timeStr + '</strong>.<br><br>' +
-      'Rally will notify you when a sub has been found. You can <a href="' + reqUrl + '">view or delete your request</a> at any time.<br><br>' +
+      'Rally will notify you when a sub has been found. You can view or delete your request on the <a href="' + reqUrl + '">Request a Sub</a> page at any time.<br><br>' +
       'MWF Tennis League';
     sendLeagueEmail({ to: params.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
   }
@@ -976,7 +976,7 @@ function submitVolunteer(params) {
       'Thank you for volunteering to sub! Your availability has been recorded for the following date' +
       (entries.length > 1 ? 's' : '') + ':\n\n' +
       dateLines.join('\n') + '\n\n' +
-      'Rally will notify you if you are selected as a sub. You can view or update your availability at:\n' +
+      'Rally will notify you if you are selected as a sub. You can view or update your availability on the Volunteer to Sub page:\n' +
       volUrl + '\n\n' +
       'MWF Tennis League';
     var htmlDateRows = entries.map(function(entry) {
@@ -990,8 +990,8 @@ function submitVolunteer(params) {
       (entries.length > 1 ? 's' : '') + ':<br><br>' +
       '<table style="font-family:Arial,sans-serif;font-size:14px;border-collapse:collapse;">' +
       htmlDateRows + '</table><br>' +
-      'Rally will notify you if you are selected as a sub. You can <a href="' + volUrl +
-      '">view or update your availability</a> at any time.<br><br>' +
+      'Rally will notify you if you are selected as a sub. You can view or update your availability on the <a href="' + volUrl +
+      '">Volunteer to Sub</a> page at any time.<br><br>' +
       'MWF Tennis League';
     sendLeagueEmail({ to: params.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
   }
@@ -2028,7 +2028,7 @@ function runMatchTimeReminder() {
     var body =
       'Hi ' + greetingName + ',\n\n' +
       'You have an open sub request for ' + dateStr + ' and no court time has been assigned yet.\n\n' +
-      'Once Chelsea has scheduled a court, please add the court time to your request at:\n' + siteUrl + '\n\n' +
+      'Once Chelsea has scheduled a court, please add the court time to your request on the Request a Sub page:\n' + siteUrl + '\n\n' +
       'If you are on Overflow, do nothing. Rally will still try to find a sub.\n\n' +
       'Note: Non 8am players are ineligible to fill a sub request without a court time assigned.\n\n' +
       'MWF Tennis League';
@@ -2036,7 +2036,7 @@ function runMatchTimeReminder() {
     var htmlBody =
       'Hi ' + greetingName + ',<br><br>' +
       'You have an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
-      'Once Chelsea has scheduled a court, please <a href="' + siteUrl + '">add the court time to your request</a>.<br><br>' +
+      'Once Chelsea has scheduled a court, please add the court time to your request on the <a href="' + siteUrl + '">Request a Sub</a> page.<br><br>' +
       '<em>If you are on Overflow, do nothing. Rally will still try to find a sub.</em><br><br>' +
       '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
       'MWF Tennis League';
@@ -2393,35 +2393,50 @@ function checkAvailabilityWindow() {
 
   var closeDateLabel = closeDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   var urgency        = daysUntilClose === 1 ? 'tomorrow' : 'in 2 days';
+  var avUrl          = APP_BASE_URL + '#availability';
   var subject        = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes ' + urgency;
   var body =
     'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes ' + urgency + ' (' + closeDateLabel + ').\n\n' +
     'Please submit your available dates before the window closes so we can include you in the schedule.\n\n' +
-    'Open the Rally app to submit:\n' +
-    APP_BASE_URL + '#availability\n\n' +
+    'Open the My Availability page to submit:\n' +
+    avUrl + '\n\n' +
     'See you on the court!\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Just a reminder — the availability window for <strong>' + config.targetMonthLabel + '</strong> closes ' + urgency + ' (' + closeDateLabel + ').<br><br>' +
+    'Please submit your available dates before the window closes so we can include you in the schedule.<br><br>' +
+    'Open the <a href="' + avUrl + '">My Availability</a> page to submit.<br><br>' +
+    'See you on the court!<br>' +
     'MWF Tennis League';
 
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
   if (!isEmailEnabled()) return;
 
   var toList = missing.map(function(p) { return p.email; }).join(', ');
-  sendLeagueEmail({ to: toList, subject: subject, body: body, name: 'MWF Tennis League' });
+  sendLeagueEmail({ to: toList, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
 }
 
 function testAvailabilityEmail() {
   var config = getAvailabilityConfig();
   var closeDateLabel = 'Friday, April 25';
+  var avUrl = APP_BASE_URL + '#availability';
   var subject = '[TEST] MWF League - Submit your availability for ' + config.targetMonthLabel;
   var body =
     'Hi,\n\n' +
     'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
     'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
-    'Open the Rally app to get started:\n' +
-    APP_BASE_URL + '#availability\n\n' +
+    'Open the My Availability page to get started:\n' +
+    avUrl + '\n\n' +
     'See you on the court!\n' +
     'MWF Tennis League';
-  MailApp.sendEmail({ to: 'brianna.biesecker@gmail.com, marobria@gmail.com', subject: subject, body: body, name: 'MWF Tennis League' });
+  var htmlBody =
+    'Hi,<br><br>' +
+    'It\'s time to submit your availability for <strong>' + config.targetMonthLabel + '</strong>.<br><br>' +
+    'Please submit your available dates by ' + closeDateLabel + '.<br><br>' +
+    'Open the <a href="' + avUrl + '">My Availability</a> page to get started.<br><br>' +
+    'See you on the court!<br>' +
+    'MWF Tennis League';
+  MailApp.sendEmail({ to: 'brianna.biesecker@gmail.com, marobria@gmail.com', subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
   return { success: true, sent: 'brianna.biesecker@gmail.com, marobria@gmail.com' };
 }
 
@@ -2455,16 +2470,23 @@ function openAvailabilityWindow(params) {
     if (allPlayers.length && isEmailEnabled()) {
       const config         = getAvailabilityConfig();
       const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      const avUrl          = APP_BASE_URL + '#availability';
       const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
       const body =
         'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
         'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
-        'Open the Rally app to get started:\n' +
-        APP_BASE_URL + '#availability\n\n' +
+        'Open the My Availability page to get started:\n' +
+        avUrl + '\n\n' +
         'See you on the court!\n' +
         'MWF Tennis League';
+      const htmlBody =
+        'It\'s time to submit your availability for <strong>' + config.targetMonthLabel + '</strong>.<br><br>' +
+        'Please submit your available dates by ' + closeDateLabel + '.<br><br>' +
+        'Open the <a href="' + avUrl + '">My Availability</a> page to get started.<br><br>' +
+        'See you on the court!<br>' +
+        'MWF Tennis League';
       const toList = allPlayers.map(function(p) { return p.email; }).join(', ');
-      sendLeagueEmail({ to: toList, subject: subject, body: body, name: 'MWF Tennis League' });
+      sendLeagueEmail({ to: toList, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
     }
   } catch(e) {
     emailError = e.message;
@@ -2558,18 +2580,31 @@ function submitAvailability(params) {
       return '  ' + new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     }).join('\n');
 
+    const avUrl   = APP_BASE_URL + '#availability';
     const subject = 'MWF League - Your availability for ' + avConfig.targetMonthLabel + ' is confirmed';
     const body =
       'Hi ' + name + ',\n\n' +
       'We received your availability for ' + avConfig.targetMonthLabel + '.\n\n' +
       'Your selected dates:\n' + (dateLines || '  (none selected)') + '\n\n' +
       (notes ? 'Notes: ' + notes + '\n\n' : '') +
-      'If you need to make changes before the window closes, visit:\n' +
-      APP_BASE_URL + '#availability\n\n' +
+      'If you need to make changes before the window closes, visit the My Availability page:\n' +
+      avUrl + '\n\n' +
       'See you on the court!\n' +
       'MWF Tennis League';
 
-    if (isEmailEnabled()) sendLeagueEmail({ to: email, subject: subject, body: body, name: 'MWF Tennis League' });
+    const htmlDateRows = dates.map(function(d) {
+      return '<div>' + new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + '</div>';
+    }).join('');
+    const htmlBody =
+      'Hi ' + name + ',<br><br>' +
+      'We received your availability for <strong>' + avConfig.targetMonthLabel + '</strong>.<br><br>' +
+      'Your selected dates:<br>' + (htmlDateRows || '(none selected)') + '<br>' +
+      (notes ? 'Notes: ' + notes + '<br><br>' : '') +
+      'If you need to make changes before the window closes, visit the <a href="' + avUrl + '">My Availability</a> page.<br><br>' +
+      'See you on the court!<br>' +
+      'MWF Tennis League';
+
+    if (isEmailEnabled()) sendLeagueEmail({ to: email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
   } catch(err) {
     Logger.log('Confirmation email failed: ' + err.message);
   }
@@ -3604,7 +3639,7 @@ function sendScheduleEmails(params) {
     '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;">' +
     htmlRows.join('') + '</table>' +
     '<p style="margin-top:16px;">Court times will be announced separately as each date approaches.</p>' +
-    '<p><a href="' + scheduleUrl + '">View the full schedule online</a></p>' +
+    '<p><a href="' + scheduleUrl + '">View Schedule</a></p>' +
     '<p style="color:#666;font-size:12px;margin-top:12px;">The schedule is also attached as a spreadsheet file (CSV, opens in Excel).</p>';
 
   // All players from the Players sheet (not just scheduled ones)
