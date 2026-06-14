@@ -2724,16 +2724,14 @@ async function loadMyRequests(email, playerName) { // v2
       const needsTime   = !r.matchTime && r.matchDate <= twoDaysStr;
       let statusCell;
       if (r.status === 'filled') {
-        statusCell = '<span class="badge badge-matched">Sub found</span>';
+        statusCell = '<span class="badge badge-matched">Sub found</span>' +
+          (r.assignedSub ? `<div style="margin-top:4px;font-weight:600;">${r.assignedSub}</div>` : '');
       } else if (r.status === 'expired') {
-        statusCell = '<span class="badge" style="background:#F3F4F6;color:#6B7280;">Expired</span>';
+        statusCell = '<span class="badge" style="background:#F3F4F6;color:#6B7280;">Expired</span>' +
+          '<div style="margin-top:4px;color:var(--ink-light);font-style:italic;font-size:12px;">No sub found</div>';
       } else {
         statusCell = '<span class="badge badge-open">Looking for sub</span>';
       }
-
-      const subCell = r.status === 'filled' && r.assignedSub
-        ? `<strong>${r.assignedSub}</strong>`
-        : r.status === 'expired' ? '<span style="color:var(--ink-light);font-style:italic;">No sub found</span>' : '';
 
       const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
 
@@ -2755,11 +2753,10 @@ async function loadMyRequests(email, playerName) { // v2
         : '';
 
       return `<tr>
-        <td style="white-space:nowrap;">${formatDate(r.matchDate)}</td>
+        <td style="white-space:nowrap;">${formatDateAbbrev(r.matchDate)}</td>
         <td style="white-space:nowrap;">${timeDisplay}</td>
         <td>${nameCell}</td>
         <td>${statusCell}</td>
-        <td>${subCell}</td>
         <td>${actionCell}</td>
         <td>${deleteBtn}</td>
       </tr>`;
@@ -2767,7 +2764,7 @@ async function loadMyRequests(email, playerName) { // v2
 
     el.innerHTML = `<div class="table-scroll">
       <table class="dispatch-table">
-        <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th>Substitute</th><th>Match Time</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th>Match Time</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   } catch(e) {
