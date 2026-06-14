@@ -2736,7 +2736,7 @@ async function loadMyRequests(email, playerName) { // v2
 
       const editBtn = r.status === 'open'
         ? `<button class="btn btn-sm" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;font-size:13px;padding:4px 12px;"
-             onclick="showPlayerEditModal('${r.id}')">Edit</button>`
+             onclick="showPlayerEditModal('${r.id}')">Edit Match Time</button>`
         : '';
 
       const actionCell = r.status === 'open' ? editBtn : '';
@@ -2763,7 +2763,7 @@ async function loadMyRequests(email, playerName) { // v2
 
     el.innerHTML = `<div class="table-scroll">
       <table class="dispatch-table">
-        <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th>Match Time</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th></th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   } catch(e) {
