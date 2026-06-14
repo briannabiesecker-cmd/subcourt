@@ -2081,7 +2081,15 @@ function showView(name, btn) {
     if (reqSched) reqSched.style.display = 'none';
     reqAutoFill    = null;
     reqScheduleData = {};
-    prefillIdentity('req');
+    const existingEmail = document.getElementById('req-email').value;
+    if (existingEmail) {
+      // Name already selected — refresh their requests and schedule
+      const selName = document.getElementById('req-selected-name')?.textContent?.trim() || '';
+      loadMyRequests(existingEmail, selName);
+      loadReqSchedule(existingEmail, selName);
+    } else {
+      prefillIdentity('req');
+    }
   }
   if (name === 'volunteer') {
     myVolunteerMap = {};
