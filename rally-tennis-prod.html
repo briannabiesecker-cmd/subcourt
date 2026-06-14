@@ -777,6 +777,12 @@
   .time-chip-btn:hover { border-color: var(--clay); color: var(--clay); background: var(--clay-bg); }
   .time-chip-btn.on { background: var(--clay); border-color: var(--clay); color: white; box-shadow: 0 2px 8px rgba(224,122,90,0.35); }
 
+  /* Narrow phones (portrait): shrink time chips so all 4 fit on one row */
+  @media (max-width: 480px) {
+    .time-chips { gap: 4px; }
+    .time-chip-btn { min-width: 0; padding: 7px 8px; font-size: 13px; }
+  }
+
   /* ── Player rating grid ── */
   .players-table {
     width: 100%;
@@ -2037,6 +2043,7 @@
 <script>
 const TIMES = ['08:00','09:30','11:00','12:30'];
 const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:30':'12:30 PM'};
+const TIME_LABELS_SHORT = {'08:00':'8:00','09:30':'9:30','11:00':'11:00','12:30':'12:30'};
 
 // ══════════════════════════════════════════════════
 // CONFIG — paste your Apps Script URL here after deploying
@@ -2050,6 +2057,9 @@ function openInstructions() {
 // NAVIGATION
 // ══════════════════════════════════════════════════
 function showView(name, btn) {
+  if (name !== 'volunteer' && document.getElementById('view-volunteer').classList.contains('active') && hasUnsavedVolChanges()) {
+    if (!confirm('Your updates have not been submitted. Are you sure you want to exit?')) return;
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button, #mobile-nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
@@ -2899,6 +2909,17 @@ async function deleteRequest(requestId) {
 let volSelections      = {};
 let myVolunteerMap     = {}; // date → {rowIndex, status, times} for pre-existing submissions
 let nearScheduledDates = new Set(); // dates ≤2 days away where player is already scheduled
+let volSavedSnapshot   = '{}'; // last-saved/loaded volSelections, for unsaved-changes detection
+
+function volSelectionsSnapshot() {
+  const obj = {};
+  Object.keys(volSelections).sort().forEach(k => { obj[k] = [...volSelections[k]].sort(); });
+  return JSON.stringify(obj);
+}
+
+function hasUnsavedVolChanges() {
+  return volSelectionsSnapshot() !== volSavedSnapshot;
+}
 
 async function buildCalendar() {
   try {
@@ -2950,7 +2971,7 @@ async function buildCalendar() {
         </div>
         <div class="time-chips">
           ${TIMES.map(t => `
-            <button class="time-chip-btn" id="chip-${k}-${t}" onclick="toggleTime('${k}','${t}')">${TIME_LABELS[t]}</button>
+            <button class="time-chip-btn" id="chip-${k}-${t}" onclick="toggleTime('${k}','${t}')">${TIME_LABELS_SHORT[t]}</button>
           `).join('')}
         </div>
       `;
@@ -2958,6 +2979,7 @@ async function buildCalendar() {
     });
 
     cal.appendChild(list);
+    volSavedSnapshot = volSelectionsSnapshot();
   } catch(e) {
     const cal = document.getElementById('vol-calendar');
     if (cal) cal.innerHTML = `<div class="alert alert-error">Calendar error: ${e.message}</div>`;
@@ -3162,6 +3184,7 @@ async function loadMySubmissions(email) {
       if (v.status === 'matched') lockDateRow(v.date, myVolunteerMap[v.date]);
     });
     updateVolSummary();
+    volSavedSnapshot = volSelectionsSnapshot();
 
     // Lock dates where the player is already scheduled to play (from MatchGroups)
     try {
@@ -5489,6 +5512,14 @@ document.addEventListener('DOMContentLoaded', () => {
       .find(b => (b.getAttribute('onclick') || '').includes("'" + hash + "'"));
     showView(hash, btn || null);
   }
+
+  // Warn before closing/refreshing the tab with unsubmitted volunteer changes
+  window.addEventListener('beforeunload', (e) => {
+    if (document.getElementById('view-volunteer').classList.contains('active') && hasUnsavedVolChanges()) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   // Single call returns players + availConfig — avoids two cold-start round trips
   apiGetWithParams({ action: 'getHomeData' }).then(data => {
