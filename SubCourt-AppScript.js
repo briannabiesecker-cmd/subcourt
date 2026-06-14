@@ -1446,6 +1446,27 @@ function updateScheduleForSub(ss, params) {
   }
 }
 
+// Marks a volunteer's pending row for the given email/date as 'matched'.
+// Used by manual sub-assignment paths so the Volunteers tab stays in sync
+// with the automated dispatch path (confirmSub), which does this already.
+function markVolunteerMatched(ss, email, matchDate) {
+  var emailLower = (email || '').toString().toLowerCase().trim();
+  matchDate = (matchDate || '').toString().trim();
+  if (!emailLower || !matchDate) return;
+  var sheet = ss.getSheetByName(TABS.volunteers);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowEmail = (r[3] || '').toString().toLowerCase().trim();
+    var rowDate  = formatSheetDate(r[4]);
+    if (rowEmail === emailLower && rowDate === matchDate && r[6] === 'pending') {
+      sheet.getRange(i + 2, 7).setValue('matched');
+      return;
+    }
+  }
+}
+
 // Replaces any player slot in MatchGroups that matches oldEmail on matchDate.
 function replaceSchedulePlayer(ss, matchDate, oldEmail, newName, newEmail) {
   var sheet = ss.getSheetByName(TABS.matchGroups);
@@ -1565,6 +1586,8 @@ function editRequestPlayers(params) {
     if (origRequestorEmail) {
       replaceSchedulePlayer(ss, matchDate, origRequestorEmail, newP1Name, newP1Email);
     }
+
+    markVolunteerMatched(ss, newP1Email, matchDate);
 
     // Send confirmation email (requestorName is P1 original)
     var requestorName = (params.origRequestorName || '').toString().trim();
@@ -2178,6 +2201,8 @@ function manuallyAssignSub(params) {
     subName:        subName,
     subEmail:       subEmail
   });
+
+  markVolunteerMatched(ss, subEmail, req.matchDate);
 
   sendConfirmationEmails({
     requestorName:  req.name,
