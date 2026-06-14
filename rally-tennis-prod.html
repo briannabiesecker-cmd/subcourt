@@ -129,32 +129,13 @@
   .view { display: none; }
   .view.active { display: block; }
 
-  /* Request view: two-zone layout — locked card + independent scroll below.
-     :has() locks body/main so their scroll doesn't compete with #req-body. */
-  body:has(#view-request.active) { overflow: hidden; }
-  body:has(#view-request.active) main {
-    height: calc(100vh - 68px);
-    overflow: hidden;
-    box-sizing: border-box;
-  }
-  #view-request.active {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
+  /* Request view: name bar scrolls with the page along with the content below */
   #req-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
     padding-bottom: 1.5rem;
   }
 
-  /* Volunteer view: same two-zone layout as Request view */
-  body:has(#view-volunteer.active) { overflow: hidden; }
-  body:has(#view-volunteer.active) main { height: calc(100vh - 68px); overflow: hidden; box-sizing: border-box; }
-  #view-volunteer.active { display: flex; flex-direction: column; height: 100%; }
-  #vol-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 1.5rem; }
-  @media (min-width: 641px) { body:has(#view-volunteer.active) main { height: calc(100vh - 68px - 2rem); } }
+  /* Volunteer view: name bar scrolls with the page along with the content below */
+  #vol-body { padding-bottom: 1.5rem; }
 
   /* ── Confirm modal ── */
   #confirm-modal {
@@ -658,8 +639,6 @@
     main { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 
     /* Fix locked-view heights (header 52px + bottom nav 56px) */
-    body:has(#view-request.active) main      { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
-    body:has(#view-volunteer.active) main    { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
     body:has(#view-availability.active) main { height: calc(100vh - 52px - 56px - env(safe-area-inset-bottom)); }
   }
 
@@ -1418,8 +1397,8 @@
   <!-- ── REQUEST VIEW ── -->
   <div id="view-request" class="view">
 
-    <!-- Compact sticky name bar -->
-    <div style="flex-shrink:0;background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
+    <!-- Compact name bar -->
+    <div style="background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
         <div class="typeahead-wrap" style="flex:1;max-width:340px;">
@@ -1485,8 +1464,8 @@
   <!-- ── VOLUNTEER VIEW ── -->
   <div id="view-volunteer" class="view">
 
-    <!-- Compact sticky name bar -->
-    <div style="flex-shrink:0;background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
+    <!-- Compact name bar -->
+    <div style="background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
         <div class="typeahead-wrap" style="flex:1;max-width:340px;">
