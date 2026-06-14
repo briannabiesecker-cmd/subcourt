@@ -2058,8 +2058,16 @@ function openInstructions() {
 // ══════════════════════════════════════════════════
 function showView(name, btn) {
   if (name !== 'volunteer' && document.getElementById('view-volunteer').classList.contains('active') && hasUnsavedVolChanges()) {
-    if (!confirm('Your updates have not been submitted. Are you sure you want to exit?')) return;
+    showConfirmModal('Your updates have not been submitted.', () => navigateToView(name, btn), {
+      confirmLabel: 'Exit Without Saving',
+      cancelLabel: 'Stay on This Page'
+    });
+    return;
   }
+  navigateToView(name, btn);
+}
+
+function navigateToView(name, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button, #mobile-nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
@@ -3790,12 +3798,14 @@ function showAlert(id, type, msg) {
   // Success messages stay visible until dismissed — no auto-hide
 }
 
-function showConfirmModal(msg, onConfirm) {
+function showConfirmModal(msg, onConfirm, opts = {}) {
   const modal = document.getElementById('confirm-modal');
   document.getElementById('confirm-modal-msg').textContent = msg;
   modal.classList.add('open');
   const ok  = document.getElementById('confirm-modal-ok');
   const can = document.getElementById('confirm-modal-cancel');
+  ok.textContent  = opts.confirmLabel || 'Confirm';
+  can.textContent = opts.cancelLabel  || 'Cancel';
   const close = () => { modal.classList.remove('open'); ok.onclick = null; can.onclick = null; };
   ok.onclick  = () => { close(); onConfirm(); };
   can.onclick = close;
