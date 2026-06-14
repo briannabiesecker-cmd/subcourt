@@ -652,6 +652,14 @@
 
   /* ── Typeahead ── */
   .typeahead-wrap { position: relative; }
+  .namebar-row { display: flex; align-items: center; gap: 12px; }
+  .namebar-input { flex: 1; max-width: 340px; }
+  .namebar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  @media (max-width: 640px) {
+    .namebar-row { flex-wrap: wrap; }
+    .namebar-input { flex: 1 1 100%; max-width: 100%; order: 1; }
+    .namebar-actions { order: 2; flex: 1 1 100%; margin-left: 0; justify-content: flex-end; margin-top: 8px; }
+  }
   .typeahead-input {
     font-family: inherit;
     font-size: 15px;
@@ -1472,9 +1480,9 @@
 
     <!-- Compact name bar -->
     <div style="background:white;border-bottom:2px solid var(--line);padding:10px 20px;">
-      <div style="display:flex;align-items:center;gap:12px;">
+      <div class="namebar-row">
         <label style="font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;flex-shrink:0;">Your name</label>
-        <div class="typeahead-wrap" style="flex:1;max-width:340px;">
+        <div class="typeahead-wrap namebar-input">
           <div id="vol-selected-state" style="display:none;">
             <div class="selected-pill">
               <span id="vol-selected-name"></span>
@@ -1492,7 +1500,7 @@
             <div class="typeahead-dropdown" id="vol-dropdown" style="display:none;"></div>
           </div>
         </div>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <div class="namebar-actions">
           <button class="btn btn-clay" id="vol-submit-btn-top" style="font-size:14px;padding:8px 16px;" onclick="submitVolunteer()">Submit availability</button>
           <button class="btn btn-secondary" style="font-size:14px;padding:8px 14px;" onclick="clearVolForm()">Clear</button>
         </div>
