@@ -3692,9 +3692,7 @@ async function runMatch(requestId) {
     const result = await apiPost({ action: 'runMatch', requestId });
 
     if (!result.candidates || !result.candidates.length) {
-      const phaseDesc = result.phase === 'last-minute'
-        ? 'no skill restriction, exact time required'
-        : `skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}`;
+      const phaseDesc = `skill ±${result.skillWindow}, ${result.requireAllTimes ? 'all 4 times' : result.matchTime + ' only'}`;
       container.innerHTML = `
         <div class="match-panel">
           <div class="match-panel-title">Matching engine results</div>
@@ -3724,10 +3722,8 @@ async function runMatch(requestId) {
     `).join('');
 
     const phaseLabel = result.phase === 'last-minute'
-      ? 'Last minute — no skill restriction'
-      : result.phase === 'post-schedule'
-        ? `Skill window ±${result.skillWindow}`
-        : `Skill window ±${result.skillWindow}`;
+      ? `Last minute — skill window ±${result.skillWindow}`
+      : `Skill window ±${result.skillWindow}`;
 
     const availLabel = result.requireAllTimes ? 'all 4 times required' : result.matchTime + ' required';
 

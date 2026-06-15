@@ -207,15 +207,15 @@ function getConfig() {
     if (b31 === '' || b31 === null) { sheet.getRange('A31').setValue('Rating Range Limit');      sheet.getRange('B31').setValue(2.0); }
     if (b32 === '' || b32 === null) { sheet.getRange('A32').setValue('Weight Maximum Rating Range'); sheet.getRange('B32').setValue(0.0); }
     return {
-      // Matching engine — rows 4–9 (4 skill windows)
-      // B4: skill window >72 hrs (far-out), B5: 48-72 hrs, B6: 24-48 hrs (urgent)
-      // B7: last-minute threshold, B8: urgent threshold, B9: pre-schedule threshold
-      skillWindowFarOut:        parseFloat(sheet.getRange('B4').getValue())  || 0.5,
-      skillWindowMid:           parseFloat(sheet.getRange('B5').getValue())  || 1.0,
-      skillWindowUrgent:        parseFloat(sheet.getRange('B6').getValue())  || 2.0,
-      lastMinuteThresholdHrs:   parseInt(sheet.getRange('B7').getValue())    || 24,
-      urgentThresholdHrs:       parseInt(sheet.getRange('B8').getValue())    || 48,
-      preScheduleThresholdHrs:  parseInt(sheet.getRange('B9').getValue())    || 72,
+      // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
+      // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
+      skillWindowFarOut:        parseFloat(sheet.getRange('C4').getValue())  || 0.5,
+      skillWindowMid:           parseFloat(sheet.getRange('C5').getValue())  || 1.0,
+      skillWindowUrgent:        parseFloat(sheet.getRange('C6').getValue())  || 2.0,
+      skillWindowLastMinute:    parseFloat(sheet.getRange('C7').getValue())  || 2.8,
+      lastMinuteThresholdHrs:   parseInt(sheet.getRange('B6').getValue())    || 24,
+      urgentThresholdHrs:       parseInt(sheet.getRange('B5').getValue())    || 48,
+      preScheduleThresholdHrs:  parseInt(sheet.getRange('B4').getValue())    || 72,
       // Volunteer calendar — row 10
       calendarLookaheadDays:    parseInt(sheet.getRange('B10').getValue())   || 30,
       // Dispatch automation — rows 13–14
@@ -239,6 +239,7 @@ function getConfig() {
       skillWindowFarOut:       0.5,
       skillWindowMid:          1.0,
       skillWindowUrgent:       2.0,
+      skillWindowLastMinute:   2.8,
       lastMinuteThresholdHrs:  24,
       urgentThresholdHrs:      48,
       preScheduleThresholdHrs: 72,
@@ -595,7 +596,7 @@ function doGet(e) {
           const timeMatch    = requireAllTimes
                                  ? TIMES.every(t => volTimes.includes(t))
                                  : volTimes.includes(effectiveTime);
-          const skillOk      = skillWindow === Infinity ? true : (() => {
+          const skillOk      = (() => {
             const p = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
             return p ? Math.abs(p.rating - reqRating) <= skillWindow : false;
           })();
@@ -623,7 +624,7 @@ function doGet(e) {
         result = {
           req: { id: req.id, matchDate, matchTime, email: req.email },
           lastMinute, requireAllTimes,
-          skillWindow: skillWindow === Infinity ? 'none' : skillWindow,
+          skillWindow: skillWindow,
           trace
         };
       }
@@ -1883,10 +1884,8 @@ function runMatch(params) {
     }
     // Look up player record for rating and no8am flag
     const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
-    if (skillWindow !== Infinity) {
-      if (!vol) return false;
-      if (Math.abs(vol.rating - reqRating) > skillWindow) return false;
-    }
+    if (!vol) return false;
+    if (Math.abs(vol.rating - reqRating) > skillWindow) return false;
     // No8am volunteers must never be matched to an 8am slot or a TBD request
     // (TBD defaults to effectiveTime '08:00', which could turn out to be 8am).
     if (vol && vol.no8am && effectiveTime === '08:00') return false;
@@ -1943,7 +1942,7 @@ function runMatch(params) {
 
   return {
     candidates: candidates.slice(0, 5),
-    skillWindow: skillWindow === Infinity ? 'none' : skillWindow,
+    skillWindow: skillWindow,
     requireAllTimes,
     phase,
     matchTime: matchTime ? TIME_LABELS[matchTime] : null
@@ -2264,7 +2263,7 @@ function expireUpToToday() {
 // Returns the dispatch phase and skill window for a request given the 4-window config.
 // Phase  | Hours until match       | Skill window
 // -------+-------------------------+---------------------------------
-// last-minute  | <= lastMinuteThresholdHrs  | Infinity (no check)
+// last-minute  | <= lastMinuteThresholdHrs  | skillWindowLastMinute
 // urgent       | <= urgentThresholdHrs      | skillWindowUrgent
 // post-schedule| <= preScheduleThresholdHrs | skillWindowMid
 // pre-schedule | > preScheduleThresholdHrs  | skillWindowFarOut
@@ -2273,7 +2272,7 @@ function getDispatchPhase(req, config) {
   var timeStr = req.matchTime || '08:00';
   var matchDT = new Date(req.matchDate + 'T' + timeStr + ':00');
   var diffHrs = (matchDT - new Date()) / 36e5;
-  if (diffHrs <= (config.lastMinuteThresholdHrs  || 24)) return { phase: 'last-minute',  skillWindow: Infinity };
+  if (diffHrs <= (config.lastMinuteThresholdHrs  || 24)) return { phase: 'last-minute',  skillWindow: config.skillWindowLastMinute || 2.8 };
   if (diffHrs <= (config.urgentThresholdHrs       || 48)) return { phase: 'urgent',        skillWindow: config.skillWindowUrgent  || 2.0 };
   if (diffHrs <= (config.preScheduleThresholdHrs  || 72)) return { phase: 'post-schedule', skillWindow: config.skillWindowMid     || 1.0 };
   return { phase: 'pre-schedule', skillWindow: config.skillWindowFarOut || 0.5 };
