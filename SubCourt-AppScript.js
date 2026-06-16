@@ -794,21 +794,44 @@ function getVolunteers() {
 //   Classic: A=Name B=Email          C=Rating D=No8am E=isAdmin F-J=CoordRatings
 function getColMap(sheet) {
   try {
-    var maxCols = sheet.getMaxColumns();
-    var readCols = Math.min(Math.max(sheet.getLastColumn(), 6), maxCols);
-    var hdr = sheet.getRange(1, 1, 1, readCols).getValues()[0];
+    var maxCols  = sheet.getMaxColumns();
+    // Read at least 14 columns so we can detect coordinator columns beyond the default 5 slots
+    var readCols = Math.min(Math.max(sheet.getLastColumn(), 14), maxCols);
+    var hdr      = sheet.getRange(1, 1, 1, readCols).getValues()[0];
     var hasPhone = (hdr[2] || '').toString().toLowerCase().trim() === 'phone';
+    var coordStart = hasPhone ? 6 : 5;
+
+    // Detect actual coordEnd by finding the last column from coordStart with an @-email header.
+    // This handles sheets with more or fewer than the default 5 coordinator columns.
+    var coordEnd = coordStart - 1; // default: none found
+    var testCol  = -1;
+    for (var i = coordStart; i < hdr.length; i++) {
+      var h = (hdr[i] || '').toString().trim();
+      if (h.indexOf('@') > 0) {
+        coordEnd = i;                         // coordinator column
+      } else if (h.toLowerCase() === 'test') {
+        testCol = i;                          // Test column already exists
+        break;
+      } else if (h) {
+        break;                                // non-empty, non-coordinator header — stop
+      }
+    }
+    if (coordEnd < coordStart) coordEnd = hasPhone ? 10 : 9; // fallback to default 5-slot end
+    if (testCol === -1) testCol = coordEnd + 1;              // place Test right after last coordinator
+
     return hasPhone ? {
       name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
-      coordStart: 6, coordEnd: 10, testCol: 11, totalCols: Math.min(12, maxCols)
+      coordStart: 6, coordEnd: coordEnd, testCol: testCol,
+      totalCols: Math.min(testCol + 1, maxCols)
     } : {
       name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-      coordStart: 5, coordEnd: 9, testCol: 10, totalCols: Math.min(11, maxCols)
+      coordStart: 5, coordEnd: coordEnd, testCol: testCol,
+      totalCols: Math.min(testCol + 1, maxCols)
     };
   } catch(e) {
-    // Safe fallback: classic layout
+    // Safe fallback: classic layout with Test at column L
     return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-             coordStart: 5, coordEnd: 9, testCol: 10, totalCols: 11 };
+             coordStart: 5, coordEnd: 9, testCol: 11, totalCols: 12 };
   }
 }
 
