@@ -5292,9 +5292,13 @@ function dirSendEmail() {
   if (!emails.length) { alert('Select at least one player first.'); return; }
   const to = encodeURIComponent(emails.join(','));
   if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    // Mobile: mailto: opens the native mail app directly
     window.location.href = 'mailto:' + to;
   } else {
+    // Desktop: open Gmail compose for Gmail users, and also fire mailto:
+    // for Outlook/Apple Mail users — each person gets whichever path works for them
     window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + to, '_blank');
+    window.location.href = 'mailto:' + to;
   }
 }
 
