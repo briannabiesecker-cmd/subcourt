@@ -3798,21 +3798,14 @@ function sendTestScheduleEmail() {
   if (!schedule.month || !schedule.dates || !schedule.dates.length) {
     return { success: false, error: 'No published schedule found.' };
   }
-  var pSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
-  var col    = getColMap(pSheet);
-  var allRows = pSheet.getDataRange().getValues();
-  allRows.shift();
-  var testPlayers = allRows
-    .filter(function(r) {
-      var email  = (r[col.email] || '').toLowerCase();
-      var isTest = r[col.testCol];
-      return email &&
-             !/^anita\.sub\d+@xgmail\.com$/i.test(email) &&
-             (isTest === true || String(isTest || '').toUpperCase() === 'YES');
+  // getPlayersWithRatings() auto-inits the Test column header if missing
+  var testPlayers = getPlayersWithRatings()
+    .filter(function(p) {
+      return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email) && p.isTest;
     })
-    .map(function(r) { return { email: (r[col.email] || '').toLowerCase(), name: r[col.name] || '' }; });
+    .map(function(p) { return { email: p.email, name: p.name }; });
   if (!testPlayers.length) {
-    return { success: false, error: 'No test players found — add "Yes" in the Test column (K) of the Players sheet.' };
+    return { success: false, error: 'No test players found — add "Yes" in the Test column of the Players sheet.' };
   }
   var emailParts = buildScheduleEmailParts(schedule);
   try {
