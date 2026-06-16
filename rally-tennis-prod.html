@@ -5290,7 +5290,12 @@ function dirUpdateCount() {
 function dirSendEmail() {
   const emails = Array.from(document.querySelectorAll('.dir-chk:checked')).map(cb => cb.value).filter(Boolean);
   if (!emails.length) { alert('Select at least one player first.'); return; }
-  window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(emails.join(',')), '_blank');
+  const to = encodeURIComponent(emails.join(','));
+  if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    window.location.href = 'mailto:' + to;
+  } else {
+    window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + to, '_blank');
+  }
 }
 
 async function dirLoadProfile(name, email) {
