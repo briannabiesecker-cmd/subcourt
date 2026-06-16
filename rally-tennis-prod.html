@@ -5290,7 +5290,7 @@ function dirUpdateCount() {
 function dirSendEmail() {
   const emails = Array.from(document.querySelectorAll('.dir-chk:checked')).map(cb => cb.value).filter(Boolean);
   if (!emails.length) { alert('Select at least one player first.'); return; }
-  window.location.href = 'mailto:' + emails.map(encodeURIComponent).join(',');
+  window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(emails.join(',')), '_blank');
 }
 
 async function dirLoadProfile(name, email) {
