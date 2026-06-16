@@ -5319,15 +5319,14 @@ function dirUpdateCount() {
 function dirSendEmail() {
   const emails = Array.from(document.querySelectorAll('.dir-chk:checked')).map(cb => cb.value).filter(Boolean);
   if (!emails.length) { alert('Select at least one player first.'); return; }
-  const to = encodeURIComponent(emails.join(','));
+  const useBcc  = emails.length > 10;
+  const field   = useBcc ? 'bcc' : 'to';
+  const encoded = encodeURIComponent(emails.join(','));
   if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    // Mobile: mailto: opens the native mail app directly
-    window.location.href = 'mailto:' + to;
+    window.location.href = 'mailto:?' + field + '=' + encoded;
   } else {
-    // Desktop: open Gmail compose for Gmail users, and also fire mailto:
-    // for Outlook/Apple Mail users — each person gets whichever path works for them
-    window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + to, '_blank');
-    window.location.href = 'mailto:' + to;
+    window.open('https://mail.google.com/mail/?view=cm&fs=1&' + field + '=' + encoded, '_blank');
+    window.location.href = 'mailto:?' + field + '=' + encoded;
   }
 }
 
