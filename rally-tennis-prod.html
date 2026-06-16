@@ -5321,12 +5321,13 @@ function dirSendEmail() {
   if (!emails.length) { alert('Select at least one player first.'); return; }
   const useBcc  = emails.length > 10;
   const field   = useBcc ? 'bcc' : 'to';
-  const encoded = encodeURIComponent(emails.join(','));
+  const raw     = emails.join(',');                  // for mailto: — raw addresses work best
+  const encoded = encodeURIComponent(raw);           // for Gmail URL — needs encoding
   if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    window.location.href = 'mailto:?' + field + '=' + encoded;
+    window.location.href = 'mailto:?' + field + '=' + raw;
   } else {
     window.open('https://mail.google.com/mail/?view=cm&fs=1&' + field + '=' + encoded, '_blank');
-    window.location.href = 'mailto:?' + field + '=' + encoded;
+    window.location.href = 'mailto:?' + field + '=' + raw;
   }
 }
 
