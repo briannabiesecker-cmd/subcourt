@@ -110,6 +110,30 @@ function notifyGroupRosterChange(changes) {
 
 // Unified email sender — uses GmailApp with configured from: address (requires Gmail alias setup),
 // falls back to MailApp if alias is not configured or not verified.
+function sendBrevoEmail(params) {
+  // params: { apiKey, senderName, senderEmail, recipients: [{email, name}], subject, htmlContent, textContent }
+  var payload = {
+    sender: { name: params.senderName || 'MWF Tennis League', email: params.senderEmail },
+    to: params.recipients,
+    subject: params.subject
+  };
+  if (params.htmlContent) payload.htmlContent = params.htmlContent;
+  if (params.textContent) payload.textContent = params.textContent;
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'api-key': params.apiKey },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  var response = UrlFetchApp.fetch('https://api.brevo.com/v3/smtp/email', options);
+  var code = response.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('Brevo error ' + code + ': ' + response.getContentText().substring(0, 300));
+  }
+  return JSON.parse(response.getContentText());
+}
+
 function sendLeagueEmail(params) {
   var config      = getConfig();
   var senderEmail = config.senderEmail || '';
@@ -206,6 +230,16 @@ function getConfig() {
     var b32 = sheet.getRange('B32').getValue();
     if (b31 === '' || b31 === null) { sheet.getRange('A31').setValue('Rating Range Limit');      sheet.getRange('B31').setValue(2.0); }
     if (b32 === '' || b32 === null) { sheet.getRange('A32').setValue('Weight Maximum Rating Range'); sheet.getRange('B32').setValue(0.0); }
+    // Brevo email section — auto-init on first use
+    var b36 = sheet.getRange('B36').getValue();
+    if (b36 === '' || b36 === null) {
+      sheet.getRange('A34').setValue('── Brevo Email ──');
+      sheet.getRange('A35').setValue('Brevo API Key');
+      sheet.getRange('A36').setValue('Use Brevo: Availability Notification');
+      sheet.getRange('B36').setValue('No');
+      sheet.getRange('A37').setValue('Use Brevo: Schedule Email');
+      sheet.getRange('B37').setValue('No');
+    }
     return {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -228,6 +262,10 @@ function getConfig() {
       senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
       // Players Email Group — row 33
       playersGroupEmail: (sheet.getRange('B33').getValue() || '').toString().trim(),
+      // Brevo — rows 35–37
+      brevoApiKey:            (sheet.getRange('B35').getValue() || '').toString().trim(),
+      brevoAvailNotification: (function() { var v = sheet.getRange('B36').getValue(); return v === 'Yes' || v === true; })(),
+      brevoScheduleEmail:     (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -250,6 +288,9 @@ function getConfig() {
       matchTimeReminderTimeET:  '10:00',
       senderEmail: '',
       playersGroupEmail: '',
+      brevoApiKey: '',
+      brevoAvailNotification: false,
+      brevoScheduleEmail: false,
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -564,6 +605,7 @@ function doGet(e) {
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
+    else if (action === 'sendTestScheduleEmail')     result = sendTestScheduleEmail();
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
@@ -758,15 +800,15 @@ function getColMap(sheet) {
     var hasPhone = (hdr[2] || '').toString().toLowerCase().trim() === 'phone';
     return hasPhone ? {
       name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
-      coordStart: 6, coordEnd: 10, totalCols: Math.min(11, maxCols)
+      coordStart: 6, coordEnd: 10, testCol: 11, totalCols: Math.min(12, maxCols)
     } : {
       name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-      coordStart: 5, coordEnd: 9, totalCols: Math.min(10, maxCols)
+      coordStart: 5, coordEnd: 9, testCol: 10, totalCols: Math.min(11, maxCols)
     };
   } catch(e) {
     // Safe fallback: classic layout
     return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-             coordStart: 5, coordEnd: 9, totalCols: 10 };
+             coordStart: 5, coordEnd: 9, testCol: 10, totalCols: 11 };
   }
 }
 
@@ -853,6 +895,10 @@ function getPlayersWithRatings() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   const col   = getColMap(sheet);
   const rows  = sheet.getDataRange().getValues();
+  // Auto-init Test column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.testCol || !rows[0][col.testCol])) {
+    sheet.getRange(1, col.testCol + 1).setValue('Test');
+  }
   rows.shift();
   const seen = {};
   return rows.reduce(function(acc, r) {
@@ -863,7 +909,8 @@ function getPlayersWithRatings() {
         name:   r[col.name] || '',
         email:  email,
         rating: parseFloat(r[col.rating]) || 0,
-        no8am:  r[col.no8am] === true || (r[col.no8am] && r[col.no8am].toString().toUpperCase() === 'TRUE')
+        no8am:  r[col.no8am] === true || (r[col.no8am] && r[col.no8am].toString().toUpperCase() === 'TRUE'),
+        isTest: r[col.testCol] === true || String(r[col.testCol] || '').toUpperCase() === 'YES'
       });
     } else if (email && seen[email]) {
       Logger.log('WARNING: duplicate email in Players sheet: ' + email);
@@ -2492,25 +2539,39 @@ function openAvailabilityWindow(params) {
     });
     emailCount = allPlayers.length;
     if (allPlayers.length && isEmailEnabled()) {
-      const config         = getAvailabilityConfig();
+      const availConfig    = getAvailabilityConfig();
+      const mailConfig     = getConfig();
       const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const avUrl          = APP_BASE_URL + '#availability';
-      const subject        = 'MWF League - Submit your availability for ' + config.targetMonthLabel;
+      const subject        = 'MWF League - Submit your availability for ' + availConfig.targetMonthLabel;
       const body =
-        'It\'s time to submit your availability for ' + config.targetMonthLabel + '.\n\n' +
+        'It\'s time to submit your availability for ' + availConfig.targetMonthLabel + '.\n\n' +
         'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
         'Open the My Availability page to get started:\n' +
         avUrl + '\n\n' +
         'See you on the court!\n' +
         'MWF Tennis League';
       const htmlBody =
-        'It\'s time to submit your availability for <strong>' + config.targetMonthLabel + '</strong>.<br><br>' +
+        'It\'s time to submit your availability for <strong>' + availConfig.targetMonthLabel + '</strong>.<br><br>' +
         'Please submit your available dates by ' + closeDateLabel + '.<br><br>' +
         'Open the <a href="' + avUrl + '">My Availability</a> page to get started.<br><br>' +
         'See you on the court!<br>' +
         'MWF Tennis League';
-      const toList = allPlayers.map(function(p) { return p.email; }).join(', ');
-      sendLeagueEmail({ to: toList, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+      if (mailConfig.brevoAvailNotification && mailConfig.brevoApiKey) {
+        const recipients = allPlayers.map(function(p) { return { email: p.email, name: p.name }; });
+        sendBrevoEmail({
+          apiKey:      mailConfig.brevoApiKey,
+          senderName:  'MWF Tennis League',
+          senderEmail: mailConfig.senderEmail,
+          recipients:  recipients,
+          subject:     subject,
+          htmlContent: htmlBody,
+          textContent: body
+        });
+      } else {
+        const toList = allPlayers.map(function(p) { return p.email; }).join(', ');
+        sendLeagueEmail({ to: toList, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+      }
     }
   } catch(e) {
     emailError = e.message;
@@ -3618,20 +3679,11 @@ function sendTestEmail() {
 }
 
 // Sends the published schedule to ALL players in one email (all addresses on To line) with CSV attachment.
-function sendScheduleEmails(params) {
-  if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
-
-  var schedule = getPublishedSchedule();
-  if (!schedule.month || !schedule.dates || !schedule.dates.length) {
-    return { success: false, error: 'No published schedule found.' };
-  }
-
+function buildScheduleEmailParts(schedule) {
   var parts = schedule.month.split('-');
   var monthLabel = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1)
     .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   var scheduleUrl = APP_BASE_URL + '#schedule';
-
-  // Build email body
   var textLines = [], htmlRows = [];
   schedule.dates.forEach(function(dayObj) {
     var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
@@ -3643,7 +3695,7 @@ function sendScheduleEmails(params) {
       var realPlayers = grp.players.filter(function(p) {
         return p.name && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
       });
-      var names  = realPlayers.map(function(p) { return p.name; }).join(', ');
+      var names = realPlayers.map(function(p) { return p.name; }).join(', ');
       textLines.push('  Group ' + grp.letter + ': ' + names + (grp.sitOut ? ' (sub needed)' : ''));
       htmlRows.push('<tr><td style="padding:2px 16px;color:#374151;font-weight:600;">' +
         'Group ' + grp.letter + '</td><td style="padding:2px 8px;">' + names +
@@ -3651,13 +3703,11 @@ function sendScheduleEmails(params) {
     });
     textLines.push('');
   });
-
   var body = 'The MWF Tennis League schedule for ' + monthLabel + ' has been published.\n\n' +
     textLines.join('\n') +
     'Court times will be announced separately as each date approaches.\n\n' +
     'View the schedule online: ' + scheduleUrl + '\n\n' +
     'The schedule is also attached as a spreadsheet file (CSV) that opens in Excel.';
-
   var htmlBody = '<p>The MWF Tennis League schedule for <strong>' + monthLabel +
     '</strong> has been published.</p>' +
     '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;">' +
@@ -3665,34 +3715,97 @@ function sendScheduleEmails(params) {
     '<p style="margin-top:16px;">Court times will be announced separately as each date approaches.</p>' +
     '<p><a href="' + scheduleUrl + '">View Schedule</a></p>' +
     '<p style="color:#666;font-size:12px;margin-top:12px;">The schedule is also attached as a spreadsheet file (CSV, opens in Excel).</p>';
+  return { subject: 'MWF Tennis League — ' + monthLabel + ' Schedule Published', body: body, htmlBody: htmlBody };
+}
 
-  // All players from the Players sheet (not just scheduled ones)
-  var allEmails = getPlayersWithRatings()
-    .filter(function(p) { return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email); })
-    .map(function(p) { return p.email; });
-  if (!allEmails.length) return { success: true, emailsSent: 0 };
+function sendScheduleEmails(params) {
+  if (!isEmailEnabled()) return { success: true, emailsSent: 0, skipped: 'email_disabled' };
 
-  var subject    = 'MWF Tennis League — ' + monthLabel + ' Schedule Published';
-  var toList     = allEmails.join(', ');
-  var senderEmail = getConfig().senderEmail || '';
-  var opts = { name: 'MWF Tennis League', htmlBody: htmlBody };
+  var schedule = getPublishedSchedule();
+  if (!schedule.month || !schedule.dates || !schedule.dates.length) {
+    return { success: false, error: 'No published schedule found.' };
+  }
+
+  var emailParts  = buildScheduleEmailParts(schedule);
+  var config      = getConfig();
+  var allPlayers  = getPlayersWithRatings()
+    .filter(function(p) { return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email); });
+  if (!allPlayers.length) return { success: true, emailsSent: 0 };
+
   try {
-    if (senderEmail) {
-      try {
-        GmailApp.sendEmail(toList, subject, body,
-          Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
-        return { success: true, emailsSent: allEmails.length };
-      } catch(ge) {
-        Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
+    if (config.brevoScheduleEmail && config.brevoApiKey) {
+      var recipients = allPlayers.map(function(p) { return { email: p.email, name: p.name }; });
+      sendBrevoEmail({
+        apiKey:       config.brevoApiKey,
+        senderName:   'MWF Tennis League',
+        senderEmail:  config.senderEmail,
+        recipients:   recipients,
+        subject:      emailParts.subject,
+        htmlContent:  emailParts.htmlBody,
+        textContent:  emailParts.body
+      });
+    } else {
+      var toList = allPlayers.map(function(p) { return p.email; }).join(', ');
+      var opts   = { name: 'MWF Tennis League', htmlBody: emailParts.htmlBody };
+      if (config.senderEmail) {
+        try {
+          GmailApp.sendEmail(toList, emailParts.subject, emailParts.body,
+            Object.assign({}, opts, { from: config.senderEmail, replyTo: config.senderEmail }));
+          return { success: true, emailsSent: allPlayers.length };
+        } catch(ge) {
+          Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
+        }
       }
+      opts.to = toList; opts.subject = emailParts.subject; opts.body = emailParts.body;
+      MailApp.sendEmail(opts);
     }
-    opts.to = toList; opts.subject = subject; opts.body = body;
-    MailApp.sendEmail(opts);
   } catch(e) {
     return { success: false, error: 'Email failed: ' + e.message };
   }
 
-  return { success: true, emailsSent: allEmails.length };
+  return { success: true, emailsSent: allPlayers.length };
+}
+
+function sendTestScheduleEmail() {
+  var config = getConfig();
+  if (!config.brevoApiKey) {
+    return { success: false, error: 'Brevo API key not set. Enter it in Config sheet B35.' };
+  }
+  var schedule = getPublishedSchedule();
+  if (!schedule.month || !schedule.dates || !schedule.dates.length) {
+    return { success: false, error: 'No published schedule found.' };
+  }
+  var pSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col    = getColMap(pSheet);
+  var allRows = pSheet.getDataRange().getValues();
+  allRows.shift();
+  var testPlayers = allRows
+    .filter(function(r) {
+      var email  = (r[col.email] || '').toLowerCase();
+      var isTest = r[col.testCol];
+      return email &&
+             !/^anita\.sub\d+@xgmail\.com$/i.test(email) &&
+             (isTest === true || String(isTest || '').toUpperCase() === 'YES');
+    })
+    .map(function(r) { return { email: (r[col.email] || '').toLowerCase(), name: r[col.name] || '' }; });
+  if (!testPlayers.length) {
+    return { success: false, error: 'No test players found — add "Yes" in the Test column (K) of the Players sheet.' };
+  }
+  var emailParts = buildScheduleEmailParts(schedule);
+  try {
+    sendBrevoEmail({
+      apiKey:      config.brevoApiKey,
+      senderName:  'MWF Tennis League',
+      senderEmail: config.senderEmail,
+      recipients:  testPlayers,
+      subject:     '[TEST] ' + emailParts.subject,
+      htmlContent: emailParts.htmlBody,
+      textContent: emailParts.body
+    });
+  } catch(e) {
+    return { success: false, error: 'Brevo send failed: ' + e.message };
+  }
+  return { success: true, emailsSent: testPlayers.length };
 }
 
 // ── Sheet helper ────────────────────────────────────

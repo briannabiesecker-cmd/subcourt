@@ -2005,6 +2005,14 @@
             <table class="sched-table" id="sched-table"></table>
           </div>
         </div>
+
+        <!-- Test Brevo Schedule Email (temporary) -->
+        <div class="card mt8" style="margin-top:1.5rem;border:1px dashed var(--line);">
+          <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px;">Test: Send Schedule Email via Brevo</div>
+          <p style="font-size:13px;color:var(--ink-mid);margin:0 0 12px;">Sends the last published schedule email via Brevo to players marked <strong>Yes</strong> in the Test column of the Players sheet.</p>
+          <button class="btn btn-secondary" id="brevo-test-btn" onclick="sendTestBrevoScheduleEmail()">Send Test Schedule Email</button>
+          <div id="brevo-test-result" style="font-size:13px;margin-top:8px;"></div>
+        </div>
       </div>
 
       <!-- ── SETTINGS TAB ── -->
@@ -5195,6 +5203,24 @@ async function publishScheduleToSheet() {
     showAlert('scheduler-alert', 'error', 'Could not publish: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Publish';
+  }
+}
+
+async function sendTestBrevoScheduleEmail() {
+  const btn    = document.getElementById('brevo-test-btn');
+  const result = document.getElementById('brevo-test-result');
+  btn.disabled = true;
+  result.style.color = '';
+  result.textContent = 'Sending…';
+  try {
+    const data = await apiGetWithParams({ action: 'sendTestScheduleEmail' });
+    result.style.color = 'var(--success)';
+    result.textContent = 'Sent to ' + (data.emailsSent || 0) + ' test player(s).';
+  } catch(e) {
+    result.style.color = 'var(--danger)';
+    result.textContent = e.message || 'Error sending test email.';
+  } finally {
+    btn.disabled = false;
   }
 }
 
