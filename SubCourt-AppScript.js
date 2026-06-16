@@ -117,8 +117,9 @@ function sendBrevoEmail(params) {
     to: params.recipients,
     subject: params.subject
   };
-  if (params.htmlContent) payload.htmlContent = params.htmlContent;
-  if (params.textContent) payload.textContent = params.textContent;
+  if (params.htmlContent)  payload.htmlContent = params.htmlContent;
+  if (params.textContent)  payload.textContent = params.textContent;
+  if (params.attachments)  payload.attachment  = params.attachments;
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -1697,19 +1698,19 @@ function editRequestPlayers(params) {
 // Creates a Gmail draft in the admin's account with the published schedule
 // as an HTML table in the body and a CSV attachment (player × date matrix).
 // The admin then opens Gmail Drafts, previews, and sends.
-function createScheduleDraft(params) {
-  var scheduleUrl = (params.scheduleUrl || '').toString().trim();
+// Reads MatchGroups + Players sheets and returns the data needed to build schedule emails.
+// Returns null if no published schedule exists.
+function buildScheduleDataFromMatchGroups() {
   var ss      = SpreadsheetApp.openById(SHEET_ID);
   var mgSheet = ss.getSheetByName(TABS.matchGroups);
-  if (!mgSheet || mgSheet.getLastRow() < 2) return { success: false, error: 'No schedule data.' };
+  if (!mgSheet || mgSheet.getLastRow() < 2) return null;
 
-  // ── Read player directory ──────────────────────────────────────────
-  var anitaRe    = /^anita\.sub\d+@xgmail\.com$/i;
-  var pSheet     = ss.getSheetByName(TABS.players);
+  var anitaRe   = /^anita\.sub\d+@xgmail\.com$/i;
+  var pSheet    = ss.getSheetByName(TABS.players);
   var playerRows = pSheet.getLastRow() > 1
     ? pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 2).getValues() : [];
-  var playerNameMap = {};   // email → name (Players sheet)
-  var playerEmails  = [];   // all non-Anita player emails for BCC
+  var playerNameMap = {};
+  var playerEmails  = [];
   playerRows.forEach(function(r) {
     var email = (r[1] || '').toString().toLowerCase().trim();
     var name  = (r[0] || '').toString().trim();
@@ -1718,20 +1719,19 @@ function createScheduleDraft(params) {
     playerEmails.push(email);
   });
 
-  // ── Build dateMap from MatchGroups ──────────────────────────────────
   var rows = mgSheet.getRange(2, 1, mgSheet.getLastRow() - 1, 16).getValues();
   var latestMonth = '';
   rows.forEach(function(r) {
     var m = normalizeMonth(r[1]);
     if (m > latestMonth) latestMonth = m;
   });
-  if (!latestMonth) return { success: false, error: 'No published month found.' };
+  if (!latestMonth) return null;
 
   var dateParts  = latestMonth.split('-');
   var monthDate  = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, 1);
   var monthLabel = Utilities.formatDate(monthDate, Session.getScriptTimeZone(), 'MMMM yyyy');
 
-  var dateMap = {};  // date → { groups: { letter: [players] }, sitOut: {name,email}, sitOut2: {name,email}|null }
+  var dateMap = {};
   rows.forEach(function(r) {
     if (normalizeMonth(r[1]) !== latestMonth) return;
     var date = r[2] instanceof Date
@@ -1758,37 +1758,58 @@ function createScheduleDraft(params) {
   });
 
   var sortedDates = Object.keys(dateMap).sort();
-  if (!sortedDates.length) return { success: false, error: 'No dates in schedule.' };
+  return { dateMap: dateMap, sortedDates: sortedDates, monthLabel: monthLabel,
+           playerNameMap: playerNameMap, playerEmails: playerEmails };
+}
 
-  // ── Build email body (HTML table) ───────────────────────────────────
-  var htmlBody = buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl);
+function createScheduleDraft(params) {
+  var scheduleUrl = (params.scheduleUrl || '').toString().trim();
+  var sd = buildScheduleDataFromMatchGroups();
+  if (!sd || !sd.sortedDates.length) return { success: false, error: 'No schedule data.' };
+  if (!sd.playerEmails.length) return { success: false, error: 'No player emails found.' };
 
-  // ── Build CSV attachment (player × date matrix) ─────────────────────
-  var csvContent = buildScheduleCsv(dateMap, sortedDates, monthLabel, playerNameMap);
-  var csvFileName = monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
+  var htmlBody    = buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
+  var csvContent  = buildScheduleCsv(sd.dateMap, sd.sortedDates, sd.monthLabel, sd.playerNameMap);
+  var csvFileName = sd.monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
+  var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
+  var config      = getConfig();
+
+  // ── Send via Brevo if enabled ────────────────────────────────────────
+  if (config.brevoScheduleEmail && config.brevoApiKey) {
+    try {
+      var recipients = sd.playerEmails.map(function(e) {
+        return { email: e, name: sd.playerNameMap[e] || '' };
+      });
+      sendBrevoEmail({
+        apiKey:       config.brevoApiKey,
+        senderName:   'MWF Tennis League',
+        senderEmail:  config.senderEmail,
+        recipients:   recipients,
+        subject:      subject,
+        htmlContent:  htmlBody,
+        attachments:  [{ content: Utilities.base64Encode('﻿' + csvContent), name: csvFileName }]
+      });
+      return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
+    } catch(e) {
+      return { success: false, error: 'Brevo send failed: ' + e.message };
+    }
+  }
+
+  // ── Send via GmailApp / MailApp ──────────────────────────────────────
   var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
-
-  // ── Send schedule email to all players ──────────────────────────────
-  if (!playerEmails.length) return { success: false, error: 'No player emails found.' };
-  var subject  = 'MWF Tennis League — ' + monthLabel + ' Schedule';
-  var toList   = playerEmails.join(', ');
-  var senderEmail = getConfig().senderEmail || '';
-  var opts = {
-    htmlBody:    htmlBody,
-    attachments: [csvBlob],
-    name:        'MWF Tennis League'
-  };
+  var toList  = sd.playerEmails.join(', ');
+  var opts    = { htmlBody: htmlBody, attachments: [csvBlob], name: 'MWF Tennis League' };
   try {
-    if (senderEmail) {
+    if (config.senderEmail) {
       try {
-        GmailApp.sendEmail(toList, subject, '', Object.assign({}, opts, { from: senderEmail, replyTo: senderEmail }));
-        return { success: true, month: monthLabel, emailsSent: playerEmails.length };
+        GmailApp.sendEmail(toList, subject, '', Object.assign({}, opts, { from: config.senderEmail, replyTo: config.senderEmail }));
+        return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
       } catch(ge) {
         Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
       }
     }
     MailApp.sendEmail(Object.assign({}, opts, { to: toList, subject: subject, body: '' }));
-    return { success: true, month: monthLabel, emailsSent: playerEmails.length };
+    return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
   } catch(e) {
     return { success: false, error: e.toString() };
   }
@@ -3794,10 +3815,12 @@ function sendTestScheduleEmail() {
   if (!config.brevoApiKey) {
     return { success: false, error: 'Brevo API key not set. Enter it in Config sheet B35.' };
   }
-  var schedule = getPublishedSchedule();
-  if (!schedule.month || !schedule.dates || !schedule.dates.length) {
+
+  var sd = buildScheduleDataFromMatchGroups();
+  if (!sd || !sd.sortedDates.length) {
     return { success: false, error: 'No published schedule found.' };
   }
+
   // getPlayersWithRatings() auto-inits the Test column header if missing
   var testPlayers = getPlayersWithRatings()
     .filter(function(p) {
@@ -3807,16 +3830,22 @@ function sendTestScheduleEmail() {
   if (!testPlayers.length) {
     return { success: false, error: 'No test players found — add "Yes" in the Test column of the Players sheet.' };
   }
-  var emailParts = buildScheduleEmailParts(schedule);
+
+  var scheduleUrl = APP_BASE_URL + '#schedule';
+  var htmlBody    = buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
+  var csvContent  = buildScheduleCsv(sd.dateMap, sd.sortedDates, sd.monthLabel, sd.playerNameMap);
+  var csvFileName = sd.monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
+  var subject     = '[TEST] MWF Tennis League — ' + sd.monthLabel + ' Schedule';
+
   try {
     sendBrevoEmail({
       apiKey:      config.brevoApiKey,
       senderName:  'MWF Tennis League',
       senderEmail: config.senderEmail,
       recipients:  testPlayers,
-      subject:     '[TEST] ' + emailParts.subject,
-      htmlContent: emailParts.htmlBody,
-      textContent: emailParts.body
+      subject:     subject,
+      htmlContent: htmlBody,
+      attachments: [{ content: Utilities.base64Encode('﻿' + csvContent), name: csvFileName }]
     });
   } catch(e) {
     return { success: false, error: 'Brevo send failed: ' + e.message };
