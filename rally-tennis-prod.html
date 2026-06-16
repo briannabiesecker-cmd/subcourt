@@ -587,6 +587,35 @@
     animation: spin 0.6s linear infinite;
   }
 
+  /* ── Directory: only the table scrolls on desktop ── */
+  @media (min-width: 641px) {
+    body:has(#view-directory.active) main {
+      height: calc(100vh - 68px);
+      overflow: hidden;
+      padding-bottom: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #view-directory.active {
+      display: flex !important;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    #view-directory.active #dir-table-wrap {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #view-directory.active #dir-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      max-height: none;
+    }
+  }
+
   /* ── Responsive ── */
   @media (max-width: 640px) {
     header { padding: 0 1rem; height: 52px; }
@@ -1714,7 +1743,7 @@
         <span id="dir-selected-count" style="font-size:13px;color:var(--ink-light);"></span>
       </div>
       <!-- Scrollable table -->
-      <div style="overflow-y:auto;max-height:calc(100vh - 170px);overflow-x:auto;">
+      <div id="dir-scroll" style="overflow-y:auto;max-height:calc(100vh - 240px);overflow-x:auto;">
         <table class="dir-table" id="dir-table"></table>
       </div>
     </div>
