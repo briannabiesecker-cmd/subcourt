@@ -3838,7 +3838,7 @@ function sendTestScheduleEmail() {
   var htmlBody    = buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
   var csvContent  = buildScheduleCsv(sd.dateMap, sd.sortedDates, sd.monthLabel, sd.playerNameMap);
   var csvFileName = sd.monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
-  var subject     = '[TEST] MWF Tennis League — ' + sd.monthLabel + ' Schedule';
+  var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
 
   try {
     sendBrevoEmail({
