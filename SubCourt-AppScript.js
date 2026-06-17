@@ -111,7 +111,7 @@ function notifyGroupRosterChange(changes) {
 // Unified email sender — uses GmailApp with configured from: address (requires Gmail alias setup),
 // falls back to MailApp if alias is not configured or not verified.
 function sendBrevoEmail(params) {
-  // params: { apiKey, recipients: [{email, name}], subject, htmlContent, textContent, attachments }
+  // params: { apiKey, recipients: [{email, name}], subject, htmlContent, textContent, attachments, replyTo: {email, name} }
   var payload = {
     sender: { name: 'MWF Tennis League', email: 'noreply@mtctennis.com' },
     to: params.recipients,
@@ -120,6 +120,7 @@ function sendBrevoEmail(params) {
   if (params.htmlContent)  payload.htmlContent = params.htmlContent;
   if (params.textContent)  payload.textContent = params.textContent;
   if (params.attachments)  payload.attachment  = params.attachments;
+  if (params.replyTo)      payload.replyTo     = params.replyTo;
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -1779,23 +1780,29 @@ function createScheduleDraft(params) {
 
   // ── Send via Brevo if enabled ────────────────────────────────────────
   if (config.brevoScheduleEmail && config.brevoApiKey) {
-    try {
-      var recipients = sd.playerEmails.map(function(e) {
-        return { email: e, name: sd.playerNameMap[e] || '' };
-      });
-      sendBrevoEmail({
-        apiKey:       config.brevoApiKey,
-        senderName:   'MWF Tennis League',
-        senderEmail:  config.senderEmail,
-        recipients:   recipients,
-        subject:      subject,
-        htmlContent:  htmlBody,
-        attachments:  [{ content: Utilities.base64Encode('﻿' + csvContent), name: csvFileName }]
-      });
-      return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
-    } catch(e) {
-      return { success: false, error: 'Brevo send failed: ' + e.message };
-    }
+    var textBody  = buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
+    var replyTo   = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
+    var sent = 0, sendErrors = [];
+    sd.playerEmails.forEach(function(email) {
+      var recipient = { email: email, name: sd.playerNameMap[email] || '' };
+      try {
+        sendBrevoEmail({
+          apiKey:      config.brevoApiKey,
+          recipients:  [recipient],
+          subject:     subject,
+          htmlContent: htmlBody,
+          textContent: textBody,
+          attachments: [{ content: Utilities.base64Encode('﻿' + csvContent), name: csvFileName }],
+          replyTo:     replyTo
+        });
+        sent++;
+      } catch(e) {
+        Logger.log('Brevo send failed for ' + email + ': ' + e.message);
+        sendErrors.push(email);
+      }
+    });
+    return { success: sent > 0, month: sd.monthLabel, emailsSent: sent,
+             errors: sendErrors.length ? sendErrors : undefined };
   }
 
   // ── Send via GmailApp / MailApp ──────────────────────────────────────
@@ -1819,69 +1826,99 @@ function createScheduleDraft(params) {
 }
 
 function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
+  var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+
+  var dateRows = '';
+  sortedDates.forEach(function(date) {
+    var entry  = dateMap[date];
+    var dp     = date.split('-');
+    var d      = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+    var label  = DAYS[d.getDay()] + ', ' + MONTHS[d.getMonth()] + ' ' + parseInt(dp[2]);
+    var groupLines = '';
+    Object.keys(entry.groups).sort().forEach(function(letter) {
+      var players = entry.groups[letter].map(function(p) {
+        return p.name + (p.isCaptain ? ' <strong>(C)</strong>' : '');
+      }).join(', ');
+      groupLines += '<tr><td style="padding:2px 0 2px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">Group ' + letter + ': ' + players + '</td></tr>';
+    });
+    if (entry.sitOut  && entry.sitOut.name)  groupLines += '<tr><td style="padding:2px 0 2px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#8A4F0B;">Alternate: ' + entry.sitOut.name  + '</td></tr>';
+    if (entry.sitOut2 && entry.sitOut2.name) groupLines += '<tr><td style="padding:2px 0 2px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#8A4F0B;">Alternate: ' + entry.sitOut2.name + '</td></tr>';
+    dateRows +=
+      '<tr><td style="padding:10px 0 4px 0;border-top:1px solid #e5e7eb;">' +
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+          '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#111111;padding-bottom:4px;">' + label + '</td></tr>' +
+          groupLines +
+        '</table>' +
+      '</td></tr>';
+  });
+
+  var viewLinkRow = scheduleUrl
+    ? '<tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;"><a href="' + scheduleUrl + '" style="color:#1a5c3a;text-decoration:underline;">View Schedule Online</a></td></tr>'
+    : '';
+
+  return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head>' +
+    '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+    '<title>MWF Tennis League Schedule</title></head>' +
+    '<body style="margin:0;padding:0;background-color:#f9fafb;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f9fafb;">' +
+    '<tr><td style="padding:20px 12px;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">' +
+    '<tr><td style="padding:24px;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    '<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">The MWF Tennis League schedule for <strong>' + monthLabel + '</strong> has been published.</td></tr>' +
+    viewLinkRow +
+    dateRows +
+    '<tr><td style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Court times will be announced separately as each date approaches.</td></tr>' +
+    '</table></td></tr>' +
+    '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
+    'MWF Tennis League &bull; You are receiving this email as a registered player in the league.</td></tr>' +
+    '</table></td></tr></table>' +
+    '</body></html>';
+}
+
+function buildScheduleTextBody(dateMap, sortedDates, monthLabel, scheduleUrl) {
   var MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
   var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var thStyle = 'padding:8px 12px;text-align:left;color:white;';
-  var tdBase  = 'padding:6px 12px;vertical-align:top;';
+  var textLines = [];
 
-  var html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:750px;">' +
-    '<h2 style="color:#1a5c3a;margin-bottom:12px;">MWF Tennis League — ' + monthLabel + ' Schedule</h2>' +
-    '<p style="margin-bottom:20px;">The ' + monthLabel + ' schedule has been published.' +
-    (scheduleUrl ? ' <a href="' + scheduleUrl + '">View Schedule</a>.' : '') + '</p>' +
-    '<table style="border-collapse:collapse;width:100%;">' +
-    '<tr style="background:#1a5c3a;">' +
-    '<th style="' + thStyle + 'width:20%">Date</th>' +
-    '<th style="' + thStyle + 'width:6%;text-align:center">Grp</th>' +
-    '<th style="' + thStyle + '">Players</th>' +
-    '</tr>';
+  textLines.push('MWF Tennis League — ' + monthLabel + ' Schedule');
+  textLines.push('');
+  textLines.push('The schedule for ' + monthLabel + ' has been published.');
+  textLines.push('');
 
-  sortedDates.forEach(function(date, di) {
-    var entry   = dateMap[date];
-    var dp      = date.split('-');
-    var d       = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
-    var dateLabel = DAYS[d.getDay()].slice(0,3) + ', ' + MONTHS[d.getMonth()].slice(0,3) + ' ' + parseInt(dp[2]);
-    var letters   = Object.keys(entry.groups).sort();
-    var rowBg     = di % 2 === 0 ? '#f5f9f7' : '#ffffff';
-    var altCount  = (entry.sitOut && entry.sitOut.name ? 1 : 0) + (entry.sitOut2 && entry.sitOut2.name ? 1 : 0);
-    var totalRows = letters.length + altCount;
-
-    letters.forEach(function(letter, gi) {
-      var players    = entry.groups[letter];
-      var playerStr  = players.map(function(p) {
-        return p.name + (p.isCaptain ? ' <strong>(C)</strong>' : '');
+  sortedDates.forEach(function(date) {
+    var entry = dateMap[date];
+    var dp = date.split('-');
+    var d = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+    var dateLabel = DAYS[d.getDay()] + ', ' + MONTHS[d.getMonth()] + ' ' + parseInt(dp[2]);
+    textLines.push(dateLabel.toUpperCase());
+    Object.keys(entry.groups).sort().forEach(function(letter) {
+      var players = entry.groups[letter].map(function(p) {
+        return p.name + (p.isCaptain ? ' (C)' : '');
       }).join(', ');
-      var borderTop  = (di > 0 && gi === 0) ? '2px solid #c96048' : (gi > 0 ? '1px solid #ddd' : 'none');
-
-      html += '<tr style="background:' + rowBg + ';border-top:' + borderTop + ';">';
-      if (gi === 0) {
-        html += '<td rowspan="' + totalRows + '" style="' + tdBase + 'font-weight:bold;white-space:nowrap;">' + dateLabel + '</td>';
-      }
-      html += '<td style="' + tdBase + 'text-align:center;font-weight:bold;color:#1a5c3a;">' + letter + '</td>';
-      html += '<td style="' + tdBase + '">' + playerStr + '</td>';
-      html += '</tr>';
+      textLines.push('  Group ' + letter + ': ' + players);
     });
-
     if (entry.sitOut && entry.sitOut.name) {
-      html += '<tr style="background:' + rowBg + ';">' +
-        '<td style="' + tdBase + 'text-align:center;color:#888;font-style:italic;font-size:12px;">Alt</td>' +
-        '<td style="' + tdBase + 'color:#888;font-style:italic;font-size:12px;">' + entry.sitOut.name + '</td>' +
-        '</tr>';
+      textLines.push('  Alternate: ' + entry.sitOut.name);
     }
     if (entry.sitOut2 && entry.sitOut2.name) {
-      html += '<tr style="background:' + rowBg + ';">' +
-        '<td style="' + tdBase + 'text-align:center;color:#888;font-style:italic;font-size:12px;">Alt</td>' +
-        '<td style="' + tdBase + 'color:#888;font-style:italic;font-size:12px;">' + entry.sitOut2.name + '</td>' +
-        '</tr>';
+      textLines.push('  Alternate: ' + entry.sitOut2.name);
     }
+    textLines.push('');
   });
 
-  html += '</table>' +
-    '<p style="margin-top:24px;color:#888;font-size:12px;">MWF Tennis League</p>' +
-    '</div>';
-  return html;
+  if (scheduleUrl) {
+    textLines.push('View the schedule online: ' + scheduleUrl);
+    textLines.push('');
+  }
+  textLines.push('Court times will be announced separately as each date approaches.');
+  return textLines.join('\n');
 }
-
 
 function buildScheduleCsv(dateMap, sortedDates, monthLabel, playerNameMap) {
   var MONTHS = ['January','February','March','April','May','June',
@@ -3736,32 +3773,35 @@ function buildScheduleEmailParts(schedule) {
     var dateLabel = new Date(dayObj.date + 'T12:00:00').toLocaleDateString('en-US',
       { weekday: 'long', month: 'long', day: 'numeric' });
     textLines.push(dateLabel.toUpperCase());
-    htmlRows.push('<tr><td colspan="2" style="padding:10px 0 4px;font-weight:700;' +
-      'border-top:1px solid #E8EBF0;">' + dateLabel + '</td></tr>');
+
+    var dayHtml = '<div style="padding:10px 0;border-top:1px solid #e5e7eb;">' +
+      '<div style="font-weight:700;margin-bottom:6px;">' + dateLabel + '</div>';
     dayObj.groups.forEach(function(grp) {
       var realPlayers = grp.players.filter(function(p) {
         return p.name && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
       });
       var names = realPlayers.map(function(p) { return p.name; }).join(', ');
       textLines.push('  Group ' + grp.letter + ': ' + names + (grp.sitOut ? ' (sub needed)' : ''));
-      htmlRows.push('<tr><td style="padding:2px 16px;color:#374151;font-weight:600;">' +
-        'Group ' + grp.letter + '</td><td style="padding:2px 8px;">' + names +
-        (grp.sitOut ? ' <em style="color:#8A4F0B;">(sub needed)</em>' : '') + '</td></tr>');
+      dayHtml += '<div style="margin:2px 0 0 12px;">Group ' + grp.letter + ': ' + names +
+        (grp.sitOut ? ' <span style="color:#8A4F0B;">(sub needed)</span>' : '') + '</div>';
     });
+    dayHtml += '</div>';
+    htmlRows.push(dayHtml);
     textLines.push('');
   });
   var body = 'The MWF Tennis League schedule for ' + monthLabel + ' has been published.\n\n' +
-    textLines.join('\n') +
+    textLines.join('\n') + '\n\n' +
     'Court times will be announced separately as each date approaches.\n\n' +
     'View the schedule online: ' + scheduleUrl + '\n\n' +
     'The schedule is also attached as a spreadsheet file (CSV) that opens in Excel.';
-  var htmlBody = '<p>The MWF Tennis League schedule for <strong>' + monthLabel +
+  var htmlBody = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:650px;">' +
+    '<p style="margin:0 0 12px 0;">The MWF Tennis League schedule for <strong>' + monthLabel +
     '</strong> has been published.</p>' +
-    '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;">' +
-    htmlRows.join('') + '</table>' +
-    '<p style="margin-top:16px;">Court times will be announced separately as each date approaches.</p>' +
-    '<p><a href="' + scheduleUrl + '">View Schedule</a></p>' +
-    '<p style="color:#666;font-size:12px;margin-top:12px;">The schedule is also attached as a spreadsheet file (CSV, opens in Excel).</p>';
+    '<p style="margin:0 0 16px 0;"><a href="' + scheduleUrl + '" style="color:#1a5c3a;">View Schedule</a></p>' +
+    htmlRows.join('') +
+    '<p style="margin-top:16px;color:#666;font-size:12px;">Court times will be announced separately as each date approaches.</p>' +
+    '<p style="margin-top:8px;color:#666;font-size:12px;">The schedule is also attached as a spreadsheet file (CSV, opens in Excel).</p>' +
+    '</div>';
   return { subject: 'MWF Tennis League — ' + monthLabel + ' Schedule Published', body: body, htmlBody: htmlBody };
 }
 
@@ -3836,19 +3876,31 @@ function sendTestScheduleEmail() {
 
   var scheduleUrl = APP_BASE_URL + '#schedule';
   var htmlBody    = buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
+  var textBody    = buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
   var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
+  var replyTo     = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
 
-  try {
-    sendBrevoEmail({
-      apiKey:      config.brevoApiKey,
-      recipients:  testPlayers,
-      subject:     subject,
-      htmlContent: htmlBody
-    });
-  } catch(e) {
-    return { success: false, error: 'Brevo send failed: ' + e.message };
+  var sent = 0, sendErrors = [];
+  testPlayers.forEach(function(recipient) {
+    try {
+      sendBrevoEmail({
+        apiKey:      config.brevoApiKey,
+        recipients:  [recipient],
+        subject:     subject,
+        htmlContent: htmlBody,
+        textContent: textBody,
+        replyTo:     replyTo
+      });
+      sent++;
+    } catch(e) {
+      Logger.log('Brevo send failed for ' + recipient.email + ': ' + e.message);
+      sendErrors.push(recipient.email + ': ' + e.message);
+    }
+  });
+  if (sent === 0) {
+    return { success: false, error: 'All sends failed. ' + (sendErrors[0] || '') };
   }
-  return { success: true, emailsSent: testPlayers.length };
+  return { success: true, emailsSent: sent, errors: sendErrors.length ? sendErrors : undefined };
 }
 
 // ── Sheet helper ────────────────────────────────────
