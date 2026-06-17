@@ -143,6 +143,51 @@ function sendBrevoEmail(params) {
   return JSON.parse(body);
 }
 
+function handleVolunteerFromEmail(e) {
+  var p           = e.parameter || {};
+  var requestId   = (p.requestId   || '').trim();
+  var playerEmail = (p.playerEmail || '').trim().toLowerCase();
+  var playerName  = (p.playerName  || '').trim();
+  var css = 'body{font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#111;}' +
+            'h2{color:#1a5c3a;}p{line-height:1.6;font-size:15px;}';
+  var wrap = function(body) {
+    return HtmlService.createHtmlOutput(
+      '<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<style>' + css + '</style></head><body>' + body + '</body></html>'
+    );
+  };
+  if (!requestId || !playerEmail) return wrap('<p>Invalid link.</p>');
+
+  var requests = getRequests();
+  var req;
+  for (var i = 0; i < requests.length; i++) { if (requests[i].id === requestId) { req = requests[i]; break; } }
+
+  if (!req) return wrap('<p>This sub request could not be found. It may have already been filled.</p>');
+  if (req.status !== 'open') {
+    var msg = req.status === 'filled' ? 'This sub request has already been filled — no action needed.' : 'This sub request is no longer active.';
+    return wrap('<p>' + msg + '</p>');
+  }
+
+  // Create volunteer record
+  var timeCode = req.matchTime ? req.matchTime.replace(':', '_') : '';
+  var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  var nextRow  = volSheet.getLastRow() + 1;
+  var rng      = volSheet.getRange(nextRow, 1, 1, 7);
+  rng.setNumberFormats([['@','@','@','@','@','@','@']]);
+  rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
+  Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
+
+  var dateStr = formatDate(req.matchDate);
+  var timeStr = TIME_LABELS[req.matchTime] || req.matchTime || '';
+  return wrap(
+    '<h2>Thank you' + (playerName ? ', ' + playerName.split(' ')[0] : '') + '!</h2>' +
+    '<p>You have volunteered to sub on <strong>' + dateStr + '</strong>' +
+    (timeStr ? ' at <strong>' + timeStr + '</strong>' : '') + '.</p>' +
+    '<p>You will be notified if you are selected as a substitute.</p>' +
+    '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+  );
+}
+
 function sendLeagueEmail(params) {
   var config      = getConfig();
   var senderEmail = config.senderEmail || '';
@@ -249,6 +294,13 @@ function getConfig() {
       sheet.getRange('A37').setValue('Use Brevo: Schedule Email');
       sheet.getRange('B37').setValue('No');
     }
+    // Urgent sub emails section — auto-init on first use
+    var b39 = sheet.getRange('B39').getValue();
+    if (b39 === '' || b39 === null) {
+      sheet.getRange('A38').setValue('── Urgent Sub Emails ──');
+      sheet.getRange('A39').setValue('Send Urgent Sub Emails');
+      sheet.getRange('B39').setValue('Yes');
+    }
     return {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -273,8 +325,9 @@ function getConfig() {
       playersGroupEmail: (sheet.getRange('B33').getValue() || '').toString().trim(),
       // Brevo — rows 35–37
       brevoApiKey:            (sheet.getRange('B35').getValue() || '').toString().trim(),
-      brevoAvailNotification: (function() { var v = sheet.getRange('B36').getValue(); return v === 'Yes' || v === true; })(),
-      brevoScheduleEmail:     (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
+      brevoAvailNotification:  (function() { var v = sheet.getRange('B36').getValue(); return v === 'Yes' || v === true; })(),
+      brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
+      urgentSubEmailsEnabled:  (function() { var v = sheet.getRange('B39').getValue(); return v !== 'No' && v !== false; })(),
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -300,6 +353,7 @@ function getConfig() {
       brevoApiKey: '',
       brevoAvailNotification: false,
       brevoScheduleEmail: false,
+      urgentSubEmailsEnabled: true,
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -326,7 +380,8 @@ function setupTriggers() {
   // Remove existing managed triggers
   ScriptApp.getProjectTriggers().forEach(function(t) {
     var fn = t.getHandlerFunction();
-    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit' || fn === 'cleanupOldAvailability' || fn === 'checkAvailabilityWindow') {
+    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit' || fn === 'cleanupOldAvailability' || fn === 'checkAvailabilityWindow' ||
+        fn === 'runFollowupDispatchT2' || fn === 'runFollowupDispatchT1') {
       ScriptApp.deleteTrigger(t);
     }
   });
@@ -491,8 +546,9 @@ function runAutoDispatch() {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, '']);
         Logger.log('Auto-dispatched: ' + req.name + ' → ' + best.name);
       } else {
-        // No match found — broadcast to all players if within 24 hours and cancel the request
-        if (isLastMinute(req, config.lastMinuteThresholdHrs)) {
+        // No match found
+        if (isLastMinute(req, config.lastMinuteThresholdHrs) && !config.urgentSubEmailsEnabled) {
+          // Original last-minute behaviour: cancel immediately (only when urgent sub emails are off)
           var emailNote = 'broadcast sent — last-minute, no candidates, cancelled';
           try {
             sendSubNeededTomorrowEmail(req);
@@ -513,6 +569,27 @@ function runAutoDispatch() {
       Logger.log('Auto-dispatch error for ' + req.id + ': ' + err.message);
     }
   });
+
+  // Urgent sub email broadcast for T+2 and T+1 open requests
+  if (config.urgentSubEmailsEnabled) {
+    var currentOpen = getRequests().filter(function(r) { return r.status === 'open'; });
+    var dateT2 = getDateStr(2);
+    var openT2 = currentOpen.filter(function(r) { return r.matchDate === dateT2; });
+    if (openT2.length) {
+      try {
+        sendUrgentSubBroadcast(openT2, dateT2);
+        scheduleUrgentSubFollowups('T2', dateT2);
+      } catch(e) { Logger.log('T2 urgent sub broadcast failed: ' + e.message); }
+    }
+    var dateT1 = getDateStr(1);
+    var openT1 = currentOpen.filter(function(r) { return r.matchDate === dateT1; });
+    if (openT1.length) {
+      try {
+        sendUrgentSubBroadcast(openT1, dateT1);
+        scheduleUrgentSubFollowups('T1', dateT1);
+      } catch(e) { Logger.log('T1 urgent sub broadcast failed: ' + e.message); }
+    }
+  }
 
   return { dispatched: open.length };
 }
@@ -563,6 +640,10 @@ function doGet(e) {
 
   const action   = e.parameter.action;
   const callback = e.parameter.callback;
+
+  // Volunteer from email link — returns an HTML confirmation page, not JSONP
+  if (action === 'volunteerFromEmail') return handleVolunteerFromEmail(e);
+
   let result;
 
   try {
@@ -2309,6 +2390,262 @@ function sendSubNeededTomorrowEmail(req) {
   var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   sendLeagueEmail(emailParams);
+}
+
+// ──────────────────────────────────────────────────
+// URGENT SUB EMAIL BROADCAST & FOLLOWUP DISPATCH
+// ──────────────────────────────────────────────────
+
+function getDateStr(daysFromToday) {
+  var d = new Date();
+  d.setDate(d.getDate() + daysFromToday);
+  return formatSheetDate(d);
+}
+
+function getOpenRequestsForDate(targetDate) {
+  return getRequests().filter(function(r) {
+    return r.status === 'open' && r.matchDate === targetDate;
+  });
+}
+
+function runDispatchForDate(targetDate) {
+  var requests  = getOpenRequestsForDate(targetDate);
+  if (!requests.length) return 0;
+  var logSheet  = getOrCreateDispatchLog();
+  var timestamp = new Date().toISOString();
+  var assigned  = {};
+  var matched   = 0;
+  requests.forEach(function(req) {
+    try {
+      var result = runMatch({ requestId: req.id });
+      if (result.candidates && result.candidates.length) {
+        var eligible = result.candidates.filter(function(c) {
+          return !assigned[c.email.toLowerCase() + '|' + req.matchDate];
+        });
+        if (!eligible.length) return;
+        var best = eligible[0];
+        confirmSub({
+          requestId: req.id, requestRowIndex: req.rowIndex,
+          subEmail: best.email, subName: best.name,
+          requestorName: req.name, requestorEmail: req.email,
+          matchDate: req.matchDate, matchTime: req.matchTime,
+          volunteerRowIndex: best.rowIndex || null,
+          groupPlayers: JSON.stringify(req.groupPlayers || [])
+        });
+        assigned[best.email.toLowerCase() + '|' + req.matchDate] = true;
+        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, 'followup dispatch']);
+        matched++;
+      } else {
+        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'followup dispatch']);
+      }
+    } catch(e) {
+      logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'error', '', '', 'followup: ' + e.message]);
+    }
+  });
+  return matched;
+}
+
+function buildSubNeededEmailHtml(requests, playerEmail, playerName, scriptUrl) {
+  var firstName  = (playerName || '').split(' ')[0] || '';
+  var dateStr    = formatDate(requests[0].matchDate);
+  var greetingRow = firstName
+    ? '<tr><td colspan="4" style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">Hi ' + firstName + ',</td></tr>'
+    : '';
+  var headerRow =
+    '<tr style="border-bottom:2px solid #e5e7eb;">' +
+    '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;"></th>' +
+    '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Needs Sub</th>' +
+    '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;white-space:nowrap;">Time</th>' +
+    '<th style="text-align:left;padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Other Players</th>' +
+    '</tr>';
+  var dataRows = requests.map(function(req) {
+    var timeLabel  = TIME_LABELS[req.matchTime] || req.matchTime || 'TBD';
+    var otherNames = (req.groupPlayers || [])
+      .filter(function(p) { return (p.email || '').toLowerCase() !== (req.email || '').toLowerCase(); })
+      .map(function(p) { return p.name; }).join(', ');
+    var linkUrl = scriptUrl + '?action=volunteerFromEmail' +
+      '&requestId='   + encodeURIComponent(req.id) +
+      '&playerEmail=' + encodeURIComponent(playerEmail) +
+      '&playerName='  + encodeURIComponent(playerName);
+    return '<tr style="border-bottom:1px solid #f0f0f0;">' +
+      '<td style="padding:10px 12px 10px 0;vertical-align:middle;">' +
+        '<a href="' + linkUrl + '" style="display:inline-block;padding:7px 14px;background-color:#1a5c3a;color:#ffffff;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</a>' +
+      '</td>' +
+      '<td style="padding:10px 12px 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;vertical-align:middle;">' + (req.name || '') + '</td>' +
+      '<td style="padding:10px 12px 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;vertical-align:middle;white-space:nowrap;">' + timeLabel + '</td>' +
+      '<td style="padding:10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;vertical-align:middle;">' + otherNames + '</td>' +
+      '</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head>' +
+    '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+    '<title>Subs Needed</title></head>' +
+    '<body style="margin:0;padding:0;background-color:#f9fafb;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f9fafb;">' +
+    '<tr><td style="padding:20px 12px;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:650px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">' +
+    '<tr><td style="padding:24px;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    greetingRow +
+    '<tr><td colspan="4" style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' +
+      'Substitutes are needed for <strong>' + dateStr + '</strong>. Click <strong>I CAN Sub</strong> if you are available to substitute for any of the players listed below.' +
+    '</td></tr>' +
+    '<tr><td colspan="4"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    headerRow + dataRows +
+    '</table></td></tr>' +
+    '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
+    '</table></td></tr>' +
+    '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
+    'MWF Tennis League &bull; You are receiving this email as a registered player in the league.</td></tr>' +
+    '</table></td></tr></table></body></html>';
+}
+
+function buildSubNeededEmailText(requests, playerName, targetDate) {
+  var firstName = (playerName || '').split(' ')[0] || '';
+  var dateStr   = formatDate(targetDate);
+  var lines     = [];
+  if (firstName) { lines.push('Hi ' + firstName + ','); lines.push(''); }
+  lines.push('Substitutes are needed for ' + dateStr + '.');
+  lines.push('If you can sub for any of the players below, click the "I CAN Sub" link in the HTML version of this email.');
+  lines.push('');
+  requests.forEach(function(req) {
+    var timeLabel  = TIME_LABELS[req.matchTime] || req.matchTime || 'TBD';
+    var otherNames = (req.groupPlayers || [])
+      .filter(function(p) { return (p.email || '').toLowerCase() !== (req.email || '').toLowerCase(); })
+      .map(function(p) { return p.name; }).join(', ');
+    lines.push('Needs Sub: ' + (req.name || '') + '  |  Time: ' + timeLabel + '  |  Other Players: ' + otherNames);
+  });
+  lines.push('');
+  lines.push('Do not reply to this email.');
+  lines.push('');
+  lines.push('MWF Tennis League');
+  return lines.join('\n');
+}
+
+function sendUrgentSubBroadcast(openRequests, targetDate) {
+  if (!openRequests.length || !isEmailEnabled()) return;
+  var config   = getConfig();
+  var d        = new Date(targetDate + 'T12:00:00');
+  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  var subject  = 'MWF Tennis, subs needed ' + monthDay;
+  var scriptUrl = '';
+  try { scriptUrl = ScriptApp.getService().getUrl(); } catch(e) {}
+  var players  = getPlayersWithRatings().filter(function(p) {
+    return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
+  });
+  if (config.brevoApiKey) {
+    players.forEach(function(player) {
+      try {
+        sendBrevoEmail({
+          apiKey:      config.brevoApiKey,
+          recipients:  [{ email: player.email, name: player.name }],
+          subject:     subject,
+          htmlContent: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
+          textContent: buildSubNeededEmailText(openRequests, player.name, targetDate)
+        });
+      } catch(e) { Logger.log('Brevo urgent sub email failed for ' + player.email + ': ' + e.message); }
+    });
+  } else {
+    players.forEach(function(player) {
+      try {
+        sendLeagueEmail({
+          to:       player.email,
+          subject:  subject,
+          body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
+          htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
+          name:     'MWF Tennis League'
+        });
+      } catch(e) { Logger.log('League email failed for ' + player.email + ': ' + e.message); }
+    });
+  }
+  Logger.log('Urgent sub broadcast sent to ' + players.length + ' player(s) for ' + targetDate);
+}
+
+function scheduleUrgentSubFollowups(type, targetDate) {
+  var props  = PropertiesService.getScriptProperties();
+  var fnName = type === 'T2' ? 'runFollowupDispatchT2' : 'runFollowupDispatchT1';
+  // Remove any existing followup triggers of this type
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === fnName) { try { ScriptApp.deleteTrigger(t); } catch(e) {} }
+  });
+  props.setProperty('URGENT_SUB_' + type + '_DATE', targetDate);
+  props.setProperty('URGENT_SUB_' + type + '_RUN',  '0');
+  // Schedule first followup in 4 hours; each run schedules the next
+  ScriptApp.newTrigger(fnName).timeBased().after(4 * 60 * 60 * 1000).create();
+  Logger.log('Scheduled ' + type + ' followup for ' + targetDate + ' (first run in 4 h)');
+}
+
+function runFollowupDispatchT2() {
+  var props      = PropertiesService.getScriptProperties();
+  var targetDate = props.getProperty('URGENT_SUB_T2_DATE');
+  var runNum     = parseInt(props.getProperty('URGENT_SUB_T2_RUN') || '0') + 1;
+  props.setProperty('URGENT_SUB_T2_RUN', runNum.toString());
+  Logger.log('T2 followup run ' + runNum + ' for ' + targetDate);
+  if (!targetDate) return;
+
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length) {
+    Logger.log('T2 followup: all requests filled — done.');
+    props.deleteProperty('URGENT_SUB_T2_DATE');
+    props.deleteProperty('URGENT_SUB_T2_RUN');
+    return;
+  }
+  runDispatchForDate(targetDate);
+  openReqs = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length || runNum >= 5) {
+    props.deleteProperty('URGENT_SUB_T2_DATE');
+    props.deleteProperty('URGENT_SUB_T2_RUN');
+    return;
+  }
+  ScriptApp.newTrigger('runFollowupDispatchT2').timeBased().after(4 * 60 * 60 * 1000).create();
+}
+
+function runFollowupDispatchT1() {
+  var props      = PropertiesService.getScriptProperties();
+  var targetDate = props.getProperty('URGENT_SUB_T1_DATE');
+  var runNum     = parseInt(props.getProperty('URGENT_SUB_T1_RUN') || '0') + 1;
+  props.setProperty('URGENT_SUB_T1_RUN', runNum.toString());
+  Logger.log('T1 followup run ' + runNum + ' for ' + targetDate);
+  if (!targetDate) return;
+
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length) {
+    Logger.log('T1 followup: all requests filled — done.');
+    props.deleteProperty('URGENT_SUB_T1_DATE');
+    props.deleteProperty('URGENT_SUB_T1_RUN');
+    return;
+  }
+  runDispatchForDate(targetDate);
+  openReqs = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length) {
+    props.deleteProperty('URGENT_SUB_T1_DATE');
+    props.deleteProperty('URGENT_SUB_T1_RUN');
+    return;
+  }
+
+  // Resend broadcast after runs 1 and 2
+  if (runNum <= 2) {
+    var config = getConfig();
+    if (config.urgentSubEmailsEnabled) sendUrgentSubBroadcast(openReqs, targetDate);
+  }
+
+  // Run 5: cancel remaining open requests and notify
+  if (runNum >= 5) {
+    var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+    openReqs.forEach(function(req) {
+      reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+      try { sendSubNeededTomorrowEmail(req); } catch(e) {
+        Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
+      }
+    });
+    props.deleteProperty('URGENT_SUB_T1_DATE');
+    props.deleteProperty('URGENT_SUB_T1_RUN');
+    return;
+  }
+
+  ScriptApp.newTrigger('runFollowupDispatchT1').timeBased().after(4 * 60 * 60 * 1000).create();
 }
 
 function cancelRequest(params) {
