@@ -1784,7 +1784,6 @@ function createScheduleDraft(params) {
 
   // ── Send via Brevo if enabled ────────────────────────────────────────
   if (config.brevoScheduleEmail && config.brevoApiKey) {
-    var replyTo  = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
     var csvB64   = Utilities.base64Encode('﻿' + csvContent);
     var sent = 0, sendErrors = [];
     sd.playerEmails.forEach(function(email) {
@@ -1797,8 +1796,7 @@ function createScheduleDraft(params) {
           subject:     subject,
           htmlContent: buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, name),
           textContent: buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, name),
-          attachments: [{ content: csvB64, name: csvFileName }],
-          replyTo:     replyTo
+          attachments: [{ content: csvB64, name: csvFileName }]
         });
         sent++;
       } catch(e) {
@@ -3889,8 +3887,6 @@ function sendTestScheduleEmail() {
 
   var scheduleUrl = APP_BASE_URL + '#schedule';
   var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
-  var replyTo     = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
-
   var sent = 0, sendErrors = [];
   testPlayers.forEach(function(recipient) {
     try {
@@ -3899,8 +3895,7 @@ function sendTestScheduleEmail() {
         recipients:  [recipient],
         subject:     subject,
         htmlContent: buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name),
-        textContent: buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name),
-        replyTo:     replyTo
+        textContent: buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name)
       });
       sent++;
     } catch(e) {
