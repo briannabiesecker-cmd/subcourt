@@ -111,9 +111,9 @@ function notifyGroupRosterChange(changes) {
 // Unified email sender — uses GmailApp with configured from: address (requires Gmail alias setup),
 // falls back to MailApp if alias is not configured or not verified.
 function sendBrevoEmail(params) {
-  // params: { apiKey, senderName, senderEmail, recipients: [{email, name}], subject, htmlContent, textContent }
+  // params: { apiKey, recipients: [{email, name}], subject, htmlContent, textContent, attachments }
   var payload = {
-    sender: { name: params.senderName || 'MWF Tennis League', email: params.senderEmail },
+    sender: { name: 'MWF Tennis League', email: 'noreply@mtctennis.com' },
     to: params.recipients,
     subject: params.subject
   };
@@ -127,12 +127,15 @@ function sendBrevoEmail(params) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
+  Logger.log('Brevo request — to: ' + JSON.stringify(params.recipients) + ', subject: ' + params.subject);
   var response = UrlFetchApp.fetch('https://api.brevo.com/v3/smtp/email', options);
   var code = response.getResponseCode();
+  var body = response.getContentText();
+  Logger.log('Brevo response — HTTP ' + code + ': ' + body.substring(0, 500));
   if (code < 200 || code >= 300) {
-    throw new Error('Brevo error ' + code + ': ' + response.getContentText().substring(0, 300));
+    throw new Error('Brevo error ' + code + ': ' + body.substring(0, 300));
   }
-  return JSON.parse(response.getContentText());
+  return JSON.parse(body);
 }
 
 function sendLeagueEmail(params) {
