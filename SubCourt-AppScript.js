@@ -3836,19 +3836,14 @@ function sendTestScheduleEmail() {
 
   var scheduleUrl = APP_BASE_URL + '#schedule';
   var htmlBody    = buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
-  var csvContent  = buildScheduleCsv(sd.dateMap, sd.sortedDates, sd.monthLabel, sd.playerNameMap);
-  var csvFileName = sd.monthLabel.replace(/\s/g, '_') + '_Schedule.csv';
   var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
 
   try {
     sendBrevoEmail({
       apiKey:      config.brevoApiKey,
-      senderName:  'MWF Tennis League',
-      senderEmail: config.senderEmail,
       recipients:  testPlayers,
       subject:     subject,
-      htmlContent: htmlBody,
-      attachments: [{ content: Utilities.base64Encode('﻿' + csvContent), name: csvFileName }]
+      htmlContent: htmlBody
     });
   } catch(e) {
     return { success: false, error: 'Brevo send failed: ' + e.message };
