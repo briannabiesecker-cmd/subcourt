@@ -121,6 +121,10 @@ function sendBrevoEmail(params) {
   if (params.textContent)  payload.textContent = params.textContent;
   if (params.attachments)  payload.attachment  = params.attachments;
   if (params.replyTo)      payload.replyTo     = params.replyTo;
+  payload.headers = {
+    'List-Unsubscribe':      '<mailto:noreply@mtctennis.com?subject=Unsubscribe>',
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+  };
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -1780,19 +1784,20 @@ function createScheduleDraft(params) {
 
   // ── Send via Brevo if enabled ────────────────────────────────────────
   if (config.brevoScheduleEmail && config.brevoApiKey) {
-    var textBody  = buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
-    var replyTo   = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
+    var replyTo  = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
+    var csvB64   = Utilities.base64Encode('﻿' + csvContent);
     var sent = 0, sendErrors = [];
     sd.playerEmails.forEach(function(email) {
-      var recipient = { email: email, name: sd.playerNameMap[email] || '' };
+      var name      = sd.playerNameMap[email] || '';
+      var recipient = { email: email, name: name };
       try {
         sendBrevoEmail({
           apiKey:      config.brevoApiKey,
           recipients:  [recipient],
           subject:     subject,
-          htmlContent: htmlBody,
-          textContent: textBody,
-          attachments: [{ content: Utilities.base64Encode('﻿' + csvContent), name: csvFileName }],
+          htmlContent: buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, name),
+          textContent: buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, name),
+          attachments: [{ content: csvB64, name: csvFileName }],
           replyTo:     replyTo
         });
         sent++;
@@ -1825,10 +1830,14 @@ function createScheduleDraft(params) {
   }
 }
 
-function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
+function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl, recipientName) {
   var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
+  var firstName   = recipientName ? recipientName.split(' ')[0] : '';
+  var greetingRow = firstName
+    ? '<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">Hi ' + firstName + ',</td></tr>'
+    : '';
 
   var dateRows = '';
   sortedDates.forEach(function(date) {
@@ -1869,6 +1878,7 @@ function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">' +
     '<tr><td style="padding:24px;">' +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    greetingRow +
     '<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">The MWF Tennis League schedule for <strong>' + monthLabel + '</strong> has been published.</td></tr>' +
     viewLinkRow +
     dateRows +
@@ -1880,13 +1890,16 @@ function buildScheduleHtml(dateMap, sortedDates, monthLabel, scheduleUrl) {
     '</body></html>';
 }
 
-function buildScheduleTextBody(dateMap, sortedDates, monthLabel, scheduleUrl) {
+function buildScheduleTextBody(dateMap, sortedDates, monthLabel, scheduleUrl, recipientName) {
   var MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
   var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var textLines = [];
+  var firstName = recipientName ? recipientName.split(' ')[0] : '';
 
   textLines.push('MWF Tennis League — ' + monthLabel + ' Schedule');
+  textLines.push('');
+  if (firstName) textLines.push('Hi ' + firstName + ',');
   textLines.push('');
   textLines.push('The schedule for ' + monthLabel + ' has been published.');
   textLines.push('');
@@ -3875,8 +3888,6 @@ function sendTestScheduleEmail() {
   }
 
   var scheduleUrl = APP_BASE_URL + '#schedule';
-  var htmlBody    = buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
-  var textBody    = buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl);
   var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
   var replyTo     = config.senderEmail ? { email: config.senderEmail, name: 'MWF Tennis League' } : null;
 
@@ -3887,8 +3898,8 @@ function sendTestScheduleEmail() {
         apiKey:      config.brevoApiKey,
         recipients:  [recipient],
         subject:     subject,
-        htmlContent: htmlBody,
-        textContent: textBody,
+        htmlContent: buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name),
+        textContent: buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name),
         replyTo:     replyTo
       });
       sent++;
