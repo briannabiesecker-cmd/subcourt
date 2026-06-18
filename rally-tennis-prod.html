@@ -2115,6 +2115,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <button class="btn btn-secondary" id="pre-match-dispatch-btn" onclick="runPreMatchDayNow()">Run Now</button>
+            <button class="btn btn-secondary" onclick="checkBroadcastLog()" style="margin-left:4px;">Check Broadcast Log</button>
             <div id="pre-match-dispatch-result" style="font-size:13px;"></div>
           </div>
         </div>
@@ -3455,6 +3456,28 @@ async function runPreMatchDayNow() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Run Now';
+  }
+}
+
+async function checkBroadcastLog() {
+  const result = document.getElementById('pre-match-dispatch-result');
+  result.style.color = 'var(--ink-mid)';
+  result.textContent = 'Checking…';
+  try {
+    const r = await apiGet('getBroadcastLog');
+    if (!r.log) { result.textContent = 'No broadcast log found yet.'; return; }
+    const log = JSON.parse(r.log);
+    const t = new Date(log.time).toLocaleTimeString();
+    if (log.firstError) {
+      result.style.color = 'var(--danger)';
+      result.textContent = t + ' — sent ' + log.sent + '/' + log.total + '. First error (' + log.firstError.email + '): ' + log.firstError.error;
+    } else {
+      result.style.color = 'var(--ink-mid)';
+      result.textContent = t + ' — sent ' + log.sent + '/' + log.total + ' successfully.';
+    }
+  } catch(e) {
+    result.style.color = 'var(--danger)';
+    result.textContent = 'Error reading log: ' + e.message;
   }
 }
 

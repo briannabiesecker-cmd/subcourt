@@ -219,14 +219,22 @@ function sendLeagueEmail(params) {
 // has 10 or more recipients to avoid Gmail rate-limiting and spam signals.
 function sendBulkEmails(players, buildParamsFn) {
   var useDelay = players.length >= 10;
+  var sent = 0, firstError = null;
   players.forEach(function(player, i) {
     if (useDelay && i > 0) Utilities.sleep(2000);
     try {
       sendLeagueEmail(buildParamsFn(player));
+      sent++;
     } catch(e) {
       Logger.log('sendBulkEmails: failed for ' + (player.email || '?') + ': ' + e.message);
+      if (!firstError) firstError = { email: player.email, error: e.message };
     }
   });
+  try {
+    PropertiesService.getScriptProperties().setProperty('broadcastLog', JSON.stringify({
+      time: new Date().toISOString(), total: players.length, sent: sent, firstError: firstError
+    }));
+  } catch(pe) {}
 }
 
 // Sent to the captain of a 3-player group when their Anita Sub request is auto-created at publish.
@@ -754,6 +762,7 @@ function doGet(e) {
     else if (action === 'sendTestScheduleEmail')     result = sendTestScheduleEmail();
     else if (action === 'sendTestSubAlertEmail')        result = sendTestSubAlertEmail();
     else if (action === 'runPreMatchDayDispatchNow')    result = runPreMatchDayDispatchNow();
+    else if (action === 'getBroadcastLog')              result = { log: PropertiesService.getScriptProperties().getProperty('broadcastLog') };
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
