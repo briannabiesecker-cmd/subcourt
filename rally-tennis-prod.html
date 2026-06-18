@@ -2240,15 +2240,15 @@ async function apiGet(action) {
   return apiGetWithParams({ action });
 }
 
-async function apiPost(payload) {
+async function apiPost(payload, timeoutMs = 30000) {
   const params = { ...payload };
   Object.keys(params).forEach(k => {
     if (typeof params[k] === 'object') params[k] = JSON.stringify(params[k]);
   });
-  return apiGetWithParams(params);
+  return apiGetWithParams(params, timeoutMs);
 }
 
-async function apiGetWithParams(params) {
+async function apiGetWithParams(params, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     const callbackName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const script = document.createElement('script');
@@ -2256,7 +2256,7 @@ async function apiGetWithParams(params) {
       delete window[callbackName];
       if (document.body.contains(script)) document.body.removeChild(script);
       reject(new Error('Request timed out'));
-    }, 30000);
+    }, timeoutMs);
 
     window[callbackName] = function(data) {
       clearTimeout(timeout);
@@ -3441,7 +3441,7 @@ async function runPreMatchDayNow() {
   btn.textContent = 'Running…';
   result.textContent = '';
   try {
-    const r = await apiPost({ action: 'runPreMatchDayDispatchNow' });
+    const r = await apiPost({ action: 'runPreMatchDayDispatchNow' }, 120000);
     if (!r.success) throw new Error(r.error || 'Failed');
     result.style.color = 'var(--ink-mid)';
     result.textContent = r.openRequests === 0
