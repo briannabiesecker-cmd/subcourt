@@ -393,38 +393,43 @@ function getConfig() {
 // ──────────────────────────────────────────────────
 
 function setupTriggers() {
-  // Remove existing managed triggers
+  // Remove all managed triggers
+  var managed = ['runAutoDispatch','onConfigEdit','cleanupOldAvailability','checkAvailabilityWindow',
+                 'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
+                 'runFollowupDispatchT1','runFollowupDispatchT2'];
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    var fn = t.getHandlerFunction();
-    if (fn === 'runAutoDispatch' || fn === 'onConfigEdit' || fn === 'cleanupOldAvailability' || fn === 'checkAvailabilityWindow' ||
-        fn === 'runFollowupDispatchT2' || fn === 'runFollowupDispatchT1') {
-      ScriptApp.deleteTrigger(t);
+    if (managed.indexOf(t.getHandlerFunction()) !== -1) {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
     }
   });
-  // Install onEdit watcher for Config tab changes
-  ScriptApp.newTrigger('onConfigEdit')
-    .forSpreadsheet(SHEET_ID)
-    .onEdit()
-    .create();
-  // Monthly cleanup of old availability records (runs on the 1st of each month)
-  ScriptApp.newTrigger('cleanupOldAvailability')
-    .timeBased()
-    .onMonthDay(1)
-    .atHour(2)
-    .create();
-  // Daily check to auto-close availability window when close date passes
-  ScriptApp.newTrigger('checkAvailabilityWindow')
-    .timeBased()
-    .atHour(1)   // 1 AM — runs before anyone opens the app
-    .everyDays(1)
-    .create();
-  // Set up the dispatch time trigger
+
+  // onEdit watcher for Config tab
+  ScriptApp.newTrigger('onConfigEdit').forSpreadsheet(SHEET_ID).onEdit().create();
+
+  // Monthly cleanup of old availability records
+  ScriptApp.newTrigger('cleanupOldAvailability').timeBased().onMonthDay(1).atHour(2).create();
+
+  // Daily check to auto-close availability window
+  ScriptApp.newTrigger('checkAvailabilityWindow').timeBased().atHour(1).everyDays(1).create();
+
+  // Daily dispatch (handles T+2 broadcast; T+1 is handled by pre-match-day triggers below)
   updateDispatchTrigger();
+
+  // Pre-match-day dispatch: 5 runs on Sun/Tue/Thu (day before Mon/Wed/Fri matches).
+  // Runs at 8 AM, 11 AM, 2 PM, 5 PM, then 8 PM final (which also cancels open requests).
+  var days = [ScriptApp.WeekDay.SUNDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.THURSDAY];
+  var hours = [8, 11, 14, 17];
+  days.forEach(function(day) {
+    hours.forEach(function(hour) {
+      ScriptApp.newTrigger('runPreMatchDayDispatch').timeBased().onWeekDay(day).atHour(hour).create();
+    });
+    ScriptApp.newTrigger('runPreMatchDayDispatchFinal').timeBased().onWeekDay(day).atHour(20).create();
+  });
+
   var config = getConfig();
-  Logger.log('onConfigEdit watcher installed. Dispatch trigger: ' +
-    (config.autoDispatchEnabled
-      ? 'ACTIVE — runs daily at ' + config.autoDispatchTimeET + ' ET'
-      : 'disabled (Config B13=FALSE) — set B13 to TRUE to activate') + '.');
+  Logger.log('Triggers installed. Dispatch: ' +
+    (config.autoDispatchEnabled ? 'daily at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
+    '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.');
 }
 
 function onConfigEdit(e) {
@@ -586,24 +591,16 @@ function runAutoDispatch() {
     }
   });
 
-  // Urgent sub email broadcast for T+2 and T+1 open requests
+  // One-shot broadcast for T+2 open requests.
+  // T+1 is handled by runPreMatchDayDispatch / runPreMatchDayDispatchFinal,
+  // which run 5 times on Sun/Tue/Thu via fixed weekly triggers.
   if (config.urgentSubEmailsEnabled) {
     var currentOpen = getRequests().filter(function(r) { return r.status === 'open'; });
     var dateT2 = getDateStr(2);
     var openT2 = currentOpen.filter(function(r) { return r.matchDate === dateT2; });
     if (openT2.length) {
-      try {
-        sendUrgentSubBroadcast(openT2, dateT2);
-        scheduleUrgentSubFollowups('T2', dateT2);
-      } catch(e) { Logger.log('T2 urgent sub broadcast failed: ' + e.message); }
-    }
-    var dateT1 = getDateStr(1);
-    var openT1 = currentOpen.filter(function(r) { return r.matchDate === dateT1; });
-    if (openT1.length) {
-      try {
-        sendUrgentSubBroadcast(openT1, dateT1);
-        scheduleUrgentSubFollowups('T1', dateT1);
-      } catch(e) { Logger.log('T1 urgent sub broadcast failed: ' + e.message); }
+      try { sendUrgentSubBroadcast(openT2, dateT2); }
+      catch(e) { Logger.log('T2 urgent sub broadcast failed: ' + e.message); }
     }
   }
 
@@ -2540,76 +2537,41 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   Logger.log('Urgent sub broadcast sent to ' + players.length + ' player(s) for ' + targetDate);
 }
 
-function scheduleUrgentSubFollowups(type, targetDate) {
-  var props  = PropertiesService.getScriptProperties();
-  var fnName = type === 'T2' ? 'runFollowupDispatchT2' : 'runFollowupDispatchT1';
-  // Remove any existing followup triggers of this type
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === fnName) { try { ScriptApp.deleteTrigger(t); } catch(e) {} }
-  });
-  props.setProperty('URGENT_SUB_' + type + '_DATE', targetDate);
-  props.setProperty('URGENT_SUB_' + type + '_RUN',  '0');
-  // Schedule first followup in 4 hours; each run schedules the next
-  ScriptApp.newTrigger(fnName).timeBased().after(4 * 60 * 60 * 1000).create();
-  Logger.log('Scheduled ' + type + ' followup for ' + targetDate + ' (first run in 4 h)');
+// ── Pre-match-day dispatch (runs 5× on Sun/Tue/Thu via fixed weekly triggers) ──
+// Runs dispatch for the next match day and sends a broadcast if requests remain open.
+// runPreMatchDayDispatchFinal (8 PM run) additionally cancels any still-open requests.
+
+function _preMatchDayTargetDate() {
+  var tz  = Session.getScriptTimeZone();
+  var dow = parseInt(Utilities.formatDate(new Date(), tz, 'u')); // 1=Mon … 7=Sun
+  // Sun(7)→Mon(+1), Tue(2)→Wed(+1), Thu(4)→Fri(+1)
+  if (dow !== 7 && dow !== 2 && dow !== 4) return null;
+  return getDateStr(1);
 }
 
-function runFollowupDispatchT2() {
-  var props      = PropertiesService.getScriptProperties();
-  var targetDate = props.getProperty('URGENT_SUB_T2_DATE');
-  var runNum     = parseInt(props.getProperty('URGENT_SUB_T2_RUN') || '0') + 1;
-  props.setProperty('URGENT_SUB_T2_RUN', runNum.toString());
-  Logger.log('T2 followup run ' + runNum + ' for ' + targetDate);
+function runPreMatchDayDispatch() {
+  var targetDate = _preMatchDayTargetDate();
   if (!targetDate) return;
-
-  var openReqs = getOpenRequestsForDate(targetDate);
-  if (!openReqs.length) {
-    Logger.log('T2 followup: all requests filled — done.');
-    props.deleteProperty('URGENT_SUB_T2_DATE');
-    props.deleteProperty('URGENT_SUB_T2_RUN');
-    return;
-  }
+  Logger.log('runPreMatchDayDispatch: ' + targetDate);
   runDispatchForDate(targetDate);
-  openReqs = getOpenRequestsForDate(targetDate);
-  if (!openReqs.length || runNum >= 5) {
-    props.deleteProperty('URGENT_SUB_T2_DATE');
-    props.deleteProperty('URGENT_SUB_T2_RUN');
-    return;
-  }
-  ScriptApp.newTrigger('runFollowupDispatchT2').timeBased().after(4 * 60 * 60 * 1000).create();
+  if (!isEmailEnabled()) return;
+  var config = getConfig();
+  if (!config.urgentSubEmailsEnabled) return;
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (openReqs.length) sendUrgentSubBroadcast(openReqs, targetDate);
 }
 
-function runFollowupDispatchT1() {
-  var props      = PropertiesService.getScriptProperties();
-  var targetDate = props.getProperty('URGENT_SUB_T1_DATE');
-  var runNum     = parseInt(props.getProperty('URGENT_SUB_T1_RUN') || '0') + 1;
-  props.setProperty('URGENT_SUB_T1_RUN', runNum.toString());
-  Logger.log('T1 followup run ' + runNum + ' for ' + targetDate);
+// Final run of the day (8 PM): same as above, then cancels any remaining open requests.
+function runPreMatchDayDispatchFinal() {
+  var targetDate = _preMatchDayTargetDate();
   if (!targetDate) return;
-
-  var openReqs = getOpenRequestsForDate(targetDate);
-  if (!openReqs.length) {
-    Logger.log('T1 followup: all requests filled — done.');
-    props.deleteProperty('URGENT_SUB_T1_DATE');
-    props.deleteProperty('URGENT_SUB_T1_RUN');
-    return;
-  }
+  Logger.log('runPreMatchDayDispatchFinal: ' + targetDate);
   runDispatchForDate(targetDate);
-  openReqs = getOpenRequestsForDate(targetDate);
-  if (!openReqs.length) {
-    props.deleteProperty('URGENT_SUB_T1_DATE');
-    props.deleteProperty('URGENT_SUB_T1_RUN');
-    return;
-  }
-
-  // Resend broadcast after runs 1 and 2
-  if (runNum <= 2) {
-    var config = getConfig();
-    if (config.urgentSubEmailsEnabled) sendUrgentSubBroadcast(openReqs, targetDate);
-  }
-
-  // Run 5: cancel remaining open requests and notify
-  if (runNum >= 5) {
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (openReqs.length) {
+    if (isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
+      sendUrgentSubBroadcast(openReqs, targetDate);
+    }
     var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
     openReqs.forEach(function(req) {
       reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
@@ -2617,12 +2579,7 @@ function runFollowupDispatchT1() {
         Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
       }
     });
-    props.deleteProperty('URGENT_SUB_T1_DATE');
-    props.deleteProperty('URGENT_SUB_T1_RUN');
-    return;
   }
-
-  ScriptApp.newTrigger('runFollowupDispatchT1').timeBased().after(4 * 60 * 60 * 1000).create();
 }
 
 function sendTestSubAlertEmail() {
