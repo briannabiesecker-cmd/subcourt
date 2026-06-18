@@ -168,8 +168,10 @@ function handleVolunteerFromEmail(e) {
     return wrap('<p>' + msg + '</p>');
   }
 
-  // Create volunteer record
-  var timeCode = req.matchTime ? req.matchTime.replace(':', '_') : '';
+  // Create volunteer record — TBD-time requests get all slots so dispatch can match them
+  var timeCode = req.matchTime
+    ? req.matchTime.replace(':', '_')
+    : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
   var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
   var nextRow  = volSheet.getLastRow() + 1;
   var rng      = volSheet.getRange(nextRow, 1, 1, 7);
