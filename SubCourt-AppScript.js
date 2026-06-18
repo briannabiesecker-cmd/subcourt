@@ -212,6 +212,20 @@ function sendLeagueEmail(params) {
   MailApp.sendEmail(params);
 }
 
+// Sends one email per player; inserts a 3-second pause between sends when the list
+// has 10 or more recipients to avoid Gmail rate-limiting and spam signals.
+function sendBulkEmails(players, buildParamsFn) {
+  var useDelay = players.length >= 10;
+  players.forEach(function(player, i) {
+    if (useDelay && i > 0) Utilities.sleep(3000);
+    try {
+      sendLeagueEmail(buildParamsFn(player));
+    } catch(e) {
+      Logger.log('sendBulkEmails: failed for ' + (player.email || '?') + ': ' + e.message);
+    }
+  });
+}
+
 // Sent to the captain of a 3-player group when their Anita Sub request is auto-created at publish.
 function sendCaptainThreePlayerNotification(captainName, captainEmail, matchDate, anitaSubName) {
   if (!captainEmail || !isEmailEnabled()) return;
@@ -2538,16 +2552,14 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   var players  = getPlayersWithRatings().filter(function(p) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
-  players.forEach(function(player) {
-    try {
-      sendLeagueEmail({
-        to:       player.email,
-        subject:  subject,
-        body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
-        htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
-        name:     'MWF Tennis League'
-      });
-    } catch(e) { Logger.log('League email failed for ' + player.email + ': ' + e.message); }
+  sendBulkEmails(players, function(player) {
+    return {
+      to:       player.email,
+      subject:  subject,
+      body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
+      htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
+      name:     'MWF Tennis League'
+    };
   });
   Logger.log('Urgent sub broadcast sent to ' + players.length + ' player(s) for ' + targetDate);
 }
@@ -2947,8 +2959,9 @@ function checkAvailabilityWindow() {
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
   if (!isEmailEnabled()) return;
 
-  var toList = missing.map(function(p) { return p.email; }).join(', ');
-  sendLeagueEmail({ to: toList, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+  sendBulkEmails(missing, function(p) {
+    return { to: p.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  });
 }
 
 function testAvailabilityEmail() {
@@ -3033,8 +3046,9 @@ function openAvailabilityWindow(params) {
           textContent: body
         });
       } else {
-        const toList = allPlayers.map(function(p) { return p.email; }).join(', ');
-        sendLeagueEmail({ to: toList, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+        sendBulkEmails(allPlayers, function(p) {
+          return { to: p.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+        });
       }
     }
   } catch(e) {
@@ -4220,19 +4234,9 @@ function sendScheduleEmails(params) {
         textContent:  emailParts.body
       });
     } else {
-      var toList = allPlayers.map(function(p) { return p.email; }).join(', ');
-      var opts   = { name: 'MWF Tennis League', htmlBody: emailParts.htmlBody };
-      if (config.senderEmail) {
-        try {
-          GmailApp.sendEmail(toList, emailParts.subject, emailParts.body,
-            Object.assign({}, opts, { from: config.senderEmail, replyTo: config.senderEmail }));
-          return { success: true, emailsSent: allPlayers.length };
-        } catch(ge) {
-          Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
-        }
-      }
-      opts.to = toList; opts.subject = emailParts.subject; opts.body = emailParts.body;
-      MailApp.sendEmail(opts);
+      sendBulkEmails(allPlayers, function(p) {
+        return { to: p.email, subject: emailParts.subject, body: emailParts.body, htmlBody: emailParts.htmlBody, name: 'MWF Tennis League' };
+      });
     }
   } catch(e) {
     return { success: false, error: 'Email failed: ' + e.message };
