@@ -2536,31 +2536,17 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   var players  = getPlayersWithRatings().filter(function(p) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
-  if (config.brevoApiKey) {
-    players.forEach(function(player) {
-      try {
-        sendBrevoEmail({
-          apiKey:      config.brevoApiKey,
-          recipients:  [{ email: player.email, name: player.name }],
-          subject:     subject,
-          htmlContent: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
-          textContent: buildSubNeededEmailText(openRequests, player.name, targetDate)
-        });
-      } catch(e) { Logger.log('Brevo urgent sub email failed for ' + player.email + ': ' + e.message); }
-    });
-  } else {
-    players.forEach(function(player) {
-      try {
-        sendLeagueEmail({
-          to:       player.email,
-          subject:  subject,
-          body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
-          htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
-          name:     'MWF Tennis League'
-        });
-      } catch(e) { Logger.log('League email failed for ' + player.email + ': ' + e.message); }
-    });
-  }
+  players.forEach(function(player) {
+    try {
+      sendLeagueEmail({
+        to:       player.email,
+        subject:  subject,
+        body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
+        htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
+        name:     'MWF Tennis League'
+      });
+    } catch(e) { Logger.log('League email failed for ' + player.email + ': ' + e.message); }
+  });
   Logger.log('Urgent sub broadcast sent to ' + players.length + ' player(s) for ' + targetDate);
 }
 
@@ -2650,10 +2636,6 @@ function runFollowupDispatchT1() {
 }
 
 function sendTestSubAlertEmail() {
-  var config = getConfig();
-  if (!config.brevoApiKey) {
-    return { success: false, error: 'Brevo API key not set in Config B35.' };
-  }
   // Find open requests — use the earliest upcoming date
   var allOpen = getRequests().filter(function(r) { return r.status === 'open'; });
   if (!allOpen.length) {
@@ -2678,12 +2660,12 @@ function sendTestSubAlertEmail() {
   var sent = 0, errors = [];
   testPlayers.forEach(function(player) {
     try {
-      sendBrevoEmail({
-        apiKey:      config.brevoApiKey,
-        recipients:  [{ email: player.email, name: player.name }],
-        subject:     subject,
-        htmlContent: buildSubNeededEmailHtml(openReqs, player.email, player.name, scriptUrl),
-        textContent: buildSubNeededEmailText(openReqs, player.name, targetDate)
+      sendLeagueEmail({
+        to:       player.email,
+        subject:  subject,
+        body:     buildSubNeededEmailText(openReqs, player.name, targetDate),
+        htmlBody: buildSubNeededEmailHtml(openReqs, player.email, player.name, scriptUrl),
+        name:     'MWF Tennis League'
       });
       sent++;
     } catch(e) {
