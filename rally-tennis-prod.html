@@ -2610,10 +2610,6 @@ async function submitRequest() {
     }
 
     const result = await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
-    if (result && result.dispatchRan) {
-      showAlert('req-alert', 'error', result.message);
-      return;
-    }
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     document.getElementById('req-date').value = '';
     document.getElementById('req-schedule-lookup').innerHTML = '';
@@ -2745,10 +2741,6 @@ async function onReqScheduleCheck(checkbox, key) {
       matchTime:    slot.matchTime,
       groupPlayers: partners
     });
-    if (result && result.dispatchRan) {
-      cell.innerHTML = `<span style="font-size:12px;color:var(--danger);">${result.message || 'Error'}</span>`;
-      return;
-    }
     cell.innerHTML = '<span style="font-size:12px;color:var(--success);">Requested ✓</span>';
     clearCache();
     const selName = document.getElementById('req-selected-name')?.textContent?.trim() || name;

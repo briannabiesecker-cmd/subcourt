@@ -1054,30 +1054,6 @@ function getPlayersWithRatings() {
 // ──────────────────────────────────────────────────
 
 function submitRequest(params) {
-  // Block requests for tomorrow if auto-dispatch has already run today.
-  var matchDate = (params.matchDate || '').toString().trim();
-  if (matchDate) {
-    var tz       = Session.getScriptTimeZone();
-    var now      = new Date();
-    var tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    var tomorrowStr = Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd');
-    if (matchDate === tomorrowStr) {
-      var config = getConfig();
-      if (config.autoDispatchEnabled) {
-        var nowTimeET      = Utilities.formatDate(now, 'America/New_York', 'HH:mm');
-        var dispatchTimeET = config.autoDispatchTimeET || '08:00';
-        if (nowTimeET >= dispatchTimeET) {
-          return {
-            success:     false,
-            dispatchRan: true,
-            message:     'The Dispatch routine has already run for tomorrow\'s match date. ' +
-                         'Please use email or phone to find a sub.'
-          };
-        }
-      }
-    }
-  }
-
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   const groupPlayers = params.groupPlayers
     ? (typeof params.groupPlayers === 'string' ? params.groupPlayers : JSON.stringify(params.groupPlayers))
