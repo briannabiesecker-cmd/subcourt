@@ -2267,8 +2267,9 @@ async function apiGetWithParams(params) {
 let playerList     = []; // Anita Sub filtered out — used by vol/av/dir/sch typeaheads
 let fullPlayerList = []; // includes Anita Sub — used by req typeahead only
 const taBlurTimers = {};
-let dirEnrichedPlayers = []; // from getPlayersForAdmin — includes rowIndex, phone, no8am
-let dirCurrentPlayer   = null; // player currently shown in My Info card
+let dirEnrichedPlayers  = []; // from getPlayersForAdmin — includes rowIndex, phone, no8am
+let dirCurrentPlayer    = null; // player currently shown in My Info card
+let dirPendingEmailAll  = false; // set when arriving via #directory-emailall link
 let myRequestsData    = [];  // visible requests in loadMyRequests, keyed by id for modal lookup
 let epSelections      = {};  // {1..4} → {name, email} for player-edit-modal
 let epDropdownMatches = {};  // {1..4} → matches array for index-based selection
@@ -5344,6 +5345,12 @@ async function loadDirectoryView() {
     dirUpdateCount();
     wrap.style.display = '';
     if (!dirCurrentPlayer) prefillIdentity('dir');
+
+    if (dirPendingEmailAll) {
+      dirPendingEmailAll = false;
+      dirToggleAll(true);
+      dirSendEmail();
+    }
   } catch(e) {
     loading.style.display = 'none';
     empty.style.display = '';
@@ -5642,10 +5649,12 @@ async function closeAvailWindow() {
 document.addEventListener('DOMContentLoaded', () => {
   // Navigate to view specified in URL hash (e.g. #directory from email links)
   const hash = location.hash.slice(1);
-  if (hash && document.getElementById('view-' + hash)) {
+  const baseHash = hash === 'directory-emailall' ? 'directory' : hash;
+  if (hash === 'directory-emailall') dirPendingEmailAll = true;
+  if (baseHash && document.getElementById('view-' + baseHash)) {
     const btn = Array.from(document.querySelectorAll('nav button'))
-      .find(b => (b.getAttribute('onclick') || '').includes("'" + hash + "'"));
-    showView(hash, btn || null);
+      .find(b => (b.getAttribute('onclick') || '').includes("'" + baseHash + "'"));
+    showView(baseHash, btn || null);
   }
 
   // Warn before closing/refreshing the tab with unsubmitted volunteer changes

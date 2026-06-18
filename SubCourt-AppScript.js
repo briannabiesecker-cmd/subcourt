@@ -2326,20 +2326,20 @@ function sendRetirementEmail(req) {
   var dateStr      = formatDate(req.matchDate);
   var timeStr      = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
   var subject      = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
-  var directoryUrl = APP_BASE_URL + '#directory';
+  var directoryUrl = APP_BASE_URL + '#directory-emailall';
   var body =
     'Hi ' + req.name + ',\n\n' +
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
     '  Date: ' + dateStr + '\n' +
     '  Time: ' + timeStr + '\n\n' +
-    'Player email addresses and phone numbers can be found on the Directory page: ' + directoryUrl + '\n\n' +
+    'If you\'d like to launch an email to the entire group, visit the Directory page: ' + directoryUrl + '\n\n' +
     'MWF Tennis League';
   var htmlBody =
     'Hi ' + req.name + ',<br><br>' +
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
     '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
     '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
-    'Player email addresses and phone numbers can be found on the <a href="' + directoryUrl + '">Directory</a> page.<br><br>' +
+    'Click on <a href="' + directoryUrl + '">Directory</a>, if you\'d like to launch an email to the entire group.<br><br>' +
     'MWF Tennis League';
   var groupPlayers = req.groupPlayers || [];
   var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
@@ -2371,20 +2371,20 @@ function sendSubNeededTomorrowEmail(req) {
   var timeStr = req.matchTime ? (TIME_LABELS[req.matchTime] || req.matchTime) : 'TBD';
 
   var subject = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
-  var directoryUrl = APP_BASE_URL + '#directory';
+  var directoryUrl = APP_BASE_URL + '#directory-emailall';
   var body =
     'Hi ' + greetingName + ',\n\n' +
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
     '  Date: ' + dateStr + '\n' +
     '  Time: ' + timeStr + '\n\n' +
-    'Player email addresses and phone numbers can be found on the Directory page: ' + directoryUrl + '\n\n' +
+    'If you\'d like to launch an email to the entire group, visit the Directory page: ' + directoryUrl + '\n\n' +
     'MWF Tennis League';
   var htmlBody =
     'Hi ' + greetingName + ',<br><br>' +
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
     '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
     '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
-    'Player email addresses and phone numbers can be found on the <a href="' + directoryUrl + '">Directory</a> page.<br><br>' +
+    'Click on <a href="' + directoryUrl + '">Directory</a>, if you\'d like to launch an email to the entire group.<br><br>' +
     'MWF Tennis League';
 
   var ccList = ccPlayers.map(function(p) { return p.email; }).filter(function(e) {
