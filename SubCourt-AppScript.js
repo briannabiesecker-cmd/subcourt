@@ -212,12 +212,12 @@ function sendLeagueEmail(params) {
   MailApp.sendEmail(params);
 }
 
-// Sends one email per player; inserts a 3-second pause between sends when the list
+// Sends one email per player; inserts a 2-second pause between sends when the list
 // has 10 or more recipients to avoid Gmail rate-limiting and spam signals.
 function sendBulkEmails(players, buildParamsFn) {
   var useDelay = players.length >= 10;
   players.forEach(function(player, i) {
-    if (useDelay && i > 0) Utilities.sleep(3000);
+    if (useDelay && i > 0) Utilities.sleep(2000);
     try {
       sendLeagueEmail(buildParamsFn(player));
     } catch(e) {
@@ -2634,19 +2634,31 @@ function runPreMatchDayDispatch() {
 // Alias kept so the 8 PM trigger name still resolves after any old trigger references
 function runPreMatchDayDispatchFinal() { runPreMatchDayDispatch(); }
 
-// Manual launch from Admin screen — runs dispatch + broadcast for tomorrow's match date.
-// Cancel is never triggered on a manual launch.
+// Manual launch from Admin screen — runs dispatch synchronously, then queues broadcast
+// via a one-shot trigger so the HTTP response returns before the slow email loop starts.
 function runPreMatchDayDispatchNow() {
   var targetDate = getDateStr(1);
   Logger.log('runPreMatchDayDispatchNow: ' + targetDate);
   runDispatchForDate(targetDate);
   var openReqs = getOpenRequestsForDate(targetDate);
-  var broadcasted = false;
+  var broadcastQueued = false;
+  if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
+    ScriptApp.newTrigger('_runQueuedBroadcast').timeBased().after(60000).create();
+    broadcastQueued = true;
+  }
+  return { success: true, targetDate: targetDate, openRequests: openReqs.length, broadcastQueued: broadcastQueued };
+}
+
+// One-shot trigger handler — fires ~1 min after runPreMatchDayDispatchNow queues it.
+function _runQueuedBroadcast() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === '_runQueuedBroadcast') ScriptApp.deleteTrigger(t);
+  });
+  var targetDate = getDateStr(1);
+  var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
     sendUrgentSubBroadcast(openReqs, targetDate);
-    broadcasted = true;
   }
-  return { success: true, targetDate: targetDate, openRequests: openReqs.length, broadcastSent: broadcasted };
 }
 
 function sendTestSubAlertEmail() {

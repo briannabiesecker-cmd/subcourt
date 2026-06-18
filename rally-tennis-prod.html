@@ -3441,13 +3441,13 @@ async function runPreMatchDayNow() {
   btn.textContent = 'Running…';
   result.textContent = '';
   try {
-    const r = await apiPost({ action: 'runPreMatchDayDispatchNow' }, 120000);
+    const r = await apiPost({ action: 'runPreMatchDayDispatchNow' }, 45000);
     if (!r.success) throw new Error(r.error || 'Failed');
     result.style.color = 'var(--ink-mid)';
     result.textContent = r.openRequests === 0
       ? 'No open requests for ' + r.targetDate + '.'
-      : r.broadcastSent
-        ? r.openRequests + ' open request(s) — broadcast sent.'
+      : r.broadcastQueued
+        ? r.openRequests + ' open request(s) — broadcast emails sending in background (~1 min).'
         : r.openRequests + ' open request(s) — broadcast disabled.';
   } catch(e) {
     result.style.color = 'var(--danger)';
