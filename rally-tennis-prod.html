@@ -2013,6 +2013,14 @@
           <button class="btn btn-secondary" id="brevo-test-btn" onclick="sendTestBrevoScheduleEmail()">Send Test Schedule Email</button>
           <div id="brevo-test-result" style="font-size:13px;margin-top:8px;"></div>
         </div>
+
+        <!-- Test Sub Alert Email (temporary) -->
+        <div class="card mt8" style="margin-top:1rem;border:1px dashed var(--line);">
+          <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px;">Test: Send Sub Alert Email via Brevo</div>
+          <p style="font-size:13px;color:var(--ink-mid);margin:0 0 12px;">Sends the "subs needed" alert email for the earliest open sub request to players marked <strong>Yes</strong> in the Test column of the Players sheet.</p>
+          <button class="btn btn-secondary" id="brevo-sub-alert-btn" onclick="sendTestSubAlertEmail()">Send Test Sub Alert Email</button>
+          <div id="brevo-sub-alert-result" style="font-size:13px;margin-top:8px;"></div>
+        </div>
       </div>
 
       <!-- ── SETTINGS TAB ── -->
@@ -5216,6 +5224,24 @@ async function sendTestBrevoScheduleEmail() {
     const data = await apiGetWithParams({ action: 'sendTestScheduleEmail' });
     result.style.color = 'var(--success)';
     result.textContent = 'Sent to ' + (data.emailsSent || 0) + ' test player(s).';
+  } catch(e) {
+    result.style.color = 'var(--danger)';
+    result.textContent = e.message || 'Error sending test email.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sendTestSubAlertEmail() {
+  const btn    = document.getElementById('brevo-sub-alert-btn');
+  const result = document.getElementById('brevo-sub-alert-result');
+  btn.disabled = true;
+  result.style.color = '';
+  result.textContent = 'Sending…';
+  try {
+    const data = await apiGetWithParams({ action: 'sendTestSubAlertEmail' });
+    result.style.color = 'var(--success)';
+    result.textContent = 'Sent to ' + (data.emailsSent || 0) + ' test player(s) for ' + (data.date || '') + '.';
   } catch(e) {
     result.style.color = 'var(--danger)';
     result.textContent = e.message || 'Error sending test email.';

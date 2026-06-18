@@ -696,6 +696,7 @@ function doGet(e) {
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
     else if (action === 'sendTestScheduleEmail')     result = sendTestScheduleEmail();
+    else if (action === 'sendTestSubAlertEmail')     result = sendTestSubAlertEmail();
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
@@ -2646,6 +2647,53 @@ function runFollowupDispatchT1() {
   }
 
   ScriptApp.newTrigger('runFollowupDispatchT1').timeBased().after(4 * 60 * 60 * 1000).create();
+}
+
+function sendTestSubAlertEmail() {
+  var config = getConfig();
+  if (!config.brevoApiKey) {
+    return { success: false, error: 'Brevo API key not set in Config B35.' };
+  }
+  // Find open requests — use the earliest upcoming date
+  var allOpen = getRequests().filter(function(r) { return r.status === 'open'; });
+  if (!allOpen.length) {
+    return { success: false, error: 'No open sub requests found to preview.' };
+  }
+  var targetDate = Object.keys(allOpen.reduce(function(acc, r) { acc[r.matchDate] = true; return acc; }, {})).sort()[0];
+  var openReqs   = allOpen.filter(function(r) { return r.matchDate === targetDate; });
+
+  var testPlayers = getPlayersWithRatings().filter(function(p) {
+    return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email) && p.isTest;
+  });
+  if (!testPlayers.length) {
+    return { success: false, error: 'No test players found — add "Yes" in the Test column of the Players sheet.' };
+  }
+
+  var d        = new Date(targetDate + 'T12:00:00');
+  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  var subject  = 'MWF Tennis, subs needed ' + monthDay;
+  var scriptUrl = '';
+  try { scriptUrl = ScriptApp.getService().getUrl(); } catch(e) {}
+
+  var sent = 0, errors = [];
+  testPlayers.forEach(function(player) {
+    try {
+      sendBrevoEmail({
+        apiKey:      config.brevoApiKey,
+        recipients:  [{ email: player.email, name: player.name }],
+        subject:     subject,
+        htmlContent: buildSubNeededEmailHtml(openReqs, player.email, player.name, scriptUrl),
+        textContent: buildSubNeededEmailText(openReqs, player.name, targetDate)
+      });
+      sent++;
+    } catch(e) {
+      Logger.log('Test sub alert failed for ' + player.email + ': ' + e.message);
+      errors.push(player.email + ': ' + e.message);
+    }
+  });
+
+  if (sent === 0) return { success: false, error: 'All sends failed. ' + (errors[0] || '') };
+  return { success: true, emailsSent: sent, date: targetDate };
 }
 
 function cancelRequest(params) {
