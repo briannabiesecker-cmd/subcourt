@@ -317,6 +317,33 @@ function getConfig() {
       sheet.getRange('A39').setValue('Send Urgent Sub Emails');
       sheet.getRange('B39').setValue('Yes');
     }
+    // Pre-match-day dispatch schedule — auto-init on first use (rows 41–47)
+    var b43 = sheet.getRange('B43').getValue();
+    if (b43 === '' || b43 === null) {
+      sheet.getRange('A41').setValue('── Pre-Match Day Dispatch ──');
+      sheet.getRange('A42').setValue('Run');
+      sheet.getRange('B42').setValue('Time (ET)');
+      sheet.getRange('C42').setValue('Dispatch');
+      sheet.getRange('D42').setValue('Broadcast');
+      sheet.getRange('E42').setValue('Cancel if open');
+      sheet.getRange('A43:E47').setValues([
+        ['1', '8:00 AM',  'Yes', 'Yes', 'No' ],
+        ['2', '11:00 AM', 'Yes', 'Yes', 'No' ],
+        ['3', '2:00 PM',  'Yes', 'Yes', 'No' ],
+        ['4', '5:00 PM',  'Yes', 'Yes', 'No' ],
+        ['5', '8:00 PM',  'Yes', 'Yes', 'Yes']
+      ]);
+    }
+    var schedRows = sheet.getRange('A43:E47').getValues();
+    var preMatchSchedule = schedRows.map(function(row) {
+      return {
+        run:       row[0].toString(),
+        time:      row[1].toString().trim(),
+        dispatch:  row[2] !== 'No' && row[2] !== false,
+        broadcast: row[3] !== 'No' && row[3] !== false,
+        cancel:    row[4] === 'Yes' || row[4] === true
+      };
+    });
     return {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -344,6 +371,7 @@ function getConfig() {
       brevoAvailNotification:  (function() { var v = sheet.getRange('B36').getValue(); return v === 'Yes' || v === true; })(),
       brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
       urgentSubEmailsEnabled:  (function() { var v = sheet.getRange('B39').getValue(); return v !== 'No' && v !== false; })(),
+      preMatchSchedule: preMatchSchedule,
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -370,6 +398,13 @@ function getConfig() {
       brevoAvailNotification: false,
       brevoScheduleEmail: false,
       urgentSubEmailsEnabled: true,
+      preMatchSchedule: [
+        { run:'1', time:'8:00 AM',  dispatch:true, broadcast:true, cancel:false },
+        { run:'2', time:'11:00 AM', dispatch:true, broadcast:true, cancel:false },
+        { run:'3', time:'2:00 PM',  dispatch:true, broadcast:true, cancel:false },
+        { run:'4', time:'5:00 PM',  dispatch:true, broadcast:true, cancel:false },
+        { run:'5', time:'8:00 PM',  dispatch:true, broadcast:true, cancel:true  }
+      ],
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -416,14 +451,16 @@ function setupTriggers() {
   updateDispatchTrigger();
 
   // Pre-match-day dispatch: 5 runs on Sun/Tue/Thu (day before Mon/Wed/Fri matches).
-  // Runs at 8 AM, 11 AM, 2 PM, 5 PM, then 8 PM final (which also cancels open requests).
-  var days = [ScriptApp.WeekDay.SUNDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.THURSDAY];
-  var hours = [8, 11, 14, 17];
+  // Each run reads Config rows 43–47 to determine what to do at its scheduled hour.
+  var config = getConfig(); // also auto-inits the schedule rows if needed
+  var days  = [ScriptApp.WeekDay.SUNDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.THURSDAY];
+  var hours = (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); })
+                .filter(function(h) { return h >= 0; });
+  if (!hours.length) hours = [8, 11, 14, 17, 20]; // fallback
   days.forEach(function(day) {
     hours.forEach(function(hour) {
       ScriptApp.newTrigger('runPreMatchDayDispatch').timeBased().onWeekDay(day).atHour(hour).create();
     });
-    ScriptApp.newTrigger('runPreMatchDayDispatchFinal').timeBased().onWeekDay(day).atHour(20).create();
   });
 
   var config = getConfig();
@@ -709,7 +746,8 @@ function doGet(e) {
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
     else if (action === 'sendTestScheduleEmail')     result = sendTestScheduleEmail();
-    else if (action === 'sendTestSubAlertEmail')     result = sendTestSubAlertEmail();
+    else if (action === 'sendTestSubAlertEmail')        result = sendTestSubAlertEmail();
+    else if (action === 'runPreMatchDayDispatchNow')    result = runPreMatchDayDispatchNow();
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
@@ -2538,40 +2576,51 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
 }
 
 // ── Pre-match-day dispatch (runs 5× on Sun/Tue/Thu via fixed weekly triggers) ──
-// Runs dispatch for the next match day and sends a broadcast if requests remain open.
-// runPreMatchDayDispatchFinal (8 PM run) additionally cancels any still-open requests.
+// Config rows 43–47 (Time / Dispatch / Broadcast / Cancel) control each run.
 
 function _preMatchDayTargetDate() {
   var tz  = Session.getScriptTimeZone();
   var dow = parseInt(Utilities.formatDate(new Date(), tz, 'u')); // 1=Mon … 7=Sun
-  // Sun(7)→Mon(+1), Tue(2)→Wed(+1), Thu(4)→Fri(+1)
-  if (dow !== 7 && dow !== 2 && dow !== 4) return null;
+  if (dow !== 7 && dow !== 2 && dow !== 4) return null; // Sun/Tue/Thu only
   return getDateStr(1);
+}
+
+function _parseConfigHour(timeStr) {
+  var s = (timeStr || '').toString().trim().toUpperCase();
+  var m = s.match(/^(\d+)(?::\d+)?\s*(AM|PM)$/);
+  if (!m) return -1;
+  var h = parseInt(m[1]);
+  if (m[2] === 'PM' && h !== 12) h += 12;
+  if (m[2] === 'AM' && h === 12) h = 0;
+  return h;
 }
 
 function runPreMatchDayDispatch() {
   var targetDate = _preMatchDayTargetDate();
-  if (!targetDate) return;
-  Logger.log('runPreMatchDayDispatch: ' + targetDate);
-  runDispatchForDate(targetDate);
-  if (!isEmailEnabled()) return;
-  var config = getConfig();
-  if (!config.urgentSubEmailsEnabled) return;
-  var openReqs = getOpenRequestsForDate(targetDate);
-  if (openReqs.length) sendUrgentSubBroadcast(openReqs, targetDate);
-}
+  if (!targetDate) { Logger.log('runPreMatchDayDispatch: not a pre-match day'); return; }
 
-// Final run of the day (8 PM): same as above, then cancels any remaining open requests.
-function runPreMatchDayDispatchFinal() {
-  var targetDate = _preMatchDayTargetDate();
-  if (!targetDate) return;
-  Logger.log('runPreMatchDayDispatchFinal: ' + targetDate);
-  runDispatchForDate(targetDate);
+  var config      = getConfig();
+  var tz          = Session.getScriptTimeZone();
+  var currentHour = parseInt(Utilities.formatDate(new Date(), tz, 'H'));
+
+  // Find the config row whose scheduled hour is within 1 h of now
+  var row = null;
+  (config.preMatchSchedule || []).forEach(function(r) {
+    var h = _parseConfigHour(r.time);
+    if (h >= 0 && Math.abs(h - currentHour) <= 1) row = r;
+  });
+  if (!row) row = { dispatch: true, broadcast: true, cancel: false }; // safe fallback
+
+  Logger.log('runPreMatchDayDispatch: ' + targetDate + ' hour=' + currentHour +
+    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' cancel=' + row.cancel);
+
+  if (row.dispatch) runDispatchForDate(targetDate);
+
   var openReqs = getOpenRequestsForDate(targetDate);
-  if (openReqs.length) {
-    if (isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
-      sendUrgentSubBroadcast(openReqs, targetDate);
-    }
+  if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
+    sendUrgentSubBroadcast(openReqs, targetDate);
+  }
+  if (row.cancel && openReqs.length) {
     var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
     openReqs.forEach(function(req) {
       reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
@@ -2580,6 +2629,24 @@ function runPreMatchDayDispatchFinal() {
       }
     });
   }
+}
+
+// Alias kept so the 8 PM trigger name still resolves after any old trigger references
+function runPreMatchDayDispatchFinal() { runPreMatchDayDispatch(); }
+
+// Manual launch from Admin screen — runs dispatch + broadcast for tomorrow's match date.
+// Cancel is never triggered on a manual launch.
+function runPreMatchDayDispatchNow() {
+  var targetDate = getDateStr(1);
+  Logger.log('runPreMatchDayDispatchNow: ' + targetDate);
+  runDispatchForDate(targetDate);
+  var openReqs = getOpenRequestsForDate(targetDate);
+  var broadcasted = false;
+  if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
+    sendUrgentSubBroadcast(openReqs, targetDate);
+    broadcasted = true;
+  }
+  return { success: true, targetDate: targetDate, openRequests: openReqs.length, broadcastSent: broadcasted };
 }
 
 function sendTestSubAlertEmail() {
