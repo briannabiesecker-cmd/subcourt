@@ -3530,7 +3530,12 @@ function generateSchedule(params) {
 
 // ── Captain Assignment ──────────────────────────────
 // Assigns one captain per group so each player is captain ~25% of their scheduled dates.
+// Per-player targets can be overridden below (e.g. 0.10 = ~10% captaincy goal).
 // Adds slot.captains = [emailForGroupA, emailForGroupB, ...] to every active slot.
+var CAPTAIN_TARGETS = {
+  'marobria@gmail.com': 0.10
+};
+
 function assignCaptains(slotResults) {
   // Count total appearances per player across all slots
   var appearanceCounts = {};
@@ -3543,18 +3548,21 @@ function assignCaptains(slotResults) {
     });
   });
 
-  // Greedy assignment: for each group pick the player with the lowest captaincy ratio
+  // Greedy assignment: pick the player whose captaincy ratio is furthest below
+  // their individual target (ratio / target — lower score = more overdue).
   var captainCounts = {};
   slotResults.forEach(function(slot) {
     if (slot.skipped) return;
     var captains = [];
     slot.groups.forEach(function(group) {
       var best = null;
-      var bestRatio = Infinity;
+      var bestScore = Infinity;
       group.forEach(function(p) {
         if (!p.email) return;
-        var ratio = (captainCounts[p.email] || 0) / (appearanceCounts[p.email] || 1);
-        if (ratio < bestRatio) { bestRatio = ratio; best = p; }
+        var target = CAPTAIN_TARGETS[p.email.toLowerCase()] || 0.25;
+        var ratio  = (captainCounts[p.email] || 0) / (appearanceCounts[p.email] || 1);
+        var score  = ratio / target;
+        if (score < bestScore) { bestScore = score; best = p; }
       });
       if (best) {
         captains.push(best.email);
