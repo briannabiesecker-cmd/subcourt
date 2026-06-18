@@ -2597,14 +2597,16 @@ async function submitRequest() {
 
   try {
     const existing = await getRequests();
-    const duplicate = existing.find(r =>
-      r.email.toLowerCase() === email.toLowerCase() &&
-      r.matchDate === matchDate &&
-      r.status !== 'cancelled'
-    );
+    const partnerEmails = new Set(partners.map(p => (p.email || '').toLowerCase()));
+    const duplicate = existing.find(r => {
+      if (r.email.toLowerCase() !== email.toLowerCase()) return false;
+      if (r.matchDate !== matchDate || r.status === 'cancelled') return false;
+      if (!r.groupPlayers || !r.groupPlayers.length) return true;
+      return r.groupPlayers.some(p => partnerEmails.has((p.email || '').toLowerCase()));
+    });
     if (duplicate) {
       showAlert('req-alert', 'error',
-        'You already have a request for ' + formatDate(matchDate) + '. Contact the coordinator to make changes.'
+        'You already have a request for this group on ' + formatDate(matchDate) + '. Contact the coordinator to make changes.'
       );
       return;
     }
@@ -2659,10 +2661,8 @@ async function loadReqSchedule(email, name) {
 
     requestCache = null;
     const requests = await getRequests();
-    const requestedDates = new Set(
-      requests
-        .filter(r => r.email.toLowerCase() === email.toLowerCase() && r.status !== 'cancelled')
-        .map(r => r.matchDate)
+    const myRequests = requests.filter(r =>
+      r.email.toLowerCase() === email.toLowerCase() && r.status !== 'cancelled'
     );
 
     const todayStr   = new Date().toISOString().slice(0, 10);
@@ -2693,7 +2693,12 @@ async function loadReqSchedule(email, name) {
           players:   g.players,
           partners:  g.players.filter(p => !p.email || p.email.toLowerCase() !== emailLower)
         };
-        const alreadyRequested = requestedDates.has(d.date);
+        const alreadyRequested = myRequests.some(r => {
+          if (r.matchDate !== d.date) return false;
+          if (!r.groupPlayers || !r.groupPlayers.length) return true;
+          const reqEmails = new Set(r.groupPlayers.map(p => (p.email || '').toLowerCase()));
+          return g.players.some(p => p.email && reqEmails.has(p.email.toLowerCase()));
+        });
         const cbHtml = alreadyRequested
           ? `<span style="font-size:12px;color:var(--ink-light);">Requested</span>`
           : `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" />`;
