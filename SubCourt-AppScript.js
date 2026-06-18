@@ -2643,6 +2643,9 @@ function runPreMatchDayDispatchNow() {
   var openReqs = getOpenRequestsForDate(targetDate);
   var broadcastQueued = false;
   if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_runQueuedBroadcast') ScriptApp.deleteTrigger(t);
+    });
     ScriptApp.newTrigger('_runQueuedBroadcast').timeBased().after(60000).create();
     broadcastQueued = true;
   }
