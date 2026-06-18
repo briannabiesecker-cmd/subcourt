@@ -5,6 +5,9 @@
 
 const SHEET_ID = '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE';
 
+// Execution-level cache for getConfig() — resets between trigger/HTTP invocations.
+var _configCache = null;
+
 // deploy.sh replaces 'rally-tennis-dev.html' with 'rally-tennis-prod.html' when pushing to prod.
 const APP_BASE_URL = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-dev.html';
 
@@ -293,6 +296,7 @@ const TIME_LABELS = {
 // ──────────────────────────────────────────────────
 
 function getConfig() {
+  if (_configCache) return _configCache;
   try {
     const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
     // Write labels/defaults for B31–B32 on first use (cells empty)
@@ -344,7 +348,7 @@ function getConfig() {
         cancel:    row[4] === 'Yes' || row[4] === true
       };
     });
-    return {
+    var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
       skillWindowFarOut:        parseFloat(sheet.getRange('C4').getValue())  || 0.5,
@@ -377,6 +381,8 @@ function getConfig() {
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowActive:        (function() { var v = sheet.getRange('B18').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
     };
+    _configCache = cfg;
+    return cfg;
   } catch(e) {
     // If Config tab is missing or unreadable, return safe defaults
     return {
