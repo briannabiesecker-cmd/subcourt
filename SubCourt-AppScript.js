@@ -220,18 +220,25 @@ function sendLeagueEmail(params) {
 function sendBulkEmails(players, buildParamsFn) {
   var useDelay = players.length >= 10;
   var sent = 0, firstError = null;
+  var props = PropertiesService.getScriptProperties();
   players.forEach(function(player, i) {
-    if (useDelay && i > 0) Utilities.sleep(2000);
     try {
+      if (useDelay && i > 0) Utilities.sleep(2000);
       sendLeagueEmail(buildParamsFn(player));
       sent++;
     } catch(e) {
       Logger.log('sendBulkEmails: failed for ' + (player.email || '?') + ': ' + e.message);
-      if (!firstError) firstError = { email: player.email, error: e.message };
+      if (!firstError) {
+        firstError = { email: player.email, error: e.message };
+        // Write immediately so we capture it even if the script is later interrupted.
+        try { props.setProperty('broadcastLog', JSON.stringify({
+          time: new Date().toISOString(), total: players.length, sent: sent, firstError: firstError
+        })); } catch(pe) {}
+      }
     }
   });
   try {
-    PropertiesService.getScriptProperties().setProperty('broadcastLog', JSON.stringify({
+    props.setProperty('broadcastLog', JSON.stringify({
       time: new Date().toISOString(), total: players.length, sent: sent, firstError: firstError
     }));
   } catch(pe) {}
