@@ -3115,7 +3115,7 @@ function refreshDateRow(k) {
   const allOn = TIMES.every(t => arr.includes(t));
   row.className = 'date-row' + (anyOn ? ' any-selected' : '');
   allChk.checked = allOn;
-  allChk.indeterminate = anyOn && !allOn;
+  allChk.indeterminate = false;
   TIMES.forEach(t => {
     const chip = document.getElementById('chip-' + k + '-' + t);
     if (chip) chip.className = 'time-chip-btn' + (arr.includes(t) ? ' on' : '');
