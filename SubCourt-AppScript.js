@@ -9,7 +9,8 @@ const SHEET_ID = '1VjFuq63KLEgZpYvCVi2bJrWEgMxDP6hXygYwjDpUmRE';
 var _configCache = null;
 
 // deploy.sh replaces 'rally-tennis-dev.html' with 'rally-tennis-prod.html' when pushing to prod.
-const APP_BASE_URL = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-dev.html';
+const APP_BASE_URL  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-dev.html';
+const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbwgaAlca17-7cywpr0b7m5zpHF9fQZPfSxOztrr-mupnrcnZ3wz6ppqXTs3cfjfsKUReg/exec';
 
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
@@ -2580,8 +2581,8 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   var d        = new Date(targetDate + 'T12:00:00');
   var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   var subject  = 'MWF Tennis, subs needed ' + monthDay;
-  var scriptUrl = '';
-  try { scriptUrl = ScriptApp.getService().getUrl(); } catch(e) {}
+  var scriptUrl = SCRIPT_URL;
+  try { scriptUrl = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e) {}
   var players  = getPlayersWithRatings().filter(function(p) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
@@ -2705,8 +2706,8 @@ function sendTestSubAlertEmail() {
   var d        = new Date(targetDate + 'T12:00:00');
   var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   var subject  = 'MWF Tennis, subs needed ' + monthDay;
-  var scriptUrl = '';
-  try { scriptUrl = ScriptApp.getService().getUrl(); } catch(e) {}
+  var scriptUrl = SCRIPT_URL;
+  try { scriptUrl = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e) {}
 
   var sent = 0, errors = [];
   testPlayers.forEach(function(player) {
