@@ -358,7 +358,7 @@ function getConfig() {
     var preMatchSchedule = schedRows.map(function(row) {
       return {
         run:       row[0].toString(),
-        time:      row[1].toString().trim(),
+        time:      formatSheetTime(row[1]) || row[1].toString().trim(),
         dispatch:  row[2] !== 'No' && row[2] !== false,
         broadcast: row[3] !== 'No' && row[3] !== false,
         cancel:    row[4] === 'Yes' || row[4] === true
@@ -2624,11 +2624,15 @@ function _preMatchDayTargetDate() {
 function _parseConfigHour(timeStr) {
   var s = (timeStr || '').toString().trim().toUpperCase();
   var m = s.match(/^(\d+)(?::\d+)?\s*(AM|PM)$/);
-  if (!m) return -1;
-  var h = parseInt(m[1]);
-  if (m[2] === 'PM' && h !== 12) h += 12;
-  if (m[2] === 'AM' && h === 12) h = 0;
-  return h;
+  if (m) {
+    var h = parseInt(m[1]);
+    if (m[2] === 'PM' && h !== 12) h += 12;
+    if (m[2] === 'AM' && h === 12) h = 0;
+    return h;
+  }
+  var m2 = s.match(/^(\d+):(\d+)$/);
+  if (m2) return parseInt(m2[1]);
+  return -1;
 }
 
 function runPreMatchDayDispatch() {
