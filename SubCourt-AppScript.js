@@ -264,7 +264,7 @@ function sendCaptainThreePlayerNotification(captainName, captainEmail, matchDate
   var htmlBody =
     'Hi ' + captainName + ',<br><br>' +
     'You are the captain of a 3-player group on ' + dateStr + ' and therefore a sub request has automatically been created for ' + anitaSubName + '.<br><br>' +
-    'When Chelsea assigns a court time, update the sub request on the <a href="' + reqUrl + '">Request a Sub</a> page.<br><br>' +
+    'When <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> assigns a court time, update the sub request on the <a href="' + reqUrl + '">Request a Sub</a> page.<br><br>' +
     'If Rally is unable to fill the request on ' + dayBefore + ', you will be notified by email. At that time, you should use the email/phone process to find a 4th player.<br><br>' +
     'MWF Tennis League';
   sendLeagueEmail({ to: captainEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
@@ -2262,11 +2262,20 @@ function sendConfirmationEmails(data, groupPlayers) {
     'See you on the court!\n\n' +
     'MWF Tennis League';
 
+  const htmlBody =
+    'Hi team,<br><br>' +
+    data.subName + ' will be substituting for ' + data.requestorName +
+    ' on ' + dateStr + ' at ' + timeStr + '.<br><br>' +
+    'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.<br><br>' +
+    'See you on the court!<br><br>' +
+    'MWF Tennis League';
+
   var emailParams = {
-    to:      toAddresses,
-    subject: subject,
-    body:    body,
-    name:    senderName
+    to:       toAddresses,
+    subject:  subject,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     senderName
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
@@ -2345,7 +2354,7 @@ function runMatchTimeReminder() {
     var htmlBody =
       'Hi ' + greetingName + ',<br><br>' +
       'You have an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
-      'Once Chelsea has scheduled a court, please add the court time to your request on the <a href="' + siteUrl + '">Request a Sub</a> page.<br><br>' +
+      'Once <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> has scheduled a court, please add the court time to your request on the <a href="' + siteUrl + '">Request a Sub</a> page.<br><br>' +
       '<em>If you are on Overflow, do nothing. Rally will still try to find a sub.</em><br><br>' +
       '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
       'MWF Tennis League';
@@ -3602,7 +3611,7 @@ function generateSchedule(params) {
 // Per-player targets can be overridden below (e.g. 0.10 = ~10% captaincy goal).
 // Adds slot.captains = [emailForGroupA, emailForGroupB, ...] to every active slot.
 var CAPTAIN_TARGETS = {
-  'marobria@gmail.com': 0.10
+  'marobria@gmail.com': 0
 };
 
 function assignCaptains(slotResults) {
@@ -3628,7 +3637,9 @@ function assignCaptains(slotResults) {
       var bestScore = Infinity;
       group.forEach(function(p) {
         if (!p.email) return;
-        var target = CAPTAIN_TARGETS[p.email.toLowerCase()] || 0.25;
+        var emailKey = p.email.toLowerCase();
+        var target = CAPTAIN_TARGETS.hasOwnProperty(emailKey) ? CAPTAIN_TARGETS[emailKey] : 0.25;
+        if (target === 0) return;
         var ratio  = (captainCounts[p.email] || 0) / (appearanceCounts[p.email] || 1);
         var score  = ratio / target;
         if (score < bestScore) { bestScore = score; best = p; }
