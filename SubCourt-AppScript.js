@@ -473,17 +473,7 @@ function setupTriggers() {
   updateDispatchTrigger();
 
   // Pre-match-day dispatch: 5 runs on Sun/Tue/Thu (day before Mon/Wed/Fri matches).
-  // Each run reads Config rows 43–47 to determine what to do at its scheduled hour.
-  var config = getConfig(); // also auto-inits the schedule rows if needed
-  var days  = [ScriptApp.WeekDay.SUNDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.THURSDAY];
-  var hours = (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); })
-                .filter(function(h) { return h >= 0; });
-  if (!hours.length) hours = [8, 11, 14, 17, 20]; // fallback
-  days.forEach(function(day) {
-    hours.forEach(function(hour) {
-      ScriptApp.newTrigger('runPreMatchDayDispatch').timeBased().onWeekDay(day).atHour(hour).create();
-    });
-  });
+  updatePreMatchDayTriggers();
 
   var config = getConfig();
   updateMatchTimeReminderTrigger(config.matchTimeReminderEnabled, config.matchTimeReminderTimeET);
@@ -501,6 +491,28 @@ function onConfigEdit(e) {
     updateDispatchTrigger();
     Logger.log('Config changed — dispatch trigger updated.');
   }
+  if (col === 2 && row >= 43 && row <= 47) {
+    updatePreMatchDayTriggers();
+    Logger.log('Pre-match schedule time changed — triggers updated.');
+  }
+}
+
+function updatePreMatchDayTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'runPreMatchDayDispatch') {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
+    }
+  });
+  var config = getConfig();
+  var days  = [ScriptApp.WeekDay.SUNDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.THURSDAY];
+  var hours = (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); })
+                .filter(function(h) { return h >= 0; });
+  if (!hours.length) hours = [8, 11, 14, 17, 20];
+  days.forEach(function(day) {
+    hours.forEach(function(hour) {
+      ScriptApp.newTrigger('runPreMatchDayDispatch').timeBased().onWeekDay(day).atHour(hour).create();
+    });
+  });
 }
 
 function getOrCreateDispatchLog() {
