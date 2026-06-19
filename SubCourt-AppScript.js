@@ -453,7 +453,7 @@ function setupTriggers() {
   // Remove all managed triggers
   var managed = ['runAutoDispatch','onConfigEdit','cleanupOldAvailability','checkAvailabilityWindow',
                  'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
-                 'runFollowupDispatchT1','runFollowupDispatchT2'];
+                 'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder'];
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (managed.indexOf(t.getHandlerFunction()) !== -1) {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
@@ -486,6 +486,7 @@ function setupTriggers() {
   });
 
   var config = getConfig();
+  updateMatchTimeReminderTrigger(config.matchTimeReminderEnabled, config.matchTimeReminderTimeET);
   Logger.log('Triggers installed. Dispatch: ' +
     (config.autoDispatchEnabled ? 'daily at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
     '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.');
