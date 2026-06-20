@@ -5583,7 +5583,10 @@ function renderPublishedSchedule(filterEmail, filterName) {
       html += `<tr class="sched-month-row${firstMonth ? ' sched-month-first' : ''}"><td colspan="6">${monthLabel}</td></tr>`;
       firstMonth = false;
     }
-    const dateStr = formatDateAbbrev(d.date);
+    const _dt     = new Date(d.date + 'T12:00:00');
+    const _dow    = _dt.toLocaleDateString('en-US', { weekday: 'short' });
+    const _mdd    = _dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dateStr = `${_dow}<br><span style="font-size:12px;color:var(--ink-mid);">${_mdd}</span>`;
     if (d.groups[0] && d.groups[0].sitOut)  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
     if (d.groups[0] && d.groups[0].sitOut2) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
     d.groups.forEach((g, gi) => {
@@ -5592,7 +5595,7 @@ function renderPublishedSchedule(filterEmail, filterName) {
       const rowClass = gi === 0 ? 'date-first' : '';
       html += `<tr class="${rowClass}">`;
       if (gi === 0) {
-        html += `<td rowspan="${d.groups.length}" class="date-cell">${dateStr}</td>`;
+        html += `<td rowspan="${d.groups.length}" class="date-cell" style="white-space:nowrap;line-height:1.4;">${dateStr}</td>`;
       }
       html += `<td style="font-weight:600;color:var(--court);">${g.letter}</td>`;
       html += `<td><span class="captain-badge">C</span>${mkName(captain)}</td>`;
