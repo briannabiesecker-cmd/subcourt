@@ -205,12 +205,13 @@ function sendLeagueEmail(params) {
 
   if (senderEmail) {
     try {
-      options.from    = senderEmail;
+      // Don't set options.from — GmailApp sends as the running user by default.
+      // Explicitly setting from: on a Workspace account causes quota/permission errors.
       options.replyTo = senderEmail;
       GmailApp.sendEmail(params.to, params.subject, params.body, options);
       return;
     } catch(e) {
-      Logger.log('GmailApp from ' + senderEmail + ' failed, using MailApp: ' + e.message);
+      Logger.log('GmailApp failed: ' + e.message);
     }
   }
   MailApp.sendEmail(params);
