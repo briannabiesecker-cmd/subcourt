@@ -2807,7 +2807,7 @@ async function loadMyRequests(email, playerName) { // v2
       );
     const mine = requests.filter(r =>
       (r.email.toLowerCase() === emailLower || isAnitaForPlayer(r)) &&
-      r.status !== 'cancelled' &&
+      r.status === 'open' &&
       r.matchDate >= todayStr
     ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
     myRequestsData = mine;
@@ -2845,7 +2845,7 @@ async function loadMyRequests(email, playerName) { // v2
       const actionCell = r.status === 'open' ? editBtn : '';
 
       const nameCell = isAnita
-        ? `<span style="color:var(--warn);font-size:13px;font-style:italic;">${r.name} (your group)</span>`
+        ? `<span style="color:var(--warn);font-size:13px;font-style:italic;">${r.name}</span>`
         : 'My request';
 
       const canDelete = r.status !== 'filled';
@@ -2858,7 +2858,6 @@ async function loadMyRequests(email, playerName) { // v2
         <td style="white-space:nowrap;">${formatDateAbbrev(r.matchDate)}</td>
         <td style="white-space:nowrap;">${timeDisplay}</td>
         <td>${nameCell}</td>
-        <td>${statusCell}</td>
         <td>${actionCell}</td>
         <td>${deleteBtn}</td>
       </tr>`;
@@ -2866,7 +2865,7 @@ async function loadMyRequests(email, playerName) { // v2
 
     el.innerHTML = `<div class="table-scroll">
       <table class="dispatch-table">
-        <thead><tr><th>Date</th><th>Time</th><th>Request</th><th>Status</th><th></th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Time</th><th>Requester Name</th><th></th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   } catch(e) {
