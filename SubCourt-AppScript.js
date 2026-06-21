@@ -2296,12 +2296,13 @@ function updateMatchTimeReminderTrigger(enabled, time) {
     }
   });
   if (!enabled) return;
-  var parts  = time.split(':');
-  var hourET = parseInt(parts[0]);
-  var minET  = parseInt(parts[1]) || 0;
-  ScriptApp.newTrigger('runMatchTimeReminder')
-    .timeBased().atHour(hourET).nearMinute(minET).everyDays(1)
-    .inTimezone('America/New_York').create();
+  var hourET = parseInt((time || '10:00').split(':')[0]);
+  // Run once on Sat/Mon/Wed (Match Day -2). The 4-hour follow-up handles subsequent checks.
+  [ScriptApp.WeekDay.SATURDAY, ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.WEDNESDAY].forEach(function(day) {
+    ScriptApp.newTrigger('runMatchTimeReminder')
+      .timeBased().onWeekDay(day).atHour(hourET)
+      .inTimezone('America/New_York').create();
+  });
 }
 
 function runMatchTimeReminder() {
