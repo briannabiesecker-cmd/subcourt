@@ -195,26 +195,15 @@ function handleVolunteerFromEmail(e) {
 }
 
 function sendLeagueEmail(params) {
-  var config      = getConfig();
+  var config = getConfig();
   var senderEmail = config.senderEmail || '';
   var options = { name: params.name || 'MWF Tennis League' };
-  if (params.htmlBody)  options.htmlBody = params.htmlBody;
-  if (params.cc)        options.cc       = params.cc;
-  if (params.bcc)       options.bcc      = params.bcc;
-  if (params.replyTo)   options.replyTo  = params.replyTo;
-
-  if (senderEmail) {
-    try {
-      // Don't set options.from — GmailApp sends as the running user by default.
-      // Explicitly setting from: on a Workspace account causes quota/permission errors.
-      options.replyTo = senderEmail;
-      GmailApp.sendEmail(params.to, params.subject, params.body, options);
-      return;
-    } catch(e) {
-      Logger.log('GmailApp failed: ' + e.message);
-    }
-  }
-  MailApp.sendEmail(params);
+  if (params.htmlBody)     options.htmlBody = params.htmlBody;
+  if (params.cc)           options.cc       = params.cc;
+  if (params.bcc)          options.bcc      = params.bcc;
+  if (senderEmail)         options.replyTo  = senderEmail;
+  else if (params.replyTo) options.replyTo  = params.replyTo;
+  MailApp.sendEmail(params.to, params.subject, params.body, options);
 }
 
 // Sends one email per player; brief pause between sends to stay within Gmail rate limits.
