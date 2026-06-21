@@ -451,7 +451,8 @@ function setupTriggers() {
   // Remove all managed triggers
   var managed = ['runAutoDispatch','onConfigEdit','cleanupOldAvailability','checkAvailabilityWindow',
                  'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
-                 'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder'];
+                 'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder',
+                 '_runQueuedAvailBlast'];
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (managed.indexOf(t.getHandlerFunction()) !== -1) {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
@@ -3101,61 +3102,54 @@ function openAvailabilityWindow(params) {
   sheet.getRange('B16').setValue(openDate);
   sheet.getRange('B17').setValue(closeDate);
   sheet.getRange('B18').setValue(true);
-
-  // Flush writes before reading config back (prevents stale-cache reads)
   SpreadsheetApp.flush();
 
-  // Send email blast to all players — wrapped so a send failure doesn't undo the window open
-  var emailError = null;
-  var emailCount = 0;
-  try {
-    // Exclude fictitious Anita Sub players — they don't need availability emails
-    const allPlayers = getPlayers().filter(function(p) {
-      return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
+  // Queue the email blast via a one-shot trigger so the HTTP response returns immediately.
+  // Sending inline times out the JSONP request before all emails complete.
+  if (isEmailEnabled()) {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_runQueuedAvailBlast') ScriptApp.deleteTrigger(t);
     });
-    emailCount = allPlayers.length;
-    if (allPlayers.length && isEmailEnabled()) {
-      const availConfig    = getAvailabilityConfig();
-      const mailConfig     = getConfig();
-      const closeDateLabel = new Date(closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-      const avUrl          = APP_BASE_URL + '#availability';
-      const subject        = 'MWF League - Submit your availability for ' + availConfig.targetMonthLabel;
-      const body =
-        'It\'s time to submit your availability for ' + availConfig.targetMonthLabel + '.\n\n' +
-        'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
-        'Open the My Availability page to get started:\n' +
-        avUrl + '\n\n' +
-        'See you on the court!\n' +
-        'MWF Tennis League';
-      const htmlBody =
-        'It\'s time to submit your availability for <strong>' + availConfig.targetMonthLabel + '</strong>.<br><br>' +
-        'Please submit your available dates by ' + closeDateLabel + '.<br><br>' +
-        'Open the <a href="' + avUrl + '">My Availability</a> page to get started.<br><br>' +
-        'See you on the court!<br>' +
-        'MWF Tennis League';
-      if (mailConfig.brevoAvailNotification && mailConfig.brevoApiKey) {
-        const recipients = allPlayers.map(function(p) { return { email: p.email, name: p.name }; });
-        sendBrevoEmail({
-          apiKey:      mailConfig.brevoApiKey,
-          senderName:  'MWF Tennis League',
-          senderEmail: mailConfig.senderEmail,
-          recipients:  recipients,
-          subject:     subject,
-          htmlContent: htmlBody,
-          textContent: body
-        });
-      } else {
-        sendBulkEmails(allPlayers, function(p) {
-          return { to: p.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
-        });
-      }
-    }
-  } catch(e) {
-    emailError = e.message;
-    Logger.log('openAvailabilityWindow email error: ' + e.message);
+    ScriptApp.newTrigger('_runQueuedAvailBlast').timeBased().after(30 * 1000).create();
   }
 
-  return { success: true, playerCount: emailCount, emailError: emailError };
+  return { success: true };
+}
+
+// One-shot trigger handler — fires ~30s after openAvailabilityWindow queues it.
+function _runQueuedAvailBlast() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === '_runQueuedAvailBlast') ScriptApp.deleteTrigger(t);
+  });
+  const availConfig = getAvailabilityConfig();
+  if (!availConfig.isOpen || !isEmailEnabled()) return;
+
+  const allPlayers = getPlayers().filter(function(p) {
+    return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
+  });
+  if (!allPlayers.length) return;
+
+  const closeDateLabel = new Date(availConfig.closeDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const avUrl    = APP_BASE_URL + '#availability';
+  const subject  = 'MWF League - Submit your availability for ' + availConfig.targetMonthLabel;
+  const body =
+    'It\'s time to submit your availability for ' + availConfig.targetMonthLabel + '.\n\n' +
+    'Please submit your available dates by ' + closeDateLabel + '.\n\n' +
+    'Open the My Availability page to get started:\n' +
+    avUrl + '\n\n' +
+    'See you on the court!\n' +
+    'MWF Tennis League';
+  const htmlBody =
+    'It\'s time to submit your availability for <strong>' + availConfig.targetMonthLabel + '</strong>.<br><br>' +
+    'Please submit your available dates by ' + closeDateLabel + '.<br><br>' +
+    'Open the <a href="' + avUrl + '">My Availability</a> page to get started.<br><br>' +
+    'See you on the court!<br>' +
+    'MWF Tennis League';
+
+  sendBulkEmails(allPlayers, function(p) {
+    return { to: p.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  });
+  Logger.log('Availability blast sent to ' + allPlayers.length + ' players.');
 }
 
 function closeAvailabilityWindow() {
