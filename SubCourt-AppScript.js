@@ -3122,6 +3122,7 @@ function _runQueuedAvailBlast() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === '_runQueuedAvailBlast') ScriptApp.deleteTrigger(t);
   });
+  Logger.log('_runQueuedAvailBlast running as: ' + Session.getActiveUser().getEmail() + ' / effective: ' + Session.getEffectiveUser().getEmail());
   const availConfig = getAvailabilityConfig();
   if (!availConfig.isOpen || !isEmailEnabled()) return;
 
