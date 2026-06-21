@@ -2602,7 +2602,7 @@ function buildSubNeededEmailText(requests, playerName, targetDate) {
 
 // ONE-TIME: send remaining broadcast starting from Eric Fielding — delete after use
 function sendRemainingBroadcast() {
-  var targetDate = '2026-06-23';
+  var targetDate = '2026-06-22';
   var openRequests = getOpenRequestsForDate(targetDate);
   if (!openRequests.length) { Logger.log('No open requests for ' + targetDate); return; }
   var players = getPlayersWithRatings().filter(function(p) {
