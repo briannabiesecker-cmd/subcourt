@@ -2335,39 +2335,44 @@ function runMatchTimeReminder() {
 
     var groupPlayers = req.groupPlayers || [];
     var isAnitaSub = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
-    var captain = isAnitaSub ? (groupPlayers[0] || {}) : null;
-    var recipientEmail = isAnitaSub ? (captain.email || '') : req.email;
-    var greetingName  = isAnitaSub ? (captain.name  || 'Captain') : req.name;
-    if (!recipientEmail) return;
+    var requesterName = isAnitaSub ? 'Your group' : req.name;
+
+    // Build recipient list: requester + all group members, deduplicated
+    var allEmails = [];
+    if (!isAnitaSub && req.email) allEmails.push(req.email);
+    groupPlayers.forEach(function(p) { if (p.email) allEmails.push(p.email); });
+    var seen = {};
+    allEmails = allEmails.filter(function(e) {
+      var k = e.toLowerCase(); if (seen[k]) return false; seen[k] = true; return true;
+    });
+    if (!allEmails.length) return;
 
     var dateStr = formatDate(req.matchDate);
     var subject = 'MWF Tennis League — Court time needed for your sub request: ' + dateStr;
 
     var body =
-      'Hi ' + greetingName + ',\n\n' +
-      'You have an open sub request for ' + dateStr + ' and no court time has been assigned yet.\n\n' +
-      'Once Chelsea has scheduled a court, please add the court time to your request on the Request a Sub page:\n' + siteUrl + '\n\n' +
+      'Hi team,\n\n' +
+      requesterName + ' has an open sub request for ' + dateStr + ' and no court time has been assigned yet.\n\n' +
+      'UPDATE THE COURT TIME NOW, on the Request a Sub page:\n' + siteUrl + '\n\n' +
       'If you are on Overflow, do nothing. Rally will still try to find a sub.\n\n' +
       'Note: Non 8am players are ineligible to fill a sub request without a court time assigned.\n\n' +
       'MWF Tennis League';
 
     var htmlBody =
-      'Hi ' + greetingName + ',<br><br>' +
-      'You have an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
-      'Once <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> has scheduled a court, please add the court time to your request on the <a href="' + siteUrl + '">Request a Sub</a> page.<br><br>' +
+      'Hi team,<br><br>' +
+      requesterName + ' has an open sub request for <strong>' + dateStr + '</strong> and no court time has been assigned yet.<br><br>' +
+      '<strong>UPDATE THE COURT TIME NOW</strong>, on the <a href="' + siteUrl + '">Request a Sub</a> page.<br><br>' +
       '<em>If you are on Overflow, do nothing. Rally will still try to find a sub.</em><br><br>' +
       '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
       'MWF Tennis League';
 
-    var ccList = groupPlayers.map(function(p) { return p.email; }).filter(function(e) { return e && e !== recipientEmail; });
     var emailParams = {
-      to:       recipientEmail,
+      to:       allEmails.join(', '),
       subject:  subject,
       body:     body,
       htmlBody: htmlBody,
       name:     'MWF Tennis League'
     };
-    if (ccList.length) emailParams.cc = ccList.join(', ');
     if (isEmailEnabled()) sendLeagueEmail(emailParams);
     notified++;
   });
