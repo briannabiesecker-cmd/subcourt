@@ -216,15 +216,13 @@ function sendLeagueEmail(params) {
   MailApp.sendEmail(params);
 }
 
-// Sends one email per player; inserts a 2-second pause between sends when the list
-// has 10 or more recipients to avoid Gmail rate-limiting and spam signals.
+// Sends one email per player; brief pause between sends to stay within Gmail rate limits.
 function sendBulkEmails(players, buildParamsFn) {
-  var useDelay = players.length >= 10;
   var sent = 0, firstError = null;
   var props = PropertiesService.getScriptProperties();
   players.forEach(function(player, i) {
     try {
-      if (useDelay && i > 0) Utilities.sleep(2000);
+      if (i > 0) Utilities.sleep(200);
       sendLeagueEmail(buildParamsFn(player));
       sent++;
     } catch(e) {
