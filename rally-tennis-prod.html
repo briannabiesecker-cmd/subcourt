@@ -2800,21 +2800,18 @@ async function loadMyRequests(email, playerName) { // v2
     const twoDaysOut   = new Date(); twoDaysOut.setDate(twoDaysOut.getDate() + 2);
     const twoDaysStr   = twoDaysOut.toISOString().slice(0, 10);
 
-    // Only show future requests (strictly after today).
-    // Also include Anita Sub requests where this player appears in groupPlayers.
-    // Match by email OR name — email from the availability submission may differ
-    // slightly from the Players sheet email, so name is used as a reliable fallback.
+    // Show all open requests for every group the player is in.
+    // Match by email OR name — email from availability may differ slightly from Players sheet.
     const emailLower = email.toLowerCase();
     const nameLower  = (playerName || '').toLowerCase().trim();
-    const isAnitaForPlayer = r =>
-      /^anita\.sub\d+@xgmail\.com$/i.test(r.email) &&
+    const isInPlayersGroup = r =>
       Array.isArray(r.groupPlayers) && r.groupPlayers.length > 0 &&
       r.groupPlayers.some(p =>
         (p.email || '').toLowerCase().trim() === emailLower ||
-        (nameLower && (p.name  || '').toLowerCase().trim() === nameLower)
+        (nameLower && (p.name || '').toLowerCase().trim() === nameLower)
       );
     const mine = requests.filter(r =>
-      (r.email.toLowerCase() === emailLower || isAnitaForPlayer(r)) &&
+      (r.email.toLowerCase() === emailLower || isInPlayersGroup(r)) &&
       r.status === 'open' &&
       r.matchDate >= todayStr
     ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
@@ -2831,40 +2828,30 @@ async function loadMyRequests(email, playerName) { // v2
 
     const rows = mine.map(r => {
       const timeDisplay = r.matchTime ? (TIME_LABELS[r.matchTime] || r.matchTime) : '<span class="badge badge-tbd">TBD</span>';
-      const needsTime   = !r.matchTime && r.matchDate <= twoDaysStr;
-      let statusCell;
-      if (r.status === 'filled') {
-        statusCell = '<span class="badge badge-matched">Sub found</span>' +
-          (r.assignedSub ? `<div style="margin-top:4px;font-weight:600;">${r.assignedSub}</div>` : '');
-      } else if (r.status === 'expired') {
-        statusCell = '<span class="badge" style="background:#F3F4F6;color:#6B7280;">Expired</span>' +
-          '<div style="margin-top:4px;color:var(--ink-light);font-style:italic;font-size:12px;">No sub found</div>';
-      } else {
-        statusCell = '<span class="badge badge-open">Looking for sub</span>';
-      }
-
       const isAnita = /^anita\.sub\d+@xgmail\.com$/i.test(r.email);
+      const isOwn   = r.email.toLowerCase() === emailLower;
 
-      const editBtn = r.status === 'open'
-        ? `<button class="btn btn-sm" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;font-size:13px;padding:4px 12px;"
+      const showEdit  = r.matchDate <= twoDaysStr;
+      const editColor = !r.matchTime ? '#DC2626' : '#1E40AF';
+      const editBtn   = showEdit
+        ? `<button class="btn btn-sm" style="background:#EFF6FF;color:${editColor};border:1px solid #BFDBFE;font-size:13px;padding:4px 12px;"
              onclick="showPlayerEditModal('${r.id}')">Edit Match Time</button>`
         : '';
 
-      const actionCell = r.status === 'open' ? editBtn : '';
+      const nameCell = isOwn
+        ? 'My request'
+        : isAnita
+          ? `<span style="color:var(--warn);font-size:13px;font-style:italic;">${r.name}</span>`
+          : r.name;
 
-      const nameCell = isAnita
-        ? `<span style="color:var(--warn);font-size:13px;font-style:italic;">${r.name}</span>`
-        : 'My request';
-
-      const canDelete = r.status !== 'filled';
-      const deleteBtn = canDelete
+      const deleteBtn = isOwn
         ? `<button class="btn btn-sm" style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;font-size:12px;padding:3px 10px;"
             onclick="deleteRequest('${r.id}')">Delete</button>`
         : '';
 
       return `<tr>
         <td style="white-space:nowrap;">${formatDateAbbrev(r.matchDate)}</td>
-        <td style="white-space:nowrap;">${timeDisplay}${actionCell ? `<span style="margin-left:6px;">${actionCell}</span>` : ''}</td>
+        <td style="white-space:nowrap;">${timeDisplay}${editBtn ? `<span style="margin-left:6px;">${editBtn}</span>` : ''}</td>
         <td>${nameCell}</td>
         <td>${deleteBtn}</td>
       </tr>`;
