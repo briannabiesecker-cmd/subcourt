@@ -1196,6 +1196,11 @@
   .dispatch-table th { background: var(--ink-mid); color: white; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink); white-space: nowrap; }
   .dispatch-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   .dispatch-table tbody tr.data-row:hover { background: var(--chalk); }
+  .dispatch-table.compact th { padding: 5px 8px; font-size: 12px; }
+  .dispatch-table.compact td { padding: 4px 8px; font-size: 13px; }
+
+  /* ── Request a Sub — schedule table header matches dispatch style ── */
+  #req-schedule-section .sched-table th { background: var(--ink-mid); color: white; border-bottom: 2px solid var(--ink); }
 
   /* ── Directory Table ── */
   .dir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -1518,8 +1523,8 @@
     <div id="req-body" style="padding-top:0.5rem;">
 
     <div id="my-req-section" style="display:none;">
-      <div id="my-req-header" class="section-header">
-        <div class="section-title" style="font-size:18px;">Your Upcoming Requests</div>
+      <div id="my-req-header" class="section-header" style="padding-bottom:4px;margin-bottom:4px;">
+        <div class="section-title" style="font-size:16px;">Requests for your groups</div>
       </div>
       <div id="my-req-list"></div>
       <hr id="my-req-divider" class="divider" />
@@ -1528,6 +1533,9 @@
     <div id="req-alert" class="hidden" style="margin-bottom:0.5rem;"></div>
 
     <div id="req-schedule-section" style="display:none;">
+      <div class="section-header" style="padding-bottom:4px;margin-bottom:4px;">
+        <div class="section-title" style="font-size:16px;">Your Schedule</div>
+      </div>
       <div id="req-schedule-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading schedule…</div>
       <div id="req-schedule-empty" style="display:none;padding:1rem 0;font-size:14px;color:var(--ink-light);text-align:center;"></div>
       <div id="req-schedule-table-wrap" style="display:none;overflow-x:auto;">
@@ -2856,16 +2864,15 @@ async function loadMyRequests(email, playerName) { // v2
 
       return `<tr>
         <td style="white-space:nowrap;">${formatDateAbbrev(r.matchDate)}</td>
-        <td style="white-space:nowrap;">${timeDisplay}</td>
+        <td style="white-space:nowrap;">${timeDisplay}${actionCell ? `<span style="margin-left:6px;">${actionCell}</span>` : ''}</td>
         <td>${nameCell}</td>
-        <td>${actionCell}</td>
         <td>${deleteBtn}</td>
       </tr>`;
     }).join('');
 
     el.innerHTML = `<div class="table-scroll">
-      <table class="dispatch-table">
-        <thead><tr><th>Date</th><th>Time</th><th>Requester Name</th><th></th><th></th></tr></thead>
+      <table class="dispatch-table compact">
+        <thead><tr><th>Date</th><th>Time</th><th>Requester Name</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   } catch(e) {
