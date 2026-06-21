@@ -2602,38 +2602,6 @@ function buildSubNeededEmailText(requests, playerName, targetDate) {
   return lines.join('\n');
 }
 
-// ONE-TIME: send remaining broadcast starting from Eric Fielding — delete after use
-function sendRemainingBroadcast() {
-  var targetDate = '2026-06-22';
-  var openRequests = getOpenRequestsForDate(targetDate);
-  if (!openRequests.length) { Logger.log('No open requests for ' + targetDate); return; }
-  var players = getPlayersWithRatings().filter(function(p) {
-    return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
-  });
-  var startIdx = -1;
-  for (var i = 0; i < players.length; i++) {
-    if ((players[i].name || '').toLowerCase().indexOf('eric fielding') >= 0) { startIdx = i; break; }
-  }
-  if (startIdx === -1) { Logger.log('Eric Fielding not found; sending to all'); startIdx = 0; }
-  var remaining = players.slice(startIdx);
-  Logger.log('Sending remaining broadcast to ' + remaining.length + ' players starting with ' + remaining[0].name);
-  var d = new Date(targetDate + 'T12:00:00');
-  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-  var subject = 'MWF Tennis, subs needed ' + monthDay;
-  var scriptUrl = SCRIPT_URL;
-  try { scriptUrl = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e) {}
-  sendBulkEmails(remaining, function(player) {
-    return {
-      to:       player.email,
-      subject:  subject,
-      body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
-      htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
-      name:     'MWF Tennis League'
-    };
-  });
-  Logger.log('Done. Sent to ' + remaining.length + ' players.');
-}
-
 function sendUrgentSubBroadcast(openRequests, targetDate) {
   if (!openRequests.length || !isEmailEnabled()) return;
   var config   = getConfig();
@@ -3122,7 +3090,6 @@ function _runQueuedAvailBlast() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === '_runQueuedAvailBlast') ScriptApp.deleteTrigger(t);
   });
-  Logger.log('_runQueuedAvailBlast running as: ' + Session.getActiveUser().getEmail() + ' / effective: ' + Session.getEffectiveUser().getEmail());
   const availConfig = getAvailabilityConfig();
   if (!availConfig.isOpen || !isEmailEnabled()) return;
 
