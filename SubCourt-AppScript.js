@@ -442,7 +442,7 @@ function setupTriggers() {
   var managed = ['runAutoDispatch','onConfigEdit','cleanupOldAvailability','checkAvailabilityWindow',
                  'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
                  'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder',
-                 '_runQueuedAvailBlast'];
+                 '_runQueuedAvailBlast','_runMatchTimeReminderCheck'];
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (managed.indexOf(t.getHandlerFunction()) !== -1) {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
@@ -2308,19 +2308,31 @@ function runMatchTimeReminder() {
   var config = getConfig();
   if (!config.matchTimeReminderEnabled) return { skipped: 'disabled' };
 
-  var requests = getRequests();
-  var now      = new Date();
-  var siteUrl  = APP_BASE_URL + '#request';
-  var notified = 0;
+  var requests  = getRequests();
+  var now       = new Date();
+  var siteUrl   = APP_BASE_URL + '#request';
+  var notified  = 0;
+  var FOUR_HOURS = 4 * 60 * 60 * 1000;
+
+  // Track last-sent time per request ID so we resend at most once per 4 hours.
+  var props = PropertiesService.getScriptProperties();
+  var log = {};
+  try { log = JSON.parse(props.getProperty('matchTimeReminderLog') || '{}'); } catch(e) {}
+  var activeIds = {};
 
   requests.forEach(function(req) {
     if (req.status !== 'open') return;
-    if (req.matchTime) return; // already has a time
+    if (req.matchTime) return;
 
     // Check if match date is within 60 hours (use 8:00 AM for TBD times)
     var matchDT = new Date(req.matchDate + 'T08:00:00');
     var diffHrs = (matchDT - now) / 36e5;
     if (diffHrs <= 0 || diffHrs > 60) return;
+
+    activeIds[req.id] = true;
+
+    // Skip if a reminder was already sent within the last 4 hours
+    if (log[req.id] && (now.getTime() - log[req.id]) < FOUR_HOURS) return;
 
     var groupPlayers = req.groupPlayers || [];
     var isAnitaSub = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
@@ -2355,19 +2367,32 @@ function runMatchTimeReminder() {
       '<em>Note: Non 8am players are ineligible to fill a sub request without a court time assigned.</em><br><br>' +
       'MWF Tennis League';
 
-    var emailParams = {
-      to:       allEmails.join(', '),
-      subject:  subject,
-      body:     body,
-      htmlBody: htmlBody,
-      name:     'MWF Tennis League'
-    };
-    if (isEmailEnabled()) sendLeagueEmail(emailParams);
+    if (isEmailEnabled()) sendLeagueEmail({ to: allEmails.join(', '), subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+    log[req.id] = now.getTime();
     notified++;
   });
 
+  // Prune log entries for requests that are no longer open/TBD
+  Object.keys(log).forEach(function(id) { if (!activeIds[id]) delete log[id]; });
+  props.setProperty('matchTimeReminderLog', JSON.stringify(log));
+
+  // Schedule a follow-up check in 4 hours if any reminders went out
+  if (notified > 0 && isEmailEnabled()) {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_runMatchTimeReminderCheck') ScriptApp.deleteTrigger(t);
+    });
+    ScriptApp.newTrigger('_runMatchTimeReminderCheck').timeBased().after(FOUR_HOURS).create();
+  }
+
   Logger.log('runMatchTimeReminder: notified ' + notified + ' requestor(s).');
   return { success: true, notified: notified };
+}
+
+function _runMatchTimeReminderCheck() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === '_runMatchTimeReminderCheck') ScriptApp.deleteTrigger(t);
+  });
+  runMatchTimeReminder();
 }
 
 function saveAutoDispatchSettings(params) {
