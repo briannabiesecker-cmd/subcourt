@@ -490,7 +490,8 @@ function setupTriggers() {
   updateMatchTimeReminderTrigger(config.matchTimeReminderEnabled, config.matchTimeReminderTimeET);
   Logger.log('Triggers installed. Dispatch: ' +
     (config.autoDispatchEnabled ? 'daily at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
-    '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.');
+    '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.' +
+    ' Match time reminder: ' + (config.matchTimeReminderEnabled ? 'daily at ' + config.matchTimeReminderTimeET + ' ET (sends Sat/Mon/Wed)' : 'disabled') + '.');
 }
 
 function onConfigEdit(e) {
