@@ -203,7 +203,28 @@ function sendLeagueEmail(params) {
   if (params.bcc)          options.bcc      = params.bcc;
   if (senderEmail)         options.replyTo  = senderEmail;
   else if (params.replyTo) options.replyTo  = params.replyTo;
-  MailApp.sendEmail(params.to, params.subject, params.body, options);
+  try {
+    MailApp.sendEmail(params.to, params.subject, params.body, options);
+    _logEmail(params.to, params.subject, 'sent');
+  } catch(e) {
+    _logEmail(params.to, params.subject, 'failed: ' + e.message);
+    throw e;
+  }
+}
+
+function _logEmail(to, subject, status) {
+  try {
+    var ss    = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(TABS.emailLog);
+    if (!sheet) {
+      sheet = ss.insertSheet(TABS.emailLog);
+      sheet.appendRow(['Timestamp', 'To', 'Subject', 'Status']);
+      sheet.setFrozenRows(1);
+    }
+    sheet.appendRow([new Date(), to, subject, status]);
+  } catch(e) {
+    Logger.log('_logEmail error: ' + e.message);
+  }
 }
 
 // Sends one email per player; brief pause between sends to stay within Gmail rate limits.
@@ -284,7 +305,8 @@ const TABS = {
   volunteers:   'Volunteers',
   config:       'Config',
   availability: 'Availability',
-  matchGroups:  'MatchGroups'
+  matchGroups:  'MatchGroups',
+  emailLog:     'EmailLog'
 };
 
 const TIMES = ['08:00','09:30','11:00','12:30'];
