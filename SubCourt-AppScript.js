@@ -112,8 +112,7 @@ function notifyGroupRosterChange(changes) {
   });
 }
 
-// Unified email sender — uses GmailApp with configured from: address (requires Gmail alias setup),
-// falls back to MailApp if alias is not configured or not verified.
+// Unified email sender — uses MailApp.
 function sendBrevoEmail(params) {
   // params: { apiKey, recipients: [{email, name}], subject, htmlContent, textContent, attachments, replyTo: {email, name} }
   var payload = {
@@ -1965,20 +1964,13 @@ function createScheduleDraft(params) {
              errors: sendErrors.length ? sendErrors : undefined };
   }
 
-  // ── Send via GmailApp / MailApp ──────────────────────────────────────
+  // ── Send via MailApp ──────────────────────────────────────────────────
   var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
   var toList  = sd.playerEmails.join(', ');
-  var opts    = { htmlBody: htmlBody, attachments: [csvBlob], name: 'MWF Tennis League' };
+  var opts    = { to: toList, subject: subject, body: '', htmlBody: htmlBody, attachments: [csvBlob], name: 'MWF Tennis League' };
+  if (config.senderEmail) opts.replyTo = config.senderEmail;
   try {
-    if (config.senderEmail) {
-      try {
-        GmailApp.sendEmail(toList, subject, '', Object.assign({}, opts, { from: config.senderEmail, replyTo: config.senderEmail }));
-        return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
-      } catch(ge) {
-        Logger.log('GmailApp failed (' + ge.message + '), falling back to MailApp');
-      }
-    }
-    MailApp.sendEmail(Object.assign({}, opts, { to: toList, subject: subject, body: '' }));
+    MailApp.sendEmail(opts);
     return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
   } catch(e) {
     return { success: false, error: e.toString() };
@@ -4259,18 +4251,10 @@ function sendTestEmail() {
       'Sender email: ' + (diag.senderEmail || '(none — will send from script account)') + '\n' +
       'Schedule found: ' + diag.scheduleFound + ' (' + diag.scheduleMonth + ')';
 
-    if (diag.senderEmail) {
-      try {
-        GmailApp.sendEmail(adminEmail, 'Rally — Test Email', body, {
-          from: diag.senderEmail, replyTo: diag.senderEmail, name: 'MWF Tennis League'
-        });
-        return { success: true, sentTo: adminEmail, sentFrom: diag.senderEmail, diag: diag };
-      } catch(ge) {
-        diag.gmailError = ge.message;
-      }
-    }
-    MailApp.sendEmail({ to: adminEmail, subject: 'Rally — Test Email', body: body, name: 'MWF Tennis League' });
-    return { success: true, sentTo: adminEmail, sentFrom: 'script account (MailApp)', diag: diag };
+    var mailOpts = { to: adminEmail, subject: 'Rally — Test Email', body: body, name: 'MWF Tennis League' };
+    if (diag.senderEmail) mailOpts.replyTo = diag.senderEmail;
+    MailApp.sendEmail(mailOpts);
+    return { success: true, sentTo: adminEmail, sentFrom: 'MailApp', diag: diag };
   } catch(e) {
     return { success: false, error: e.message, diag: diag };
   }
