@@ -2318,29 +2318,36 @@ function updateMatchTimeReminderTrigger(enabled, time) {
     }
   });
   if (!enabled) return;
-  var hourET = parseInt((time || '10:00').split(':')[0]);
-  // Run once on Sat/Mon/Wed (Match Day -2). The 4-hour follow-up handles subsequent checks.
-  [ScriptApp.WeekDay.SATURDAY, ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.WEDNESDAY].forEach(function(day) {
-    ScriptApp.newTrigger('runMatchTimeReminder')
-      .timeBased().onWeekDay(day).atHour(hourET)
-      .inTimezone('America/New_York').create();
-  });
+  var parts  = time.split(':');
+  var hourET = parseInt(parts[0]);
+  var minET  = parseInt(parts[1]) || 0;
+  // Single daily trigger; the function itself skips initial sends on non-reminder days.
+  ScriptApp.newTrigger('runMatchTimeReminder')
+    .timeBased().atHour(hourET).nearMinute(minET).everyDays(1)
+    .inTimezone('America/New_York').create();
 }
 
 function runMatchTimeReminder() {
   var config = getConfig();
   if (!config.matchTimeReminderEnabled) return { skipped: 'disabled' };
 
-  var requests  = getRequests();
   var now       = new Date();
-  var siteUrl   = APP_BASE_URL + '#request';
-  var notified  = 0;
+  var tz        = Session.getScriptTimeZone();
   var FOUR_HOURS = 4 * 60 * 60 * 1000;
 
   // Track last-sent time per request ID so we resend at most once per 4 hours.
   var props = PropertiesService.getScriptProperties();
   var log = {};
   try { log = JSON.parse(props.getProperty('matchTimeReminderLog') || '{}'); } catch(e) {}
+
+  // On Sat/Mon/Wed, send initial reminders. On other days, only the 4-hour follow-up
+  // chain (_runMatchTimeReminderCheck) should be calling this — let the log guard handle it.
+  var dow = parseInt(Utilities.formatDate(now, tz, 'u')); // 1=Mon … 6=Sat, 7=Sun
+  var isReminderDay = (dow === 6 || dow === 1 || dow === 3); // Sat, Mon, Wed
+
+  var requests  = getRequests();
+  var siteUrl   = APP_BASE_URL + '#request';
+  var notified  = 0;
   var activeIds = {};
 
   requests.forEach(function(req) {
@@ -2356,6 +2363,9 @@ function runMatchTimeReminder() {
 
     // Skip if a reminder was already sent within the last 4 hours
     if (log[req.id] && (now.getTime() - log[req.id]) < FOUR_HOURS) return;
+
+    // On non-reminder days, only send if a prior reminder exists in the log (follow-up chain)
+    if (!isReminderDay && !log[req.id]) return;
 
     var groupPlayers = req.groupPlayers || [];
     var isAnitaSub = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
