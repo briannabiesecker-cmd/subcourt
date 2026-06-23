@@ -232,7 +232,7 @@ function sendBulkEmails(players, buildParamsFn) {
   var props = PropertiesService.getScriptProperties();
   players.forEach(function(player, i) {
     try {
-      if (i > 0) Utilities.sleep(200);
+      if (i > 0) Utilities.sleep(500);
       sendLeagueEmail(buildParamsFn(player));
       sent++;
     } catch(e) {
