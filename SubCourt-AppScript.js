@@ -233,21 +233,51 @@ function handleVolunteerFromEmail(e) {
   );
 }
 
+var BCC_CHUNK_SIZE = 45; // MailApp per-message recipient limit is ~50; stay safely under it
+
 function sendLeagueEmail(params) {
   var config = getConfig();
   var senderEmail = config.senderEmail || '';
-  var options = { name: params.name || 'MWF Tennis League' };
-  if (params.htmlBody)     options.htmlBody = params.htmlBody;
-  if (params.cc)           options.cc       = params.cc;
-  if (params.bcc)          options.bcc      = params.bcc;
-  if (senderEmail)         options.replyTo  = senderEmail;
-  else if (params.replyTo) options.replyTo  = params.replyTo;
-  try {
-    MailApp.sendEmail(params.to, params.subject, params.body, options);
-    _logEmail(params.to, params.subject, 'sent');
-  } catch(e) {
-    _logEmail(params.to, params.subject, 'failed: ' + e.message);
-    throw e;
+  var baseOpts = { name: params.name || 'MWF Tennis League' };
+  if (params.htmlBody)     baseOpts.htmlBody = params.htmlBody;
+  if (params.cc)           baseOpts.cc       = params.cc;
+  if (senderEmail)         baseOpts.replyTo  = senderEmail;
+  else if (params.replyTo) baseOpts.replyTo  = params.replyTo;
+
+  var bccAddrs = params.bcc
+    ? params.bcc.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+    : [];
+
+  if (bccAddrs.length <= BCC_CHUNK_SIZE) {
+    var opts = { name: baseOpts.name };
+    if (baseOpts.htmlBody) opts.htmlBody = baseOpts.htmlBody;
+    if (baseOpts.cc)       opts.cc       = baseOpts.cc;
+    if (baseOpts.replyTo)  opts.replyTo  = baseOpts.replyTo;
+    if (bccAddrs.length)   opts.bcc      = bccAddrs.join(',');
+    try {
+      MailApp.sendEmail(params.to, params.subject, params.body, opts);
+      _logEmail(params.to, params.subject, 'sent');
+    } catch(e) {
+      _logEmail(params.to, params.subject, 'failed: ' + e.message);
+      throw e;
+    }
+  } else {
+    // Split BCC into chunks to stay under per-message recipient limit
+    for (var i = 0; i < bccAddrs.length; i += BCC_CHUNK_SIZE) {
+      var chunk = bccAddrs.slice(i, i + BCC_CHUNK_SIZE);
+      var chunkOpts = { name: baseOpts.name, bcc: chunk.join(',') };
+      if (baseOpts.htmlBody) chunkOpts.htmlBody = baseOpts.htmlBody;
+      if (baseOpts.cc)       chunkOpts.cc       = baseOpts.cc;
+      if (baseOpts.replyTo)  chunkOpts.replyTo  = baseOpts.replyTo;
+      if (i > 0) Utilities.sleep(500);
+      try {
+        MailApp.sendEmail(params.to, params.subject, params.body, chunkOpts);
+        _logEmail(params.to, params.subject, 'sent (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ')');
+      } catch(e) {
+        _logEmail(params.to, params.subject, 'failed chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ': ' + e.message);
+        throw e;
+      }
+    }
   }
 }
 
