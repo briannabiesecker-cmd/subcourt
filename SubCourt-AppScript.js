@@ -147,10 +147,10 @@ function sendBrevoEmail(params) {
 }
 
 function handleVolunteerFromEmail(e) {
-  var p           = e.parameter || {};
-  var requestId   = (p.requestId   || '').trim();
-  var playerEmail = (p.playerEmail || '').trim().toLowerCase();
-  var playerName  = (p.playerName  || '').trim();
+  var p            = e.parameter || {};
+  var requestId    = (p.requestId    || '').trim();
+  var playerEmail  = (p.playerEmail  || '').trim().toLowerCase();
+  var notAvailable = p.notAvailable === 'true' || p.notAvailable === '1';
   var css = 'body{font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#111;}' +
             'h2{color:#1a5c3a;}p{line-height:1.6;font-size:15px;}';
   var wrap = function(body) {
@@ -159,7 +159,7 @@ function handleVolunteerFromEmail(e) {
       '<style>' + css + '</style></head><body>' + body + '</body></html>'
     );
   };
-  if (!requestId || !playerEmail) return wrap('<p>Invalid link.</p>');
+  if (!requestId) return wrap('<p>Invalid link.</p>');
 
   var requests = getRequests();
   var req;
@@ -171,7 +171,49 @@ function handleVolunteerFromEmail(e) {
     return wrap('<p>' + msg + '</p>');
   }
 
-  // Create volunteer record — TBD-time requests get all slots so dispatch can match them
+  var dateStr = formatDate(req.matchDate);
+  var timeStr = TIME_LABELS[req.matchTime] || req.matchTime || '';
+
+  if (notAvailable) {
+    return wrap(
+      '<p style="font-size:18px;font-weight:bold;color:#1a5c3a;">No problem!</p>' +
+      '<p>Thanks for letting us know. We\'ll keep looking for a sub.</p>' +
+      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+    );
+  }
+
+  if (!playerEmail) {
+    // BCC path — show confirmation form so we can identify the player
+    var scriptUrl2 = SCRIPT_URL;
+    try { scriptUrl2 = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e2) {}
+    var timeLabel  = timeStr ? ' at ' + timeStr : '';
+    var declineUrl = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&notAvailable=true';
+    return wrap(
+      '<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">I can sub' + timeLabel + '<br>on ' + dateStr + '</h2>' +
+      '<p style="margin-bottom:16px;">Enter your email address to confirm:</p>' +
+      '<form method="get" action="' + scriptUrl2 + '" style="margin:0;">' +
+        '<input type="hidden" name="action" value="volunteerFromEmail">' +
+        '<input type="hidden" name="requestId" value="' + requestId + '">' +
+        '<input type="email" name="playerEmail" required placeholder="your@email.com" autocomplete="email" ' +
+          'style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">' +
+        '<div style="display:flex;gap:12px;">' +
+          '<button type="submit" style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Confirm</button>' +
+          '<a href="' + declineUrl + '" style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border-radius:4px;font-size:16px;font-weight:bold;text-decoration:none;text-align:center;display:inline-block;box-sizing:border-box;">Not Available</a>' +
+        '</div>' +
+      '</form>' +
+      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+    );
+  }
+
+  // Email present — look up name from Players sheet and create volunteer record
+  var players    = getPlayers();
+  var playerName = '';
+  for (var j = 0; j < players.length; j++) {
+    if (players[j].email && players[j].email.toLowerCase() === playerEmail) {
+      playerName = players[j].name || '';
+      break;
+    }
+  }
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
@@ -182,8 +224,6 @@ function handleVolunteerFromEmail(e) {
   rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
 
-  var dateStr = formatDate(req.matchDate);
-  var timeStr = TIME_LABELS[req.matchTime] || req.matchTime || '';
   return wrap(
     '<h2>Thank you' + (playerName ? ', ' + playerName.split(' ')[0] : '') + '!</h2>' +
     '<p>You have volunteered to sub on <strong>' + dateStr + '</strong>' +
@@ -2650,12 +2690,8 @@ function runDispatchForDate(targetDate) {
   return matched;
 }
 
-function buildSubNeededEmailHtml(requests, playerEmail, playerName, scriptUrl) {
-  var firstName  = (playerName || '').split(' ')[0] || '';
+function buildSubNeededEmailHtml(requests, scriptUrl) {
   var dateStr    = formatDate(requests[0].matchDate);
-  var greetingRow = firstName
-    ? '<tr><td colspan="4" style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">Hi ' + firstName + ',</td></tr>'
-    : '';
   var headerRow =
     '<tr style="border-bottom:2px solid #e5e7eb;">' +
     '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;"></th>' +
@@ -2668,10 +2704,7 @@ function buildSubNeededEmailHtml(requests, playerEmail, playerName, scriptUrl) {
     var otherNames = (req.groupPlayers || [])
       .filter(function(p) { return (p.email || '').toLowerCase() !== (req.email || '').toLowerCase(); })
       .map(function(p) { return p.name; }).join(', ');
-    var linkUrl = scriptUrl + '?action=volunteerFromEmail' +
-      '&requestId='   + encodeURIComponent(req.id) +
-      '&playerEmail=' + encodeURIComponent(playerEmail) +
-      '&playerName='  + encodeURIComponent(playerName);
+    var linkUrl = scriptUrl + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(req.id);
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
       '<td style="padding:10px 12px 10px 0;vertical-align:middle;">' +
         '<a href="' + linkUrl + '" style="display:inline-block;padding:7px 14px;background-color:#1a5c3a;color:#ffffff;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</a>' +
@@ -2693,7 +2726,6 @@ function buildSubNeededEmailHtml(requests, playerEmail, playerName, scriptUrl) {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:650px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">' +
     '<tr><td style="padding:24px;">' +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
-    greetingRow +
     '<tr><td colspan="4" style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' +
       'Substitutes are needed for <strong>' + dateStr + '</strong>. Click <strong>I CAN Sub</strong> if you are available to substitute for any of the players listed below.' +
     '</td></tr>' +
@@ -2707,11 +2739,9 @@ function buildSubNeededEmailHtml(requests, playerEmail, playerName, scriptUrl) {
     '</table></td></tr></table></body></html>';
 }
 
-function buildSubNeededEmailText(requests, playerName, targetDate) {
-  var firstName = (playerName || '').split(' ')[0] || '';
-  var dateStr   = formatDate(targetDate);
-  var lines     = [];
-  if (firstName) { lines.push('Hi ' + firstName + ','); lines.push(''); }
+function buildSubNeededEmailText(requests, targetDate) {
+  var dateStr = formatDate(targetDate);
+  var lines   = [];
   lines.push('Substitutes are needed for ' + dateStr + '.');
   lines.push('If you can sub for any of the players below, click the "I CAN Sub" link in the HTML version of this email.');
   lines.push('');
@@ -2731,25 +2761,27 @@ function buildSubNeededEmailText(requests, playerName, targetDate) {
 
 function sendUrgentSubBroadcast(openRequests, targetDate) {
   if (!openRequests.length || !isEmailEnabled()) return;
-  var config   = getConfig();
-  var d        = new Date(targetDate + 'T12:00:00');
-  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-  var subject  = 'MWF Tennis, subs needed ' + monthDay;
+  var config    = getConfig();
+  var d         = new Date(targetDate + 'T12:00:00');
+  var monthDay  = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  var subject   = 'MWF Tennis, subs needed ' + monthDay;
   var scriptUrl = SCRIPT_URL;
   try { scriptUrl = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e) {}
-  var players  = getPlayersWithRatings().filter(function(p) {
+  var players   = getPlayersWithRatings().filter(function(p) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
-  sendBulkEmails(players, function(player) {
-    return {
-      to:       player.email,
-      subject:  subject,
-      body:     buildSubNeededEmailText(openRequests, player.name, targetDate),
-      htmlBody: buildSubNeededEmailHtml(openRequests, player.email, player.name, scriptUrl),
-      name:     'MWF Tennis League'
-    };
+  if (!players.length) return;
+  var bccList   = players.map(function(p) { return p.email; }).join(',');
+  var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
+  sendLeagueEmail({
+    to:       adminEmail,
+    bcc:      bccList,
+    subject:  subject,
+    body:     buildSubNeededEmailText(openRequests, targetDate),
+    htmlBody: buildSubNeededEmailHtml(openRequests, scriptUrl),
+    name:     'MWF Tennis League'
   });
-  Logger.log('Urgent sub broadcast sent to ' + players.length + ' player(s) for ' + targetDate);
+  Logger.log('Urgent sub broadcast sent via BCC to ' + players.length + ' player(s) for ' + targetDate);
 }
 
 // ── Pre-match-day dispatch (runs 5× on Sun/Tue/Thu via fixed weekly triggers) ──
@@ -2906,8 +2938,8 @@ function sendTestSubAlertEmail() {
       sendLeagueEmail({
         to:       player.email,
         subject:  subject,
-        body:     buildSubNeededEmailText(openReqs, player.name, targetDate),
-        htmlBody: buildSubNeededEmailHtml(openReqs, player.email, player.name, scriptUrl),
+        body:     buildSubNeededEmailText(openReqs, targetDate),
+        htmlBody: buildSubNeededEmailHtml(openReqs, scriptUrl),
         name:     'MWF Tennis League'
       });
       sent++;
