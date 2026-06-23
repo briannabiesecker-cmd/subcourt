@@ -3220,8 +3220,15 @@ function checkAvailabilityWindow() {
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
   if (!isEmailEnabled()) return;
 
-  sendBulkEmails(missing, function(p) {
-    return { to: p.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  var config2    = getConfig();
+  var adminEmail = config2.senderEmail || 'mwf_league@mtctennis.com';
+  sendLeagueEmail({
+    to:       adminEmail,
+    bcc:      missing.map(function(p) { return p.email; }).join(','),
+    subject:  subject,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     'MWF Tennis League'
   });
 }
 
@@ -3307,10 +3314,17 @@ function _runQueuedAvailBlast() {
     'See you on the court!<br>' +
     'MWF Tennis League';
 
-  sendBulkEmails(allPlayers, function(p) {
-    return { to: p.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  const config2    = getConfig();
+  const adminEmail = config2.senderEmail || 'mwf_league@mtctennis.com';
+  sendLeagueEmail({
+    to:       adminEmail,
+    bcc:      allPlayers.map(function(p) { return p.email; }).join(','),
+    subject:  subject,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     'MWF Tennis League'
   });
-  Logger.log('Availability blast sent to ' + allPlayers.length + ' players.');
+  Logger.log('Availability blast sent via BCC to ' + allPlayers.length + ' players.');
 }
 
 function closeAvailabilityWindow() {
@@ -4489,8 +4503,14 @@ function sendScheduleEmails(params) {
         textContent:  emailParts.body
       });
     } else {
-      sendBulkEmails(allPlayers, function(p) {
-        return { to: p.email, subject: emailParts.subject, body: emailParts.body, htmlBody: emailParts.htmlBody, name: 'MWF Tennis League' };
+      var adminEmail2 = config.senderEmail || 'mwf_league@mtctennis.com';
+      sendLeagueEmail({
+        to:       adminEmail2,
+        bcc:      allPlayers.map(function(p) { return p.email; }).join(','),
+        subject:  emailParts.subject,
+        body:     emailParts.body,
+        htmlBody: emailParts.htmlBody,
+        name:     'MWF Tennis League'
       });
     }
   } catch(e) {
