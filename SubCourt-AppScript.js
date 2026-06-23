@@ -162,9 +162,15 @@ function processVolunteerFromEmail(requestId, playerEmail) {
   }
   var players    = getPlayers();
   var playerName = '';
+  var found      = false;
   for (var j = 0; j < players.length; j++) {
-    if (players[j].email && players[j].email.toLowerCase() === playerEmail) { playerName = players[j].name || ''; break; }
+    if (players[j].email && players[j].email.toLowerCase() === playerEmail) {
+      playerName = players[j].name || '';
+      found = true;
+      break;
+    }
   }
+  if (!found) return { success: false, error: 'That email address was not found in the league roster. Please check your email and try again.' };
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
@@ -227,6 +233,7 @@ function handleVolunteerFromEmail(e) {
           '<button id="btnC" style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Confirm</button>' +
           '<button id="btnD" style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Not Available</button>' +
         '</div>' +
+        '<p id="errmsg" style="display:none;color:#dc2626;font-size:14px;margin-top:8px;"></p>' +
         '<p id="msg" style="display:none;color:#6b7280;margin-top:12px;">Processing…</p>' +
       '</div>' +
       '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>' +
@@ -239,6 +246,13 @@ function handleVolunteerFromEmail(e) {
           'document.getElementById(\'msg\').style.display=\'block\';' +
           'google.script.run' +
             '.withSuccessHandler(function(r){' +
+              'document.getElementById(\'btns\').style.display=\'flex\';' +
+              'document.getElementById(\'msg\').style.display=\'none\';' +
+              'if(!r.success){' +
+                'document.getElementById(\'errmsg\').textContent=r.error||\'An error occurred.\';' +
+                'document.getElementById(\'errmsg\').style.display=\'block\';' +
+                'return;' +
+              '}' +
               'var n=r.playerName?(", "+r.playerName.split(" ")[0]):"";' +
               'document.getElementById(\'pg\').innerHTML=' +
                 '\'<h2>Thank you\'+n+\'!</h2>\'+' +
