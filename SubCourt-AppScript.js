@@ -183,23 +183,22 @@ function handleVolunteerFromEmail(e) {
   }
 
   if (!playerEmail) {
-    // BCC path — show confirmation form so we can identify the player
-    var scriptUrl2 = SCRIPT_URL;
-    var timeLabel  = timeStr ? ' at ' + timeStr : '';
-    var declineUrl = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&notAvailable=true';
+    // BCC path — show confirmation page so we can identify the player
+    var scriptUrl2  = SCRIPT_URL;
+    var timeLabel   = timeStr ? ' at ' + timeStr : '';
+    var confirmBase = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&playerEmail=';
+    var declineUrl  = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&notAvailable=true';
     return wrap(
       '<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">I can sub' + timeLabel + '<br>on ' + dateStr + '</h2>' +
       '<p style="margin-bottom:16px;">Enter your email address to confirm:</p>' +
-      '<form method="get" action="' + scriptUrl2 + '" style="margin:0;">' +
-        '<input type="hidden" name="action" value="volunteerFromEmail">' +
-        '<input type="hidden" name="requestId" value="' + requestId + '">' +
-        '<input type="email" name="playerEmail" required placeholder="your@email.com" autocomplete="email" ' +
-          'style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">' +
-        '<div style="display:flex;gap:12px;">' +
-          '<button type="submit" style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Confirm</button>' +
-          '<a href="' + declineUrl + '" style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border-radius:4px;font-size:16px;font-weight:bold;text-decoration:none;text-align:center;display:inline-block;box-sizing:border-box;">Not Available</a>' +
-        '</div>' +
-      '</form>' +
+      '<input type="email" id="em" placeholder="your@email.com" autocomplete="email" ' +
+        'style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">' +
+      '<div style="display:flex;gap:12px;">' +
+        '<button onclick="var e=document.getElementById(\'em\').value.trim();if(!e){alert(\'Please enter your email address.\');return;}window.location.href=\'' + confirmBase + '\'+encodeURIComponent(e);" ' +
+          'style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Confirm</button>' +
+        '<button onclick="window.location.href=\'' + declineUrl + '\';" ' +
+          'style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Not Available</button>' +
+      '</div>' +
       '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
     );
   }
