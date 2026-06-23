@@ -398,6 +398,16 @@ function getConfig() {
         broadcast: row[3] !== 'No' && row[3] !== false
       };
     });
+    // Friday auto dispatch — auto-init on first use (rows 57–59)
+    var b58 = sheet.getRange('B58').getValue();
+    if (b58 === '' || b58 === null) {
+      sheet.getRange('A57').setValue('── Friday Auto Dispatch ──');
+      sheet.getRange('A58').setValue('Auto Dispatch Enabled');
+      sheet.getRange('B58').setValue(true);
+      sheet.getRange('A59').setValue('Time (ET)');
+      sheet.getRange('B59').setNumberFormat('@');
+      sheet.getRange('B59').setValue('13:00');
+    }
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -410,9 +420,9 @@ function getConfig() {
       preScheduleThresholdHrs:  parseInt(sheet.getRange('B4').getValue())    || 72,
       // Volunteer calendar — row 10
       calendarLookaheadDays:    parseInt(sheet.getRange('B10').getValue())   || 30,
-      // Dispatch automation — rows 13–14
-      autoDispatchEnabled:      (function() { var v = sheet.getRange('B13').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
-      autoDispatchTimeET:       formatSheetTime(sheet.getRange('B14').getValue()) || '08:00',
+      // Dispatch automation (Friday only) — rows 58–59
+      autoDispatchEnabled:      (function() { var v = sheet.getRange('B58').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
+      autoDispatchTimeET:       formatSheetTime(sheet.getRange('B59').getValue()) || '13:00',
       // Match time reminder — rows 28–29
       matchTimeReminderEnabled: (function() { var v = sheet.getRange('B28').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       matchTimeReminderTimeET:  formatSheetTime(sheet.getRange('B29').getValue()) || '10:00',
@@ -487,7 +497,7 @@ function getConfig() {
 // ONE-TIME SETUP
 // Run setupTriggers() once from the Apps Script editor
 // to install the auto-dispatch schedule and the
-// config watcher. Re-runs automatically when B13/B14
+// config watcher. Re-runs automatically when B58/B59
 // are edited thereafter.
 // ──────────────────────────────────────────────────
 
@@ -524,7 +534,7 @@ function setupTriggers() {
   var config = getConfig();
   updateMatchTimeReminderTrigger(config.matchTimeReminderEnabled, config.matchTimeReminderTimeET);
   Logger.log('Triggers installed. Dispatch: ' +
-    (config.autoDispatchEnabled ? 'daily at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
+    (config.autoDispatchEnabled ? 'Fridays at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
     '. Match day -2 runs: Sat/Mon/Wed at 8am, 11am, 2pm, 5pm, 8pm ET.' +
     '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.' +
     ' Match time reminder: ' + (config.matchTimeReminderEnabled ? 'daily at ' + config.matchTimeReminderTimeET + ' ET (sends Sat/Mon/Wed)' : 'disabled') + '.');
@@ -535,7 +545,7 @@ function onConfigEdit(e) {
   if (e.range.getSheet().getName() !== TABS.config) return;
   var col = e.range.getColumn();
   var row = e.range.getRow();
-  if (col === 2 && (row === 13 || row === 14)) {
+  if (col === 2 && (row === 58 || row === 59)) {
     updateDispatchTrigger();
     Logger.log('Config changed — dispatch trigger updated.');
   }
@@ -632,13 +642,13 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
   // and use the hour directly
   ScriptApp.newTrigger('runAutoDispatch')
     .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.FRIDAY)
     .atHour(hourET)
     .nearMinute(minET)
-    .everyDays(1)
     .inTimezone('America/New_York')
     .create();
 
-  Logger.log('Dispatch trigger set for ' + config.autoDispatchTimeET + ' ET daily.');
+  Logger.log('Dispatch trigger set for Fridays at ' + timeET + ' ET.');
 }
 
 function scheduleImmediateDispatch() {
@@ -2486,8 +2496,8 @@ function saveAutoDispatchSettings(params) {
   var enabled = params.enabled === 'true' || params.enabled === true;
   var time    = (params.time || '08:00').trim();
 
-  sheet.getRange('B13').setValue(enabled);
-  var timeCell = sheet.getRange('B14');
+  sheet.getRange('B58').setValue(enabled);
+  var timeCell = sheet.getRange('B59');
   timeCell.setNumberFormat('@');
   timeCell.setValue(time);
   SpreadsheetApp.flush();
