@@ -185,7 +185,6 @@ function handleVolunteerFromEmail(e) {
   if (!playerEmail) {
     // BCC path — show confirmation form so we can identify the player
     var scriptUrl2 = SCRIPT_URL;
-    try { scriptUrl2 = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e2) {}
     var timeLabel  = timeStr ? ' at ' + timeStr : '';
     var declineUrl = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&notAvailable=true';
     return wrap(
@@ -2796,7 +2795,6 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   var monthDay  = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   var subject   = 'MWF Tennis, subs needed ' + monthDay;
   var scriptUrl = SCRIPT_URL;
-  try { scriptUrl = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e) {}
   var players   = getPlayersWithRatings().filter(function(p) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
@@ -2960,7 +2958,6 @@ function sendTestSubAlertEmail() {
   var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   var subject  = 'MWF Tennis, subs needed ' + monthDay;
   var scriptUrl = SCRIPT_URL;
-  try { scriptUrl = ScriptApp.getService().getUrl() || SCRIPT_URL; } catch(e) {}
 
   var sent = 0, errors = [];
   testPlayers.forEach(function(player) {
