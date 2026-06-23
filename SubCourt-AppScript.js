@@ -373,6 +373,31 @@ function getConfig() {
         cancel:    row[4] === 'Yes' || row[4] === true
       };
     });
+    // Match Day -2 dispatch schedule — auto-init on first use (rows 49–55)
+    var b50 = sheet.getRange('B50').getValue();
+    if (b50 === '' || b50 === null) {
+      sheet.getRange('A49').setValue('── Match Day -2 Dispatch ──');
+      sheet.getRange('A50').setValue('Run');
+      sheet.getRange('B50').setValue('Time (ET)');
+      sheet.getRange('C50').setValue('Dispatch');
+      sheet.getRange('D50').setValue('Broadcast');
+      sheet.getRange('A51:D55').setValues([
+        ['1', '8:00 AM',  'Yes', 'Yes'],
+        ['2', '11:00 AM', 'Yes', 'Yes'],
+        ['3', '2:00 PM',  'Yes', 'Yes'],
+        ['4', '5:00 PM',  'Yes', 'Yes'],
+        ['5', '8:00 PM',  'Yes', 'Yes']
+      ]);
+    }
+    var md2Rows = sheet.getRange('A51:D55').getValues();
+    var matchDayMinus2Schedule = md2Rows.map(function(row) {
+      return {
+        run:       row[0].toString(),
+        time:      formatSheetTime(row[1]) || row[1].toString().trim(),
+        dispatch:  row[2] !== 'No' && row[2] !== false,
+        broadcast: row[3] !== 'No' && row[3] !== false
+      };
+    });
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -401,6 +426,7 @@ function getConfig() {
       brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
       urgentSubEmailsEnabled:  (function() { var v = sheet.getRange('B39').getValue(); return v !== 'No' && v !== false; })(),
       preMatchSchedule: preMatchSchedule,
+      matchDayMinus2Schedule: matchDayMinus2Schedule,
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
@@ -436,6 +462,13 @@ function getConfig() {
         { run:'4', time:'5:00 PM',  dispatch:true, broadcast:true, cancel:false },
         { run:'5', time:'8:00 PM',  dispatch:true, broadcast:true, cancel:true  }
       ],
+      matchDayMinus2Schedule: [
+        { run:'1', time:'8:00 AM',  dispatch:true, broadcast:true },
+        { run:'2', time:'11:00 AM', dispatch:true, broadcast:true },
+        { run:'3', time:'2:00 PM',  dispatch:true, broadcast:true },
+        { run:'4', time:'5:00 PM',  dispatch:true, broadcast:true },
+        { run:'5', time:'8:00 PM',  dispatch:true, broadcast:true }
+      ],
       availWindowOpenDate:     '',
       availWindowCloseDate:    '',
       availWindowActive:       false,
@@ -463,7 +496,7 @@ function setupTriggers() {
   var managed = ['runAutoDispatch','onConfigEdit','cleanupOldAvailability','checkAvailabilityWindow',
                  'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
                  'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder',
-                 '_runQueuedAvailBlast','_runMatchTimeReminderCheck'];
+                 '_runQueuedAvailBlast','_runMatchTimeReminderCheck','runMatchDayMinus2Dispatch'];
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (managed.indexOf(t.getHandlerFunction()) !== -1) {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
@@ -485,10 +518,14 @@ function setupTriggers() {
   // Pre-match-day dispatch: 5 runs on Sun/Tue/Thu (day before Mon/Wed/Fri matches).
   updatePreMatchDayTriggers();
 
+  // Match day -2 dispatch: 5 runs on Sat/Mon/Wed (2 days before Mon/Wed/Fri matches).
+  updateMatchDayMinus2Triggers();
+
   var config = getConfig();
   updateMatchTimeReminderTrigger(config.matchTimeReminderEnabled, config.matchTimeReminderTimeET);
   Logger.log('Triggers installed. Dispatch: ' +
     (config.autoDispatchEnabled ? 'daily at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
+    '. Match day -2 runs: Sat/Mon/Wed at 8am, 11am, 2pm, 5pm, 8pm ET.' +
     '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.' +
     ' Match time reminder: ' + (config.matchTimeReminderEnabled ? 'daily at ' + config.matchTimeReminderTimeET + ' ET (sends Sat/Mon/Wed)' : 'disabled') + '.');
 }
@@ -506,6 +543,10 @@ function onConfigEdit(e) {
     updatePreMatchDayTriggers();
     Logger.log('Pre-match schedule time changed — triggers updated.');
   }
+  if ((col === 2 || col === 3 || col === 4) && row >= 51 && row <= 55) {
+    updateMatchDayMinus2Triggers();
+    Logger.log('Match day -2 schedule changed — triggers updated.');
+  }
 }
 
 function updatePreMatchDayTriggers() {
@@ -515,14 +556,33 @@ function updatePreMatchDayTriggers() {
     }
   });
   var config = getConfig();
-  var days  = [ScriptApp.WeekDay.SUNDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.THURSDAY];
   var hours = (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); })
                 .filter(function(h) { return h >= 0; });
   if (!hours.length) hours = [8, 11, 14, 17, 20];
-  days.forEach(function(day) {
-    hours.forEach(function(hour) {
-      ScriptApp.newTrigger('runPreMatchDayDispatch').timeBased().onWeekDay(day).atHour(hour).create();
-    });
+  // Daily triggers — the function itself guards to Sun/Tue/Thu only.
+  // Using daily instead of 3×weekly to stay under the 20-trigger limit.
+  hours.forEach(function(hour) {
+    ScriptApp.newTrigger('runPreMatchDayDispatch')
+      .timeBased().atHour(hour).everyDays(1)
+      .inTimezone('America/New_York').create();
+  });
+}
+
+function updateMatchDayMinus2Triggers() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'runMatchDayMinus2Dispatch') {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
+    }
+  });
+  var config = getConfig();
+  var hours = (config.matchDayMinus2Schedule || []).map(function(r) { return _parseConfigHour(r.time); })
+                .filter(function(h) { return h >= 0; });
+  if (!hours.length) hours = [8, 11, 14, 17, 20];
+  // Daily triggers — the function itself guards to Sat/Mon/Wed only.
+  hours.forEach(function(hour) {
+    ScriptApp.newTrigger('runMatchDayMinus2Dispatch')
+      .timeBased().atHour(hour).everyDays(1)
+      .inTimezone('America/New_York').create();
   });
 }
 
@@ -2727,6 +2787,39 @@ function runPreMatchDayDispatch() {
 
 // Alias kept so the 8 PM trigger name still resolves after any old trigger references
 function runPreMatchDayDispatchFinal() { runPreMatchDayDispatch(); }
+
+function _matchDayMinus2TargetDate() {
+  var tz  = Session.getScriptTimeZone();
+  var dow = parseInt(Utilities.formatDate(new Date(), tz, 'u')); // 1=Mon…7=Sun
+  if (dow !== 6 && dow !== 1 && dow !== 3) return null; // Sat/Mon/Wed only
+  return getDateStr(2); // target match is 2 days out
+}
+
+function runMatchDayMinus2Dispatch() {
+  var targetDate = _matchDayMinus2TargetDate();
+  if (!targetDate) { Logger.log('runMatchDayMinus2Dispatch: not a match day -2'); return; }
+
+  var config      = getConfig();
+  var tz          = Session.getScriptTimeZone();
+  var currentHour = parseInt(Utilities.formatDate(new Date(), tz, 'H'));
+
+  var row = null;
+  (config.matchDayMinus2Schedule || []).forEach(function(r) {
+    var h = _parseConfigHour(r.time);
+    if (h >= 0 && Math.abs(h - currentHour) <= 1) row = r;
+  });
+  if (!row) row = { dispatch: true, broadcast: true };
+
+  Logger.log('runMatchDayMinus2Dispatch: ' + targetDate + ' hour=' + currentHour +
+    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast);
+
+  if (row.dispatch) runDispatchForDate(targetDate);
+
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
+    sendUrgentSubBroadcast(openReqs, targetDate);
+  }
+}
 
 // Manual launch from Admin screen — runs dispatch synchronously, then queues broadcast
 // via a one-shot trigger so the HTTP response returns before the slow email loop starts.
