@@ -660,10 +660,10 @@ function setupTriggers() {
   ScriptApp.newTrigger('onConfigEdit').forSpreadsheet(SHEET_ID).onEdit().create();
 
   // Monthly cleanup of old availability records
-  ScriptApp.newTrigger('cleanupOldAvailability').timeBased().onMonthDay(1).atHour(2).create();
+  ScriptApp.newTrigger('cleanupOldAvailability').timeBased().onMonthDay(1).atHour(4).create();
 
   // Daily check to auto-close availability window
-  ScriptApp.newTrigger('checkAvailabilityWindow').timeBased().atHour(1).everyDays(1).create();
+  ScriptApp.newTrigger('checkAvailabilityWindow').timeBased().atHour(4).everyDays(1).create();
 
   // Daily dispatch (handles T+2 broadcast; T+1 is handled by pre-match-day triggers below)
   updateDispatchTrigger();
