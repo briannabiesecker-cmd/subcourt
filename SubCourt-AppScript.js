@@ -1094,6 +1094,16 @@ function getColMap(sheet) {
   }
 }
 
+// Looks up a player's current email by name from a pre-loaded players array.
+// Falls back to storedEmail if the name isn't found — never returns empty when
+// storedEmail has a value.
+function _resolveEmail(name, storedEmail, players) {
+  if (!name || !players || !players.length) return storedEmail || '';
+  var lower = name.toLowerCase();
+  var match = players.find(function(p) { return p.name && p.name.toLowerCase() === lower; });
+  return (match && match.email) ? match.email : (storedEmail || '');
+}
+
 function getPlayers() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet) return [];
@@ -2316,13 +2326,16 @@ function runMatch(params) {
 
 function sendConfirmationEmails(data, groupPlayers) {
   groupPlayers = groupPlayers || [];
+  const players    = getPlayers();
   const dateStr    = formatDate(data.matchDate);
   const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
   const senderName = 'MWF Tennis League';
 
-  // To: requestor + sub   CC: group partners
-  const toAddresses = [data.requestorEmail, data.subEmail].filter(Boolean).join(', ');
-  const ccList      = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+  // To: requestor + sub   CC: group partners — always resolve against current Players sheet
+  const resolvedRequestorEmail = _resolveEmail(data.requestorName, data.requestorEmail, players);
+  const resolvedSubEmail       = _resolveEmail(data.subName,       data.subEmail,       players);
+  const toAddresses = [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean).join(', ');
+  const ccList      = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
   const ccAddresses = ccList.join(', ');
 
   const subject =
@@ -2409,6 +2422,7 @@ function runMatchTimeReminder() {
   var isReminderDay = (dow === 6 || dow === 1 || dow === 3); // Sat, Mon, Wed
 
   var requests  = getRequests();
+  var players   = getPlayers();
   var siteUrl   = APP_BASE_URL + '#request';
   var notified  = 0;
   var activeIds = {};
@@ -2434,10 +2448,10 @@ function runMatchTimeReminder() {
     var isAnitaSub = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
     var requesterName = isAnitaSub ? 'Your group' : req.name;
 
-    // Build recipient list: requester + all group members, deduplicated
+    // Build recipient list: requester + all group members — always resolve against current Players sheet
     var allEmails = [];
-    if (!isAnitaSub && req.email) allEmails.push(req.email);
-    groupPlayers.forEach(function(p) { if (p.email) allEmails.push(p.email); });
+    if (!isAnitaSub && req.name) allEmails.push(_resolveEmail(req.name, req.email, players));
+    groupPlayers.forEach(function(p) { if (p.name || p.email) allEmails.push(_resolveEmail(p.name, p.email, players)); });
     var seen = {};
     allEmails = allEmails.filter(function(e) {
       var k = e.toLowerCase(); if (seen[k]) return false; seen[k] = true; return true;
@@ -2508,6 +2522,8 @@ function saveAutoDispatchSettings(params) {
 }
 
 function sendRetirementEmail(req) {
+  var players      = getPlayers();
+  var toEmail      = _resolveEmail(req.name, req.email, players);
   var dateStr      = formatDate(req.matchDate);
   var timeStr      = req.matchTime ? TIME_LABELS[req.matchTime] : 'TBD';
   var subject      = 'MWF Tennis League — Unable to find substitute: ' + dateStr + (req.matchTime ? ' at ' + timeStr : '');
@@ -2527,8 +2543,8 @@ function sendRetirementEmail(req) {
     'Click on <a href="' + directoryUrl + '">Directory</a>, if you\'d like to launch an email to the entire group.<br><br>' +
     'MWF Tennis League';
   var groupPlayers = req.groupPlayers || [];
-  var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
-  var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  var ccList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
+  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) sendLeagueEmail(emailParams);
 }
@@ -2536,17 +2552,18 @@ function sendRetirementEmail(req) {
 function sendSubNeededTomorrowEmail(req) {
   if (!isEmailEnabled()) return;
 
+  var players      = getPlayers();
   var isAnitaSub   = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
   var groupPlayers = req.groupPlayers || [];
 
   var toEmail, greetingName, ccPlayers;
   if (isAnitaSub) {
     var captain  = groupPlayers[0] || {};
-    toEmail      = captain.email || '';
+    toEmail      = _resolveEmail(captain.name, captain.email, players);
     greetingName = captain.name  || 'Captain';
     ccPlayers    = groupPlayers.slice(1);
   } else {
-    toEmail      = req.email || '';
+    toEmail      = _resolveEmail(req.name, req.email, players);
     greetingName = req.name  || 'A player';
     ccPlayers    = groupPlayers;
   }
@@ -2572,7 +2589,7 @@ function sendSubNeededTomorrowEmail(req) {
     'Click on <a href="' + directoryUrl + '">Directory</a>, if you\'d like to launch an email to the entire group.<br><br>' +
     'MWF Tennis League';
 
-  var ccList = ccPlayers.map(function(p) { return p.email; }).filter(function(e) {
+  var ccList = ccPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(function(e) {
     return e && !/^anita\.sub\d+@xgmail\.com$/i.test(e);
   });
   var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
@@ -3305,10 +3322,14 @@ function normalizeMonth(val) {
 
 function submitAvailability(params) {
   const name           = params.name           || '';
-  const email          = (params.email         || '').toLowerCase();
+  const emailParam     = (params.email         || '').toLowerCase();
   const month          = params.month          || '';
   const availableDates = params.availableDates || '[]';
   const notes          = params.notes          || '';
+
+  // Always use the current email from the Players sheet
+  const players = getPlayers();
+  const email   = _resolveEmail(name, emailParam, players);
 
   Logger.log('submitAvailability called: name=%s email=%s month=%s dates=%s', name, email, month, availableDates);
 
@@ -3321,12 +3342,15 @@ function submitAvailability(params) {
   const sheet   = getOrCreateAvailabilitySheet();
   const lastRow = sheet.getLastRow();
 
-  // Upsert: find existing row for this email + month
+  // Upsert: match existing row by email OR by name (handles email address changes)
   let targetRow = -1;
   if (lastRow >= 2) {
     const rows = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
     rows.forEach(function(r, i) {
-      if ((r[2] || '').toLowerCase() === email && normalizeMonth(r[3]) === month) {
+      var rowEmail = (r[2] || '').toLowerCase();
+      var rowName  = (r[1] || '').toLowerCase();
+      if (normalizeMonth(r[3]) === month &&
+          (rowEmail === email || rowEmail === emailParam || rowName === name.toLowerCase())) {
         targetRow = i + 2;
       }
     });
