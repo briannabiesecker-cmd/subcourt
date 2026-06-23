@@ -146,6 +146,37 @@ function sendBrevoEmail(params) {
   return JSON.parse(body);
 }
 
+// Called via google.script.run from the confirmation page — no navigation needed.
+function processVolunteerFromEmail(requestId, playerEmail) {
+  requestId   = (requestId   || '').trim();
+  playerEmail = (playerEmail || '').trim().toLowerCase();
+  if (!requestId || !playerEmail) return { success: false, error: 'Invalid parameters.' };
+  var requests = getRequests();
+  var req;
+  for (var i = 0; i < requests.length; i++) {
+    if (requests[i].id === requestId) { req = requests[i]; break; }
+  }
+  if (!req) return { success: false, error: 'This sub request could not be found. It may have already been filled.' };
+  if (req.status !== 'open') {
+    return { success: false, error: req.status === 'filled' ? 'This sub request has already been filled.' : 'This sub request is no longer active.' };
+  }
+  var players    = getPlayers();
+  var playerName = '';
+  for (var j = 0; j < players.length; j++) {
+    if (players[j].email && players[j].email.toLowerCase() === playerEmail) { playerName = players[j].name || ''; break; }
+  }
+  var timeCode = req.matchTime
+    ? req.matchTime.replace(':', '_')
+    : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
+  var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  var nextRow  = volSheet.getLastRow() + 1;
+  var rng      = volSheet.getRange(nextRow, 1, 1, 7);
+  rng.setNumberFormats([['@','@','@','@','@','@','@']]);
+  rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
+  Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
+  return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '' };
+}
+
 function handleVolunteerFromEmail(e) {
   var p            = e.parameter || {};
   var requestId    = (p.requestId    || '').trim();
@@ -183,23 +214,53 @@ function handleVolunteerFromEmail(e) {
   }
 
   if (!playerEmail) {
-    // BCC path — show confirmation page so we can identify the player
-    var scriptUrl2  = SCRIPT_URL;
-    var timeLabel   = timeStr ? ' at ' + timeStr : '';
-    var confirmBase = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&playerEmail=';
-    var declineUrl  = scriptUrl2 + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(requestId) + '&notAvailable=true';
+    // BCC path — confirmation page; uses google.script.run so no navigation needed
+    var timeLabel = timeStr ? ' at ' + timeStr : '';
+    var reqIdJs   = requestId.replace(/'/g, "\\'");
     return wrap(
-      '<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">I can sub' + timeLabel + '<br>on ' + dateStr + '</h2>' +
-      '<p style="margin-bottom:16px;">Enter your email address to confirm:</p>' +
-      '<input type="email" id="em" placeholder="your@email.com" autocomplete="email" ' +
-        'style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">' +
-      '<div style="display:flex;gap:12px;">' +
-        '<button onclick="var e=document.getElementById(\'em\').value.trim();if(!e){alert(\'Please enter your email address.\');return;}window.location.href=\'' + confirmBase + '\'+encodeURIComponent(e);" ' +
-          'style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Confirm</button>' +
-        '<button onclick="window.location.href=\'' + declineUrl + '\';" ' +
-          'style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Not Available</button>' +
+      '<div id="pg">' +
+        '<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">I can sub' + timeLabel + '<br>on ' + dateStr + '</h2>' +
+        '<p style="margin-bottom:16px;">Enter your email address to confirm:</p>' +
+        '<input type="email" id="em" placeholder="your@email.com" autocomplete="email" ' +
+          'style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">' +
+        '<div id="btns" style="display:flex;gap:12px;">' +
+          '<button id="btnC" style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Confirm</button>' +
+          '<button id="btnD" style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Not Available</button>' +
+        '</div>' +
+        '<p id="msg" style="display:none;color:#6b7280;margin-top:12px;">Processing…</p>' +
       '</div>' +
-      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>' +
+      '<script>' +
+        'var RID=\'' + reqIdJs + '\';' +
+        'document.getElementById(\'btnC\').onclick=function(){' +
+          'var e=(document.getElementById(\'em\').value||\'\').trim();' +
+          'if(!e){alert(\'Please enter your email address.\');return;}' +
+          'document.getElementById(\'btns\').style.display=\'none\';' +
+          'document.getElementById(\'msg\').style.display=\'block\';' +
+          'google.script.run' +
+            '.withSuccessHandler(function(r){' +
+              'var n=r.playerName?(", "+r.playerName.split(" ")[0]):"";' +
+              'document.getElementById(\'pg\').innerHTML=' +
+                '\'<h2>Thank you\'+n+\'!</h2>\'+' +
+                '\'<p>You have volunteered to sub on <strong>\'+r.dateStr+\'</strong>\'+' +
+                '(r.timeStr?\' at <strong>\'+r.timeStr+\'</strong>\':\'\')+\'.</p>\'+' +
+                '\'<p>You will be notified if you are selected as a substitute.</p>\'+' +
+                '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
+            '})' +
+            '.withFailureHandler(function(){' +
+              'document.getElementById(\'btns\').style.display=\'flex\';' +
+              'document.getElementById(\'msg\').style.display=\'none\';' +
+              'alert(\'Something went wrong. Please try again.\');' +
+            '})' +
+            '.processVolunteerFromEmail(RID,e);' +
+        '};' +
+        'document.getElementById(\'btnD\').onclick=function(){' +
+          'document.getElementById(\'pg\').innerHTML=' +
+            '\'<p style="font-size:18px;font-weight:bold;color:#1a5c3a;">No problem!</p>\'+' +
+            '\'<p>Thanks for letting us know. We\\\'ll keep looking for a sub.</p>\'+' +
+            '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
+        '};' +
+      '<\/script>'
     );
   }
 
