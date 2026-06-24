@@ -3290,7 +3290,7 @@ function checkAvailabilityWindow() {
   var closeDate = new Date(config.closeDate + 'T00:00:00');
   var daysUntilClose = Math.round((closeDate - today) / 864e5);
 
-  if (daysUntilClose !== 2 && daysUntilClose !== 1) return;
+  if (daysUntilClose !== 1 && daysUntilClose !== 0) return;
 
   var missing = getPlayersWithoutSubmission(config.targetMonth).filter(function(p) {
     return !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
@@ -3301,7 +3301,7 @@ function checkAvailabilityWindow() {
   }
 
   var closeDateLabel = closeDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  var urgency        = daysUntilClose === 1 ? 'tomorrow' : 'in 2 days';
+  var urgency        = daysUntilClose === 0 ? 'today' : 'tomorrow';
   var avUrl          = APP_BASE_URL + '#availability';
   var subject        = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes ' + urgency;
   var body =
