@@ -3292,6 +3292,9 @@ function checkAvailabilityWindow() {
 
   if (daysUntilClose !== 1 && daysUntilClose !== 0) return;
 
+  var currentHour = parseInt(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'H'));
+  if (currentHour >= 12) { Logger.log('checkAvailabilityWindow: skipping — afternoon/evening run'); return; }
+
   var missing = getPlayersWithoutSubmission(config.targetMonth).filter(function(p) {
     return !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || '');
   });
