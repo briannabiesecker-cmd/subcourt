@@ -2437,16 +2437,12 @@ function runMatch(params) {
     // Note: rating itself is NOT included — only the diff
   });
 
-  // For tomorrow's requests there is no rating restriction, so large skill gaps are possible.
-  // Sort by closest rating to minimize variation; use timestamp only as tiebreaker.
-  // For all other dates keep the original behavior: earliest submission first.
-  var tomorrowD = new Date();
-  tomorrowD.setDate(tomorrowD.getDate() + 1);
-  var tomorrowStr  = Utilities.formatDate(tomorrowD, 'America/New_York', 'yyyy-MM-dd');
-  var isTomorrow   = matchDate === tomorrowStr;
+  // Within 48 hours: sort by closest rating (no skill restriction, so minimize variation).
+  // Beyond 48 hours: FIFO — earliest submission first, rating as tiebreaker.
+  var useRatingSort = phase === 'last-minute' || phase === 'urgent';
 
   candidates.sort((a, b) => {
-    if (isTomorrow) {
+    if (useRatingSort) {
       if (a.ratingDiff !== b.ratingDiff) return a.ratingDiff - b.ratingDiff;
       return a.timestamp.localeCompare(b.timestamp);
     }
