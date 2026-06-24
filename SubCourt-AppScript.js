@@ -3368,6 +3368,15 @@ function checkEmailQuota() {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
     }
   });
+  try {
+    MailApp.sendEmail({
+      to: 'marobria@gmail.com',
+      subject: 'Rally: daily email quota at 3:45 AM = ' + remaining,
+      body: 'Remaining MailApp recipients for today: ' + remaining + '\n\nThis is an automated diagnostic check.'
+    });
+  } catch(e) {
+    Logger.log('Could not send quota email: ' + e.message);
+  }
   return { remaining: remaining };
 }
 
