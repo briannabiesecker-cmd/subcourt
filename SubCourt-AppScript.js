@@ -3336,6 +3336,54 @@ function checkAvailabilityWindow() {
   });
 }
 
+function testCheckAvailabilityWindowEmail() {
+  var config      = getAvailabilityConfig();
+  var closeDate   = new Date(config.closeDate + 'T00:00:00');
+  var closeDateLabel = closeDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  var avUrl       = APP_BASE_URL + '#availability';
+  var subject     = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes today';
+  var body =
+    'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes today (' + closeDateLabel + ').\n\n' +
+    'Please submit your available dates before the window closes so we can include you in the schedule.\n\n' +
+    'Open the My Availability page to submit:\n' +
+    avUrl + '\n\n' +
+    'See you on the court!\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Just a reminder — the availability window for <strong>' + config.targetMonthLabel + '</strong> closes today (' + closeDateLabel + ').<br><br>' +
+    'Please submit your available dates before the window closes so we can include you in the schedule.<br><br>' +
+    'Open the <a href="' + avUrl + '">My Availability</a> page to submit.<br><br>' +
+    'See you on the court!<br>' +
+    'MWF Tennis League';
+  MailApp.sendEmail({ to: 'marobria@gmail.com', subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+  return { success: true };
+}
+
+function checkEmailQuota() {
+  var remaining = MailApp.getRemainingDailyQuota();
+  Logger.log('Remaining daily email quota: ' + remaining);
+  // Self-delete so a scheduled run is one-shot
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'checkEmailQuota') {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
+    }
+  });
+  return { remaining: remaining };
+}
+
+function scheduleCheckEmailQuotaTomorrow() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'checkEmailQuota') {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
+    }
+  });
+  ScriptApp.newTrigger('checkEmailQuota')
+    .timeBased().atHour(3).nearMinute(45).everyDays(1)
+    .inTimezone('America/New_York').create();
+  Logger.log('checkEmailQuota scheduled for 3:45 AM ET (will self-delete after first run)');
+  return { scheduled: true };
+}
+
 function testAvailabilityEmail() {
   var config = getAvailabilityConfig();
   var closeDateLabel = 'Friday, April 25';
