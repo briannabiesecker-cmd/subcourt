@@ -2246,6 +2246,7 @@ function createScheduleDraft(params) {
     MailApp.sendEmail(opts);
     return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
   } catch(e) {
+    _sendAdminFallbackEmail({ to: toList, subject: subject, body: '', htmlBody: htmlBody });
     return { success: false, error: e.toString() };
   }
 }
