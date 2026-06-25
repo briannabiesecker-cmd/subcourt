@@ -323,10 +323,11 @@ function sendLeagueEmail(params) {
 
   if (bccAddrs.length <= BCC_CHUNK_SIZE) {
     var opts = { name: baseOpts.name };
-    if (baseOpts.htmlBody) opts.htmlBody = baseOpts.htmlBody;
-    if (baseOpts.cc)       opts.cc       = baseOpts.cc;
-    if (baseOpts.replyTo)  opts.replyTo  = baseOpts.replyTo;
-    if (bccAddrs.length)   opts.bcc      = bccAddrs.join(',');
+    if (baseOpts.htmlBody)    opts.htmlBody    = baseOpts.htmlBody;
+    if (baseOpts.cc)          opts.cc          = baseOpts.cc;
+    if (baseOpts.replyTo)     opts.replyTo     = baseOpts.replyTo;
+    if (baseOpts.attachments) opts.attachments = baseOpts.attachments;
+    if (bccAddrs.length)      opts.bcc         = bccAddrs.join(',');
     try {
       MailApp.sendEmail(params.to, params.subject, params.body, opts);
       _logEmail(params.to, params.subject, 'sent');
@@ -340,9 +341,10 @@ function sendLeagueEmail(params) {
     for (var i = 0; i < bccAddrs.length; i += BCC_CHUNK_SIZE) {
       var chunk = bccAddrs.slice(i, i + BCC_CHUNK_SIZE);
       var chunkOpts = { name: baseOpts.name, bcc: chunk.join(',') };
-      if (baseOpts.htmlBody) chunkOpts.htmlBody = baseOpts.htmlBody;
-      if (baseOpts.cc)       chunkOpts.cc       = baseOpts.cc;
-      if (baseOpts.replyTo)  chunkOpts.replyTo  = baseOpts.replyTo;
+      if (baseOpts.htmlBody)    chunkOpts.htmlBody    = baseOpts.htmlBody;
+      if (baseOpts.cc)          chunkOpts.cc          = baseOpts.cc;
+      if (baseOpts.replyTo)     chunkOpts.replyTo     = baseOpts.replyTo;
+      if (baseOpts.attachments) chunkOpts.attachments = baseOpts.attachments;
       if (i > 0) Utilities.sleep(500);
       try {
         MailApp.sendEmail(params.to, params.subject, params.body, chunkOpts);
@@ -2237,16 +2239,21 @@ function createScheduleDraft(params) {
              errors: sendErrors.length ? sendErrors : undefined };
   }
 
-  // ── Send via MailApp ──────────────────────────────────────────────────
-  var csvBlob = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
-  var toList  = sd.playerEmails.join(', ');
-  var opts    = { to: toList, subject: subject, body: '', htmlBody: htmlBody, attachments: [csvBlob], name: 'MWF Tennis League' };
-  if (config.senderEmail) opts.replyTo = config.senderEmail;
+  // ── Send via MailApp (BCC-chunked through sendLeagueEmail) ───────────
+  var csvBlob    = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
+  var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
   try {
-    MailApp.sendEmail(opts);
+    sendLeagueEmail({
+      to:          adminEmail,
+      bcc:         sd.playerEmails.join(','),
+      subject:     subject,
+      body:        '',
+      htmlBody:    htmlBody,
+      attachments: [csvBlob],
+      name:        'MWF Tennis League'
+    });
     return { success: true, month: sd.monthLabel, emailsSent: sd.playerEmails.length };
   } catch(e) {
-    _sendAdminFallbackEmail({ to: toList, subject: subject, body: '', htmlBody: htmlBody });
     return { success: false, error: e.toString() };
   }
 }
@@ -4448,7 +4455,8 @@ function publishScheduleSlot(params) {
 
       Logger.log('Created ' + anitaName + ' (rating ' + anitaRating + ') for ' + slot.date + ' group ' + String.fromCharCode(65 + gi));
       var captainPlayer = workingGroup.find(function(p) { return p.email.toLowerCase() === captainEmail.toLowerCase(); });
-      sendCaptainThreePlayerNotification(captainPlayer ? captainPlayer.name : '', captainEmail, slot.date, anitaName);
+      try { sendCaptainThreePlayerNotification(captainPlayer ? captainPlayer.name : '', captainEmail, slot.date, anitaName); }
+      catch(emailErr) { Logger.log('Captain notify failed (email): ' + emailErr.message); }
       workingGroup.push({ name: anitaName, email: anitaEmail });
     }
 
@@ -4494,7 +4502,8 @@ function publishScheduleSlot(params) {
       slot.date, sitOutTimes, 'pending'
     ]]);
     Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes + ' (timestamp backdated 30 days)');
-    sendSitOutNotification(sitOutName, sitOutEmail, slot.date);
+    try { sendSitOutNotification(sitOutName, sitOutEmail, slot.date); }
+    catch(emailErr) { Logger.log('Sit-out notify failed (email): ' + emailErr.message); }
   }
 
   // Create a Volunteer record for the 2nd alternate (remainder===2 case)
@@ -4523,7 +4532,8 @@ function publishScheduleSlot(params) {
       slot.date, sitOut2Times, 'pending'
     ]]);
     Logger.log('Created volunteer record for 2nd alternate: ' + sitOut2Name + ' on ' + slot.date + ' times: ' + sitOut2Times + ' (timestamp backdated 30 days)');
-    sendSitOutNotification(sitOut2Name, sitOut2Email, slot.date);
+    try { sendSitOutNotification(sitOut2Name, sitOut2Email, slot.date); }
+    catch(emailErr) { Logger.log('Sit-out2 notify failed (email): ' + emailErr.message); }
   }
 
   return { success: true, groupsWritten: saved };
