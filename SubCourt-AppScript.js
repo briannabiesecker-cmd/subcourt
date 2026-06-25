@@ -3050,6 +3050,33 @@ function sendTestSubAlertEmail() {
   return { success: true, emailsSent: sent, date: targetDate };
 }
 
+// Sends the broadcast sub-needed email to marobria@gmail.com only (1 quota slot),
+// for manual forwarding to the league when the scheduled broadcast fails.
+function sendBroadcastEmailToAdmin() {
+  var targetDate = getDateStr(1);
+  var openReqs   = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length) {
+    return { success: false, error: 'No open sub requests for ' + targetDate };
+  }
+  var d        = new Date(targetDate + 'T12:00:00');
+  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  var subject  = '[FORWARD TO LEAGUE] MWF Tennis, subs needed ' + monthDay;
+  try {
+    MailApp.sendEmail({
+      to:       'marobria@gmail.com',
+      subject:  subject,
+      body:     buildSubNeededEmailText(openReqs, targetDate),
+      htmlBody: buildSubNeededEmailHtml(openReqs, SCRIPT_URL),
+      name:     'MWF Tennis League'
+    });
+    Logger.log('sendBroadcastEmailToAdmin: sent for ' + targetDate + ' (' + openReqs.length + ' open requests)');
+    return { success: true, targetDate: targetDate, openRequests: openReqs.length };
+  } catch(e) {
+    Logger.log('sendBroadcastEmailToAdmin failed: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
 function cancelRequest(params) {
   var requests = getRequests();
   var req = requests.find(function(r) { return r.id === params.requestId; });
