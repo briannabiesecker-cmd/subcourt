@@ -332,6 +332,7 @@ function sendLeagueEmail(params) {
       _logEmail(params.to, params.subject, 'sent');
     } catch(e) {
       _logEmail(params.to, params.subject, 'failed: ' + e.message);
+      _sendAdminFallbackEmail(params);
       throw e;
     }
   } else {
@@ -348,6 +349,7 @@ function sendLeagueEmail(params) {
         _logEmail(params.to, params.subject, 'sent (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ')');
       } catch(e) {
         _logEmail(params.to, params.subject, 'failed chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ': ' + e.message);
+        _sendAdminFallbackEmail(params);
         throw e;
       }
     }
@@ -366,6 +368,54 @@ function _logEmail(to, subject, status) {
     sheet.appendRow([new Date(), to, subject, status]);
   } catch(e) {
     Logger.log('_logEmail error: ' + e.message);
+  }
+}
+
+// When sendLeagueEmail fails, sends the same email to the admin for manual forwarding.
+// Uses 1 quota slot. If <20 addressees, lists them at the top; otherwise says "send to all".
+function _sendAdminFallbackEmail(params) {
+  var ADMIN_EMAIL = 'marobria@gmail.com';
+  var ADDR_THRESHOLD = 20;
+
+  var allAddrs = [];
+  if (params.to) allAddrs.push(params.to);
+  if (params.cc) params.cc.split(',').forEach(function(a) { var t = a.trim(); if (t) allAddrs.push(t); });
+  if (params.bcc) params.bcc.split(',').forEach(function(a) { var t = a.trim(); if (t) allAddrs.push(t); });
+
+  var recipientText, recipientHtml;
+  if (allAddrs.length < ADDR_THRESHOLD) {
+    recipientText = 'Forward to:\n' + allAddrs.join('\n');
+    recipientHtml = '<strong>Forward to:</strong><br>' + allAddrs.join('<br>');
+  } else {
+    recipientText = 'Forward to: send to all (' + allAddrs.length + ' recipients)';
+    recipientHtml = '<strong>Forward to:</strong> send to all (' + allAddrs.length + ' recipients)';
+  }
+
+  var bannerHtml =
+    '<div style="background:#fff3cd;border:2px solid #f0ad4e;border-radius:4px;' +
+    'padding:12px 16px;margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;">' +
+    recipientHtml + '</div>';
+
+  var htmlBody;
+  if (params.htmlBody) {
+    // Inject banner immediately after the opening <body> tag
+    var injected = params.htmlBody.replace(/(<body[^>]*>)/i, '$1' + bannerHtml);
+    htmlBody = (injected !== params.htmlBody) ? injected : bannerHtml + params.htmlBody;
+  } else {
+    htmlBody = bannerHtml + '<pre style="font-family:Arial,sans-serif;font-size:14px;">' + (params.body || '') + '</pre>';
+  }
+
+  try {
+    MailApp.sendEmail({
+      to:       ADMIN_EMAIL,
+      subject:  '[Forward this email] ' + (params.subject || ''),
+      body:     recipientText + '\n\n---\n\n' + (params.body || ''),
+      htmlBody: htmlBody,
+      name:     'MWF Tennis League'
+    });
+    Logger.log('_sendAdminFallbackEmail: sent fallback for "' + params.subject + '" to ' + ADMIN_EMAIL);
+  } catch(e2) {
+    Logger.log('_sendAdminFallbackEmail: also failed: ' + e2.message);
   }
 }
 
