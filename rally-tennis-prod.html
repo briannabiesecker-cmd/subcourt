@@ -4857,6 +4857,9 @@ async function runGenerateSchedule() {
     document.getElementById('sched-results').style.display = '';
     document.getElementById('sched-results-title').textContent =
       'Schedule Preview — ' + (result.month || '');
+    const excelBtn = document.getElementById('sched-excel-btn');
+    excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.pointerEvents = '';
+    document.getElementById('sched-excel-wrap').title = '';
     const active = result.slots.filter(s => !s.skipped).length;
     const skipped = result.slots.filter(s => s.skipped).length;
     showAlert('scheduler-alert', 'success',
