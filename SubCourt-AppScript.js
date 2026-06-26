@@ -1485,9 +1485,19 @@ function submitRequest(params) {
 }
 
 function submitVolunteer(params) {
-  const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  const entries = JSON.parse(params.entries);
+  const sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  const entries    = JSON.parse(params.entries);
+  const emailLower = (params.email || '').toLowerCase();
+  const lastRow0   = sheet.getLastRow();
+  const existing0  = lastRow0 >= 2 ? sheet.getRange(2, 1, lastRow0 - 1, 7).getValues() : [];
   entries.forEach(entry => {
+    // Skip if a non-cancelled record already exists for this email + date
+    const isDup = existing0.some(r =>
+      (r[3] || '').toLowerCase() === emailLower &&
+      formatSheetDate(r[4]) === entry.date &&
+      (r[6] || '').toLowerCase() !== 'cancelled'
+    );
+    if (isDup) { Logger.log('submitVolunteer: duplicate skipped for ' + emailLower + ' on ' + entry.date); return; }
     const nextRow = sheet.getLastRow() + 1;
     const range   = sheet.getRange(nextRow, 1, 1, 7);
     // Set number format first to prevent auto-conversion
@@ -3162,6 +3172,45 @@ function sendBroadcastEmailToAdmin() {
     Logger.log('sendBroadcastEmailToAdmin failed: ' + e.message);
     return { success: false, error: e.message };
   }
+}
+
+// Removes duplicate volunteer rows, keeping the best record per email+date:
+// matched > earliest pending. Run once from the Apps Script editor to clean up existing data.
+function deduplicateVolunteers() {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  if (!sheet || sheet.getLastRow() < 2) return { removed: 0 };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+
+  var seen     = {}; // email|date → { rowIndex, status, timestamp }
+  var toDelete = [];
+
+  rows.forEach(function(r, i) {
+    var email     = (r[3] || '').toLowerCase().trim();
+    var date      = formatSheetDate(r[4]);
+    var status    = (r[6] || '').toLowerCase();
+    var timestamp = r[1] ? new Date(r[1]).getTime() : 0;
+    var rowIndex  = i + 2;
+    if (!email || !date) return;
+    var key = email + '|' + date;
+    if (!seen[key]) {
+      seen[key] = { rowIndex: rowIndex, status: status, timestamp: timestamp };
+    } else {
+      var kept = seen[key];
+      var keepCurrent = (status === 'matched' && kept.status !== 'matched') ||
+                        (status === kept.status && timestamp < kept.timestamp);
+      if (keepCurrent) {
+        toDelete.push(kept.rowIndex);
+        seen[key] = { rowIndex: rowIndex, status: status, timestamp: timestamp };
+      } else {
+        toDelete.push(rowIndex);
+      }
+    }
+  });
+
+  toDelete.sort(function(a, b) { return b - a; }); // delete from bottom up
+  toDelete.forEach(function(rowIndex) { sheet.deleteRow(rowIndex); });
+  Logger.log('deduplicateVolunteers: removed ' + toDelete.length + ' duplicate(s)');
+  return { removed: toDelete.length };
 }
 
 function cancelRequest(params) {
