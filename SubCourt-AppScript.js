@@ -175,8 +175,21 @@ function processVolunteerFromEmail(requestId, playerEmail) {
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
   var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  var nextRow  = volSheet.getLastRow() + 1;
-  var rng      = volSheet.getRange(nextRow, 1, 1, 7);
+  // Prevent duplicate: skip if a non-cancelled record already exists for this email + date
+  var lastRow = volSheet.getLastRow();
+  if (lastRow >= 2) {
+    var existing = volSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+    for (var k = 0; k < existing.length; k++) {
+      if ((existing[k][3] || '').toLowerCase() === playerEmail &&
+          formatSheetDate(existing[k][4]) === req.matchDate &&
+          (existing[k][6] || '').toLowerCase() !== 'cancelled') {
+        Logger.log('processVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate);
+        return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '' };
+      }
+    }
+  }
+  var nextRow = volSheet.getLastRow() + 1;
+  var rng     = volSheet.getRange(nextRow, 1, 1, 7);
   rng.setNumberFormats([['@','@','@','@','@','@','@']]);
   rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
@@ -290,12 +303,28 @@ function handleVolunteerFromEmail(e) {
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
-  var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  var nextRow  = volSheet.getLastRow() + 1;
-  var rng      = volSheet.getRange(nextRow, 1, 1, 7);
-  rng.setNumberFormats([['@','@','@','@','@','@','@']]);
-  rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
-  Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
+  var volSheet2  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  var lastRow2   = volSheet2.getLastRow();
+  var isDuplicate = false;
+  if (lastRow2 >= 2) {
+    var existing2 = volSheet2.getRange(2, 1, lastRow2 - 1, 7).getValues();
+    for (var k2 = 0; k2 < existing2.length; k2++) {
+      if ((existing2[k2][3] || '').toLowerCase() === playerEmail &&
+          formatSheetDate(existing2[k2][4]) === req.matchDate &&
+          (existing2[k2][6] || '').toLowerCase() !== 'cancelled') {
+        Logger.log('handleVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate);
+        isDuplicate = true;
+        break;
+      }
+    }
+  }
+  if (!isDuplicate) {
+    var nextRow2 = volSheet2.getLastRow() + 1;
+    var rng2     = volSheet2.getRange(nextRow2, 1, 1, 7);
+    rng2.setNumberFormats([['@','@','@','@','@','@','@']]);
+    rng2.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
+    Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
+  }
 
   return wrap(
     '<h2>Thank you' + (playerName ? ', ' + playerName.split(' ')[0] : '') + '!</h2>' +
