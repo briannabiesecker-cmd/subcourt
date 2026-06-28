@@ -157,9 +157,8 @@ function processVolunteerFromEmail(requestId, playerEmail) {
     if (requests[i].id === requestId) { req = requests[i]; break; }
   }
   if (!req) return { success: false, error: 'This sub request could not be found. It may have already been filled.' };
-  if (req.status !== 'open') {
-    return { success: false, error: req.status === 'filled' ? 'This sub request has already been filled.' : 'This sub request is no longer active.' };
-  }
+  var alreadyFilled = req.status !== 'open';
+  var filledNote = req.status === 'filled' ? 'has already been filled' : 'is no longer active';
   var players    = getPlayers();
   var playerName = '';
   var found      = false;
@@ -184,7 +183,7 @@ function processVolunteerFromEmail(requestId, playerEmail) {
           formatSheetDate(existing[k][4]) === req.matchDate &&
           (existing[k][6] || '').toLowerCase() !== 'cancelled') {
         Logger.log('processVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate);
-        return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '' };
+        return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
       }
     }
   }
@@ -193,7 +192,7 @@ function processVolunteerFromEmail(requestId, playerEmail) {
   rng.setNumberFormats([['@','@','@','@','@','@','@']]);
   rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
-  return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '' };
+  return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
 }
 
 function handleVolunteerFromEmail(e) {
@@ -216,13 +215,11 @@ function handleVolunteerFromEmail(e) {
   for (var i = 0; i < requests.length; i++) { if (requests[i].id === requestId) { req = requests[i]; break; } }
 
   if (!req) return wrap('<p>This sub request could not be found. It may have already been filled.</p>');
-  if (req.status !== 'open') {
-    var msg = req.status === 'filled' ? 'This sub request has already been filled — no action needed.' : 'This sub request is no longer active.';
-    return wrap('<p>' + msg + '</p>');
-  }
 
   var dateStr = formatDate(req.matchDate);
   var timeStr = TIME_LABELS[req.matchTime] || req.matchTime || '';
+  var alreadyFilled = req.status !== 'open';
+  var filledNote = req.status === 'filled' ? 'has already been filled' : 'is no longer active';
 
   if (notAvailable) {
     return wrap(
@@ -267,11 +264,14 @@ function handleVolunteerFromEmail(e) {
                 'return;' +
               '}' +
               'var n=r.playerName?(", "+r.playerName.split(" ")[0]):"";' +
+              'var statusLine=r.alreadyFilled' +
+                '?(\'<p style="color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;">A volunteer record has been created, but the \'+(r.timeStr?r.timeStr+\' \':\'\')+\'sub request on \'+r.dateStr+\' \'+(r.filledNote||\'has already been filled\')+\'.</p>\')' +
+                ':\'<p>You will be notified if you are selected as a substitute.</p>\';' +
               'document.getElementById(\'pg\').innerHTML=' +
                 '\'<h2>Thank you\'+n+\'!</h2>\'+' +
                 '\'<p>You have volunteered to sub on <strong>\'+r.dateStr+\'</strong>\'+' +
                 '(r.timeStr?\' at <strong>\'+r.timeStr+\'</strong>\':\'\')+\'.</p>\'+' +
-                '\'<p>You will be notified if you are selected as a substitute.</p>\'+' +
+                'statusLine+' +
                 '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
             '})' +
             '.withFailureHandler(function(){' +
@@ -326,11 +326,16 @@ function handleVolunteerFromEmail(e) {
     Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
   }
 
+  var statusLine = alreadyFilled
+    ? '<p style="color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;">A volunteer record has been created, but the ' +
+      (timeStr ? timeStr + ' ' : '') + 'sub request on ' + dateStr + ' ' + filledNote + '.</p>'
+    : '<p>You will be notified if you are selected as a substitute.</p>';
+
   return wrap(
     '<h2>Thank you' + (playerName ? ', ' + playerName.split(' ')[0] : '') + '!</h2>' +
     '<p>You have volunteered to sub on <strong>' + dateStr + '</strong>' +
     (timeStr ? ' at <strong>' + timeStr + '</strong>' : '') + '.</p>' +
-    '<p>You will be notified if you are selected as a substitute.</p>' +
+    statusLine +
     '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
   );
 }
