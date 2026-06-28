@@ -1484,7 +1484,7 @@ function submitVolunteer(params) {
     var volUrl  = APP_BASE_URL + '#volunteer';
     var subject = 'MWF Tennis League — Volunteer to sub confirmed';
     var dateLines = entries.map(function(entry) {
-      var times = entry.times.map(function(t) { return TIME_LABELS[t] || t; }).join(', ');
+      var times = entry.times.map(function(t) { var tc = t.replace('_', ':'); return TIME_LABELS[tc] || tc; }).join(', ');
       return '  ' + formatDate(entry.date) + ' — ' + times;
     });
     var body =
@@ -1496,7 +1496,7 @@ function submitVolunteer(params) {
       volUrl + '\n\n' +
       'MWF Tennis League';
     var htmlDateRows = entries.map(function(entry) {
-      var times = entry.times.map(function(t) { return TIME_LABELS[t] || t; }).join(', ');
+      var times = entry.times.map(function(t) { var tc = t.replace('_', ':'); return TIME_LABELS[tc] || tc; }).join(', ');
       return '<tr><td style="padding:3px 12px 3px 0;font-weight:600;">' + formatDate(entry.date) +
              '</td><td style="padding:3px 0;">' + times + '</td></tr>';
     }).join('');
