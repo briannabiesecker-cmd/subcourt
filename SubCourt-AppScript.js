@@ -2534,7 +2534,7 @@ function runMatch(params) {
 // EMAIL
 // ──────────────────────────────────────────────────
 
-function sendConfirmationEmails(data, groupPlayers, subjectPrefix) {
+function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   groupPlayers = groupPlayers || [];
   const players    = getPlayers();
   const dateStr    = formatDate(data.matchDate);
@@ -2551,8 +2551,11 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix) {
   const subject =
     (subjectPrefix || '') + 'MWF Tennis League — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
 
+  const greetingText = isReminder ? 'Reminder' : 'Hi team,';
+  const greetingHtml = isReminder ? '<span style="color:#c0392b;">Reminder</span>' : 'Hi team,';
+
   const body =
-    'Hi team,\n\n' +
+    greetingText + '\n\n' +
     data.subName + ' will be substituting for ' + data.requestorName +
     ' on ' + dateStr + ' at ' + timeStr + '.\n\n' +
     'Make updates in Chelsea as required.\n\n' +
@@ -2560,7 +2563,7 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix) {
     'MWF Tennis League';
 
   const htmlBody =
-    'Hi team,<br><br>' +
+    greetingHtml + '<br><br>' +
     data.subName + ' will be substituting for ' + data.requestorName +
     ' on ' + dateStr + ' at ' + timeStr + '.<br><br>' +
     'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.<br><br>' +
@@ -2607,7 +2610,7 @@ function runSubReminder() {
       matchDate:      req.matchDate,
       matchTime:      req.matchTime
     };
-    sendConfirmationEmails(data, req.groupPlayers, 'Sub Reminder: ');
+    sendConfirmationEmails(data, req.groupPlayers, 'Sub Reminder: ', true);
     sent++;
   });
 
