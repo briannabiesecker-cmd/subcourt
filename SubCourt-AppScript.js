@@ -190,7 +190,7 @@ function processVolunteerFromEmail(requestId, playerEmail) {
   var nextRow = volSheet.getLastRow() + 1;
   var rng     = volSheet.getRange(nextRow, 1, 1, 7);
   rng.setNumberFormats([['@','@','@','@','@','@','@']]);
-  rng.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
+  rng.setValues([[uid(), nowEasternISO(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
   return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
 }
@@ -322,7 +322,7 @@ function handleVolunteerFromEmail(e) {
     var nextRow2 = volSheet2.getLastRow() + 1;
     var rng2     = volSheet2.getRange(nextRow2, 1, 1, 7);
     rng2.setNumberFormats([['@','@','@','@','@','@','@']]);
-    rng2.setValues([[uid(), new Date().toISOString(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
+    rng2.setValues([[uid(), nowEasternISO(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
     Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
   }
 
@@ -1405,6 +1405,12 @@ function getPlayersWithRatings() {
 // WRITES
 // ──────────────────────────────────────────────────
 
+// ISO 8601 timestamp with the New York offset (handles EST/EDT automatically),
+// so SubRequests/Volunteers rows show Eastern time instead of UTC.
+function nowEasternISO() {
+  return Utilities.formatDate(new Date(), 'America/New_York', "yyyy-MM-dd'T'HH:mm:ssXXX");
+}
+
 function submitRequest(params) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   const groupPlayers = params.groupPlayers
@@ -1412,7 +1418,7 @@ function submitRequest(params) {
     : '[]';
   const row = [
     uid(),
-    new Date().toISOString(),
+    nowEasternISO(),
     params.name,
     params.email,
     params.matchDate ? params.matchDate.toString() : '',
@@ -1470,7 +1476,7 @@ function submitVolunteer(params) {
     range.setNumberFormats([['@','@','@','@','@','@','@']]);
     range.setValues([[
       uid(),
-      new Date().toISOString(),
+      nowEasternISO(),
       params.name,
       params.email,
       entry.date,
@@ -4488,7 +4494,7 @@ function publishScheduleSlot(params) {
         return { name: p.name, email: p.email };
       }));
       rSheet.appendRow([
-        uid(), new Date().toISOString(),
+        uid(), nowEasternISO(),
         anitaName, anitaEmail,
         slot.date, '', 'open', '', groupPlayersJSON
       ]);
