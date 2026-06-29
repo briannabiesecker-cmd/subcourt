@@ -1411,6 +1411,32 @@ function nowEasternISO() {
   return Utilities.formatDate(new Date(), 'America/New_York', "yyyy-MM-dd'T'HH:mm:ssXXX");
 }
 
+// One-time fix-up for rows written before nowEasternISO() existed. Run manually
+// from the Apps Script editor (select this function, click Run), then delete it.
+// Rewrites each Timestamp cell to the same instant, formatted with the NY offset.
+function migrateTimestampsToEastern() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  [TABS.requests, TABS.volunteers].forEach(function(tabName) {
+    var sheet = ss.getSheetByName(tabName);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) { Logger.log(tabName + ': no data rows.'); return; }
+    var range  = sheet.getRange(2, 2, lastRow - 1, 1); // column B = Timestamp
+    var values = range.getValues();
+    var changed = 0;
+    var migrated = values.map(function(row) {
+      var v = row[0];
+      if (!v) return [v];
+      var d = (v instanceof Date) ? v : new Date(v);
+      if (isNaN(d.getTime())) return [v]; // leave anything unparseable untouched
+      changed++;
+      return [Utilities.formatDate(d, 'America/New_York', "yyyy-MM-dd'T'HH:mm:ssXXX")];
+    });
+    range.setNumberFormat('@');
+    range.setValues(migrated);
+    Logger.log(tabName + ': migrated ' + changed + ' of ' + values.length + ' timestamp(s).');
+  });
+}
+
 function submitRequest(params) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   const groupPlayers = params.groupPlayers
