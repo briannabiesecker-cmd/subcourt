@@ -183,7 +183,7 @@ function processVolunteerFromEmail(requestId, playerEmail) {
           formatSheetDate(existing[k][4]) === req.matchDate &&
           (existing[k][6] || '').toLowerCase() !== 'cancelled') {
         Logger.log('processVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate);
-        return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
+        return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
       }
     }
   }
@@ -192,7 +192,7 @@ function processVolunteerFromEmail(requestId, playerEmail) {
   rng.setNumberFormats([['@','@','@','@','@','@','@']]);
   rng.setValues([[uid(), nowEasternISO(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
-  return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
+  return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
 }
 
 function handleVolunteerFromEmail(e) {
@@ -216,8 +216,9 @@ function handleVolunteerFromEmail(e) {
 
   if (!req) return wrap('<p>This sub request could not be found. It may have already been filled.</p>');
 
-  var dateStr = formatDate(req.matchDate);
-  var timeStr = TIME_LABELS[req.matchTime] || req.matchTime || '';
+  var dateStr      = formatDate(req.matchDate);
+  var shortDateStr = formatDateShort(req.matchDate);
+  var timeStr      = TIME_LABELS[req.matchTime] || req.matchTime || '';
   var alreadyFilled = req.status !== 'open';
   var filledNote = req.status === 'filled' ? 'has already been filled' : 'is no longer active';
 
@@ -265,7 +266,7 @@ function handleVolunteerFromEmail(e) {
               '}' +
               'var n=r.playerName?(", "+r.playerName.split(" ")[0]):"";' +
               'var statusLine=r.alreadyFilled' +
-                '?(\'<p style="color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;">A volunteer record has been created, but the \'+(r.timeStr?r.timeStr+\' \':\'\')+\'sub request on \'+r.dateStr+\' \'+(r.filledNote||\'has already been filled\')+\'.</p>\')' +
+                '?(\'<p style="color:#c0392b;margin:0 0 4px;">Note: The \'+(r.timeStr?r.timeStr+\' \':\'\')+\'sub request on \'+r.shortDateStr+\' \'+(r.filledNote||\'is no longer active\')+\'.</p>\'+\'<p style="margin:0;">However, a volunteer record has been created for you.</p>\')' +
                 ':\'<p>You will be notified if you are selected as a substitute.</p>\';' +
               'document.getElementById(\'pg\').innerHTML=' +
                 '\'<h2>Thank you\'+n+\'!</h2>\'+' +
@@ -327,8 +328,9 @@ function handleVolunteerFromEmail(e) {
   }
 
   var statusLine = alreadyFilled
-    ? '<p style="color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;">A volunteer record has been created, but the ' +
-      (timeStr ? timeStr + ' ' : '') + 'sub request on ' + dateStr + ' ' + filledNote + '.</p>'
+    ? '<p style="color:#c0392b;margin:0 0 4px;">Note: The ' +
+      (timeStr ? timeStr + ' ' : '') + 'sub request on ' + shortDateStr + ' ' + filledNote + '.</p>' +
+      '<p style="margin:0;">However, a volunteer record has been created for you.</p>'
     : '<p>You will be notified if you are selected as a substitute.</p>';
 
   return wrap(
@@ -3328,6 +3330,12 @@ function formatDate(str) {
   if (!str) return '—';
   const d = new Date(str + 'T12:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateShort(str) {
+  if (!str) return '—';
+  const d = new Date(str + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short' }) + ', ' + d.getDate();
 }
 
 function getDayOfWeek(str) {
