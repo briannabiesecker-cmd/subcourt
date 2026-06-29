@@ -2534,7 +2534,7 @@ function runMatch(params) {
 // EMAIL
 // ──────────────────────────────────────────────────
 
-function sendConfirmationEmails(data, groupPlayers) {
+function sendConfirmationEmails(data, groupPlayers, subjectPrefix) {
   groupPlayers = groupPlayers || [];
   const players    = getPlayers();
   const dateStr    = formatDate(data.matchDate);
@@ -2549,7 +2549,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   const ccAddresses = ccList.join(', ');
 
   const subject =
-    'MWF Tennis League — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
+    (subjectPrefix || '') + 'MWF Tennis League — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
 
   const body =
     'Hi team,\n\n' +
@@ -2577,6 +2577,53 @@ function sendConfirmationEmails(data, groupPlayers) {
   if (ccAddresses) emailParams.cc = ccAddresses;
 
   if (isEmailEnabled()) sendLeagueEmail(emailParams);
+}
+
+// Runs daily at 3:00 AM ET (see setupSubReminderTrigger). Only does anything on
+// Sun/Tue/Thu — the night before a Mon/Wed/Fri match day — when it re-sends the
+// dispatch confirmation email for every filled request on the next match date.
+function runSubReminder() {
+  var tz  = Session.getScriptTimeZone();
+  var now = new Date();
+  var dow = parseInt(Utilities.formatDate(now, tz, 'u')); // 1=Mon … 6=Sat, 7=Sun
+  if (dow !== 7 && dow !== 2 && dow !== 4) return { skipped: 'not a reminder day' };
+
+  var tomorrowStr = Utilities.formatDate(new Date(now.getTime() + 24 * 60 * 60 * 1000), tz, 'yyyy-MM-dd');
+  var requests = getRequests();
+  var players  = getPlayers();
+  var sent = 0;
+
+  requests.forEach(function(req) {
+    if (req.status !== 'filled') return;
+    if (req.matchDate !== tomorrowStr) return;
+    if (!req.assignedSub) return;
+
+    var subPlayer = players.find(function(p) { return p.email && p.email.toLowerCase() === req.assignedSub.toLowerCase(); });
+    var data = {
+      requestorName:  req.name,
+      requestorEmail: req.email,
+      subName:        subPlayer ? subPlayer.name : req.assignedSub,
+      subEmail:       req.assignedSub,
+      matchDate:      req.matchDate,
+      matchTime:      req.matchTime
+    };
+    sendConfirmationEmails(data, req.groupPlayers, 'Sub Reminder: ');
+    sent++;
+  });
+
+  Logger.log('runSubReminder: sent ' + sent + ' reminder(s) for ' + tomorrowStr);
+  return { success: true, sent: sent, matchDate: tomorrowStr };
+}
+
+// One-time setup — run manually from the Apps Script editor to install the daily
+// 3:00 AM ET trigger. Safe to re-run; clears any existing runSubReminder trigger first.
+function setupSubReminderTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'runSubReminder') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('runSubReminder')
+    .timeBased().atHour(3).nearMinute(0).everyDays(1)
+    .inTimezone('America/New_York').create();
 }
 
 function saveMatchTimeReminderSettings(params) {
