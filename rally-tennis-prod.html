@@ -3034,29 +3034,46 @@ async function showFillSubModal(requesterName) {
 }
 
 async function deleteRequest(requestId) {
-  const req = myRequestsData.find(r => r.id === requestId);
-  const choice = await showFillSubModal(req ? req.name : 'Requester');
-  if (!choice) return;
+  const req    = myRequestsData.find(r => r.id === requestId);
+  const config = await getAppConfig();
   const { email } = getTypeaheadValue('req');
-  const selName = document.getElementById('req-selected-name').textContent.trim();
-  if (choice.found) {
-    try {
-      const result = await apiPost({ action: 'manuallyAssignSub', requestId, subName: choice.subPlayer.name, subEmail: choice.subPlayer.email });
-      if (!result.success) throw new Error(result.error || 'Failed');
-      await loadMyRequests(email, selName);
-      loadReqSchedule(email, selName);
-    } catch(e) {
-      alert('Could not assign sub: ' + e.message);
+  const selName   = document.getElementById('req-selected-name').textContent.trim();
+
+  if (config.allowPlayerNameChangeOnDelete !== false) {
+    // Config = Yes: show the name-replacement modal as normal
+    const choice = await showFillSubModal(req ? req.name : 'Requester');
+    if (!choice) return;
+    if (choice.found) {
+      try {
+        const result = await apiPost({ action: 'manuallyAssignSub', requestId, subName: choice.subPlayer.name, subEmail: choice.subPlayer.email });
+        if (!result.success) throw new Error(result.error || 'Failed');
+        await loadMyRequests(email, selName);
+        loadReqSchedule(email, selName);
+      } catch(e) {
+        alert('Could not assign sub: ' + e.message);
+      }
+    } else {
+      try {
+        const result = await apiPost({ action: 'cancelRequest', requestId });
+        if (!result.success) throw new Error(result.error || 'Failed');
+        await loadMyRequests(email, selName);
+        loadReqSchedule(email, selName);
+      } catch(e) {
+        alert('Could not delete request: ' + e.message);
+      }
     }
   } else {
-    try {
-      const result = await apiPost({ action: 'cancelRequest', requestId });
-      if (!result.success) throw new Error(result.error || 'Failed');
-      await loadMyRequests(email, selName);
-      loadReqSchedule(email, selName);
-    } catch(e) {
-      alert('Could not delete request: ' + e.message);
-    }
+    // Config = No: skip name-replacement, confirm then delete straight away
+    showConfirmModal('Delete this sub request?', async () => {
+      try {
+        const result = await apiPost({ action: 'cancelRequest', requestId });
+        if (!result.success) throw new Error(result.error || 'Failed');
+        await loadMyRequests(email, selName);
+        loadReqSchedule(email, selName);
+      } catch(e) {
+        alert('Could not delete request: ' + e.message);
+      }
+    }, { confirmLabel: 'Delete', cancelLabel: 'Keep' });
   }
 }
 
