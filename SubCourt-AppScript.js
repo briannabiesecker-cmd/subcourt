@@ -1932,11 +1932,14 @@ function confirmSub(params) {
   // 3. Replace requestor's slot in MatchGroups with the sub's name/email
   updateScheduleForSub(ss, params);
 
-  // 4. Parse group players
+  // 4. Replace requestor in groupPlayers of any other open sub requests on the same day
+  updateRelatedOpenRequests(ss, params);
+
+  // 5. Parse group players
   var groupPlayers = [];
   try { groupPlayers = JSON.parse(params.groupPlayers || '[]'); } catch(e) {}
 
-  // 5. Send email
+  // 6. Send email
   sendConfirmationEmails(params, groupPlayers);
 
   return { success: true };
@@ -1968,6 +1971,47 @@ function updateScheduleForSub(ss, params) {
         sheet.getRange(i + 2, 5 + pi * 2, 1, 2).setValues([[subName, subEmail]]);
         return;
       }
+    }
+  }
+}
+
+// When a sub is confirmed, update the groupPlayers field of any other open sub
+// requests on the same day that list the requester, swapping in the sub's identity.
+function updateRelatedOpenRequests(ss, params) {
+  var requestorEmail = (params.requestorEmail || '').toLowerCase().trim();
+  var matchDate      = (params.matchDate      || '').toString().trim();
+  var subName        = (params.subName        || '').toString().trim();
+  var subEmail       = (params.subEmail       || '').toString().trim();
+  if (!requestorEmail || !matchDate || !subName || !subEmail) return;
+
+  var sheet   = ss.getSheetByName(TABS.requests);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  var rows = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if ((r[6] || '').toString().toLowerCase() !== 'open') continue;
+    if (formatSheetDate(r[4]) !== matchDate) continue;
+
+    var groupPlayers;
+    try { groupPlayers = JSON.parse(r[8] || '[]'); } catch(e) { continue; }
+    if (!Array.isArray(groupPlayers) || !groupPlayers.length) continue;
+
+    var changed = false;
+    var updated = groupPlayers.map(function(p) {
+      if ((p.email || '').toLowerCase().trim() === requestorEmail) {
+        changed = true;
+        return { name: subName, email: subEmail };
+      }
+      return p;
+    });
+
+    if (changed) {
+      var cell = sheet.getRange(i + 2, 9);
+      cell.setNumberFormat('@');
+      cell.setValue(JSON.stringify(updated));
+      Logger.log('updateRelatedOpenRequests: swapped ' + requestorEmail + ' → ' + subEmail + ' in row ' + (i + 2));
     }
   }
 }
