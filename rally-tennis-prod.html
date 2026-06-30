@@ -2625,6 +2625,7 @@ async function submitRequest() {
   btn.textContent = 'Submitting…';
 
   try {
+    requestCache = null; // always fetch fresh data at submit time for accurate duplicate/Anita checks
     const existing = await getRequests();
     const partnerEmails = new Set(partners.map(p => (p.email || '').toLowerCase()));
     const duplicate = existing.find(r => {
