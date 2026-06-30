@@ -2305,7 +2305,7 @@ const epBlurTimers    = {};
 let reqAutoFill       = null; // schedule lookup result for the new-request form
 let reqLookupSeq      = 0;   // increments each lookup so stale responses are ignored
 let reqScheduleData   = {};  // keyed by "date|groupLetter" — slot info for Request a Sub table
-let _pendingReqData   = null; // held while Anita-check modal is open
+let _pendingAnitaCheck = null; // { onProceed, onDone } held while Anita-check modal is open
 
 async function loadPlayerList() {
   if (playerList.length) return playerList;
@@ -2642,18 +2642,11 @@ async function submitRequest() {
     }
 
     // Check if requester is part of a 3-player group with an open Anita Sub request on the same day
-    const anitaGroupReq = existing.find(r =>
-      r.status === 'open' &&
-      r.matchDate === matchDate &&
-      /^anita\.sub\d+@xgmail\.com$/i.test(r.email || '') &&
-      Array.isArray(r.groupPlayers) &&
-      r.groupPlayers.some(p => (p.email || '').toLowerCase() === email.toLowerCase())
-    );
-    if (anitaGroupReq) {
-      _pendingReqData = { name, email, matchDate, matchTime, partners };
-      document.getElementById('anita-check-page1').style.display = '';
-      document.getElementById('anita-check-page2').style.display = 'none';
-      document.getElementById('anita-check-modal').style.display = 'flex';
+    if (findAnitaGroupReq(existing, matchDate, email)) {
+      showAnitaCheckModal({
+        onProceed: () => _doSubmitRequest({ name, email, matchDate, matchTime, partners }),
+        onDone:    () => clearRequestForm()
+      });
       return;
     }
 
@@ -2687,11 +2680,30 @@ async function _doSubmitRequest({ name, email, matchDate, matchTime, partners })
   }
 }
 
+// Checks whether `email` is in the groupPlayers of an open Anita Sub request on `matchDate`.
+function findAnitaGroupReq(requests, matchDate, email) {
+  const emailLower = email.toLowerCase();
+  return requests.find(r =>
+    r.status === 'open' &&
+    r.matchDate === matchDate &&
+    /^anita\.sub\d+@xgmail\.com$/i.test(r.email || '') &&
+    Array.isArray(r.groupPlayers) &&
+    r.groupPlayers.some(p => (p.email || '').toLowerCase() === emailLower)
+  );
+}
+
+function showAnitaCheckModal({ onProceed, onDone }) {
+  _pendingAnitaCheck = { onProceed, onDone: onDone || (() => {}) };
+  document.getElementById('anita-check-page1').style.display = '';
+  document.getElementById('anita-check-page2').style.display = 'none';
+  document.getElementById('anita-check-modal').style.display = 'flex';
+}
+
 function anitaCheckProceed() {
-  const data = _pendingReqData;
-  _pendingReqData = null;
+  const pending = _pendingAnitaCheck;
+  _pendingAnitaCheck = null;
   document.getElementById('anita-check-modal').style.display = 'none';
-  if (data) _doSubmitRequest(data);
+  if (pending && pending.onProceed) pending.onProceed();
 }
 
 function anitaCheckEmptySpot() {
@@ -2700,9 +2712,10 @@ function anitaCheckEmptySpot() {
 }
 
 function anitaCheckDone() {
-  _pendingReqData = null;
+  const pending = _pendingAnitaCheck;
+  _pendingAnitaCheck = null;
   document.getElementById('anita-check-modal').style.display = 'none';
-  clearRequestForm();
+  if (pending && pending.onDone) pending.onDone();
 }
 
 function clearRequestForm() {
@@ -2813,6 +2826,27 @@ async function onReqScheduleCheck(checkbox, key) {
   const slot = reqScheduleData[key];
   if (!slot) { checkbox.checked = false; return; }
   const { name, email } = getTypeaheadValue('req');
+
+  checkbox.disabled = true;
+
+  let existing = [];
+  try {
+    requestCache = null;
+    existing = await getRequests();
+  } catch(e) {}
+
+  if (findAnitaGroupReq(existing, slot.matchDate, email)) {
+    showAnitaCheckModal({
+      onProceed: () => _submitScheduleCheckRequest(checkbox, key, slot, name, email),
+      onDone:    () => { checkbox.checked = false; checkbox.disabled = false; }
+    });
+    return;
+  }
+
+  await _submitScheduleCheckRequest(checkbox, key, slot, name, email);
+}
+
+async function _submitScheduleCheckRequest(checkbox, key, slot, name, email) {
   const cell = checkbox.closest('td');
   checkbox.disabled = true;
   cell.innerHTML = '<div class="loading" style="justify-content:center;padding:0;gap:4px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>';
