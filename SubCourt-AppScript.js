@@ -499,12 +499,14 @@ function sendCaptainThreePlayerNotification(captainName, captainEmail, matchDate
     'When Chelsea assigns a court time, update the sub request on the Request a Sub page:\n' +
     reqUrl + '\n\n' +
     'If Rally is unable to fill the request on ' + dayBefore + ', you will be notified by email. At that time, you should use the email/phone process to find a 4th player.\n\n' +
+    'Do not create a duplicate sub request.\n\n' +
     'MWF Tennis League';
   var htmlBody =
     'Hi ' + captainName + ',<br><br>' +
     'You are the captain of a 3-player group on ' + dateStr + ' and therefore a sub request has automatically been created for ' + anitaSubName + '.<br><br>' +
     'When <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> assigns a court time, update the sub request on the <a href="' + reqUrl + '">Request a Sub</a> page.<br><br>' +
     'If Rally is unable to fill the request on ' + dayBefore + ', you will be notified by email. At that time, you should use the email/phone process to find a 4th player.<br><br>' +
+    '<span style="color:#c0392b;">Do not create a duplicate sub request.</span><br><br>' +
     'MWF Tennis League';
   sendLeagueEmail({ to: captainEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
 }
