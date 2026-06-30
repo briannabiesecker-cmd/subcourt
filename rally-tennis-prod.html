@@ -2305,6 +2305,7 @@ const epBlurTimers    = {};
 let reqAutoFill       = null; // schedule lookup result for the new-request form
 let reqLookupSeq      = 0;   // increments each lookup so stale responses are ignored
 let reqScheduleData   = {};  // keyed by "date|groupLetter" — slot info for Request a Sub table
+let _pendingReqData   = null; // held while Anita-check modal is open
 
 async function loadPlayerList() {
   if (playerList.length) return playerList;
@@ -2639,7 +2640,37 @@ async function submitRequest() {
       return;
     }
 
-    const result = await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
+    // Check if requester is part of a 3-player group with an open Anita Sub request on the same day
+    const anitaGroupReq = existing.find(r =>
+      r.status === 'open' &&
+      r.matchDate === matchDate &&
+      /^anita\.sub\d+@xgmail\.com$/i.test(r.email || '') &&
+      Array.isArray(r.groupPlayers) &&
+      r.groupPlayers.some(p => (p.email || '').toLowerCase() === email.toLowerCase())
+    );
+    if (anitaGroupReq) {
+      _pendingReqData = { name, email, matchDate, matchTime, partners };
+      document.getElementById('anita-check-page1').style.display = '';
+      document.getElementById('anita-check-page2').style.display = 'none';
+      document.getElementById('anita-check-modal').style.display = 'flex';
+      return;
+    }
+
+    await _doSubmitRequest({ name, email, matchDate, matchTime, partners });
+  } catch(e) {
+    showAlert('req-alert', 'error', 'Could not submit. Please try again or contact the coordinator.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit request';
+  }
+}
+
+async function _doSubmitRequest({ name, email, matchDate, matchTime, partners }) {
+  const btn = document.getElementById('req-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  try {
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     document.getElementById('req-date').value = '';
     document.getElementById('req-schedule-lookup').innerHTML = '';
@@ -2653,6 +2684,24 @@ async function submitRequest() {
     btn.disabled = false;
     btn.textContent = 'Submit request';
   }
+}
+
+function anitaCheckProceed() {
+  const data = _pendingReqData;
+  _pendingReqData = null;
+  document.getElementById('anita-check-modal').style.display = 'none';
+  if (data) _doSubmitRequest(data);
+}
+
+function anitaCheckEmptySpot() {
+  document.getElementById('anita-check-page1').style.display = 'none';
+  document.getElementById('anita-check-page2').style.display = '';
+}
+
+function anitaCheckDone() {
+  _pendingReqData = null;
+  document.getElementById('anita-check-modal').style.display = 'none';
+  clearRequestForm();
 }
 
 function clearRequestForm() {
@@ -5809,6 +5858,25 @@ function applyAvailConfigToHomeCard(config) {
     <div class="confirm-modal-btns">
       <button id="fill-sub-submit" class="confirm-modal-ok" style="background:var(--court);">Submit</button>
       <button id="fill-sub-cancel" class="confirm-modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Anita Sub check modal ── -->
+<div id="anita-check-modal" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div class="confirm-modal-box">
+    <div id="anita-check-page1">
+      <div class="confirm-modal-msg">Is this request for you or is this for the empty 4th player spot?</div>
+      <div class="confirm-modal-btns" style="flex-direction:column;">
+        <button class="confirm-modal-cancel" style="background:var(--court,#2e7d32);color:white;" onclick="anitaCheckProceed()">This is for me</button>
+        <button class="confirm-modal-cancel" onclick="anitaCheckEmptySpot()">This is for the empty spot</button>
+      </div>
+    </div>
+    <div id="anita-check-page2" style="display:none;">
+      <div class="confirm-modal-msg" style="font-weight:400;">An open sub request already exists for Anita Sub</div>
+      <div class="confirm-modal-btns">
+        <button class="confirm-modal-cancel" style="background:var(--court,#2e7d32);color:white;" onclick="anitaCheckDone()">Done</button>
+      </div>
     </div>
   </div>
 </div>
