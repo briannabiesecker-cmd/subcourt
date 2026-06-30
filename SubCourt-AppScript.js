@@ -641,11 +641,11 @@ function getConfig() {
       sheet.getRange('B59').setNumberFormat('@');
       sheet.getRange('B59').setValue('13:00');
     }
-    // Allow player name change on delete — auto-init on first use (row 60)
-    var b60 = sheet.getRange('B60').getValue();
-    if (b60 === '' || b60 === null) {
-      sheet.getRange('A60').setValue('Allow Player Name Change on Delete');
-      sheet.getRange('B60').setValue('Yes');
+    // Allow player name change on delete — auto-init on first use (row 61)
+    var b61 = sheet.getRange('B61').getValue();
+    if (b61 === '' || b61 === null) {
+      sheet.getRange('A61').setValue('Allow Player Name Change on Delete Sub Request');
+      sheet.getRange('B61').setValue('Yes');
     }
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
@@ -680,8 +680,8 @@ function getConfig() {
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowCloseDate:     (function() { var v = sheet.getRange('B17').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),
       availWindowActive:        (function() { var v = sheet.getRange('B18').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
-      // Delete-request name change — row 60
-      allowPlayerNameChangeOnDelete: (function() { var v = sheet.getRange('B60').getValue(); return v !== 'No' && v !== false; })(),
+      // Delete-request name change — row 61
+      allowPlayerNameChangeOnDelete: (function() { var v = sheet.getRange('B61').getValue(); return v !== 'No' && v !== false; })(),
     };
     _configCache = cfg;
     return cfg;
