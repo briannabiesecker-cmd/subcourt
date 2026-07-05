@@ -43,6 +43,21 @@
       color: var(--clay);
       margin-top: 2px;
     }
+    .home-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      border-radius: 999px;
+      background: var(--clay);
+      color: #fff;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 2px 8px rgba(224, 122, 90, 0.25);
+    }
+    .home-btn:active { filter: brightness(0.95); }
   </style>
 </head>
 <body>
@@ -50,9 +65,8 @@
     <h1>Instructions</h1>
     <p class="sub">Tap a topic below to open it.</p>
 
-    <a class="card" href="rally-tennis-prod.html">
-      Return to Rally Home
-      <span class="tag">Back to the main screen</span>
+    <a class="home-btn" href="rally-tennis-prod.html">
+      Return to Rally
     </a>
 
     <a class="card" href="https://drive.google.com/open?id=1osjSbQbM57O_ig2MTNGfAhsEyP-H2ipP&usp=drive_fs" target="_blank" rel="noopener">
