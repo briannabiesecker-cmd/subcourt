@@ -945,6 +945,12 @@
     line-height: 1;
   }
 
+  .home-card-icon svg {
+    width: 36px;
+    height: 36px;
+    display: block;
+  }
+
   .home-card-title {
     font-size: 17px;
     font-weight: 800;
@@ -1459,7 +1465,18 @@
       </div>
 
       <div class="home-card" onclick="showView('request')">
-        <div class="home-card-icon">🎾</div>
+        <div class="home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 48 48" role="img">
+            <circle cx="24" cy="12" r="4" fill="#2f3a4a"/>
+            <rect x="20" y="16" width="8" height="12" rx="2" fill="#2f3a4a"/>
+            <path d="M22 28l-4 10" stroke="#2f3a4a" stroke-width="3" stroke-linecap="round"/>
+            <path d="M26 28l4 10" stroke="#2f3a4a" stroke-width="3" stroke-linecap="round"/>
+            <path d="M28 16l8 7" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+            <path d="M20 16l-8 7" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+            <rect x="15" y="28" width="10" height="5" rx="1.5" fill="#f7f7f7" stroke="#374151" stroke-width="1.5"/>
+            <line x1="20" y1="28" x2="20" y2="33" stroke="#374151" stroke-width="1.5"/>
+          </svg>
+        </div>
         <div class="home-card-title">I need a sub</div>
         <div class="home-card-desc">Can't make your match? Submit a request and we'll find someone to cover you.</div>
         <button class="home-card-btn">Request a Sub</button>
