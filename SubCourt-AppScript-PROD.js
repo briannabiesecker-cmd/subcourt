@@ -261,6 +261,34 @@ function runAutoDispatch() {
   return { dispatched: open.length };
 }
 
+  // Compatibility wrappers for legacy trigger names — keeps existing time-driven
+  // triggers working if they reference older function names. Each wrapper logs
+  // that it was invoked and delegates to the current implementation.
+  function runPreMatchDayDispatch(e) {
+    Logger.log('Compatibility wrapper: runPreMatchDayDispatch -> runAutoDispatch');
+    return runAutoDispatch(e);
+  }
+
+  function runPreMatchDayDispatchNow(e) {
+    Logger.log('Compatibility wrapper: runPreMatchDayDispatchNow -> runAutoDispatch');
+    return runAutoDispatch(e);
+  }
+
+  function runSubReminder(e) {
+    Logger.log('Compatibility wrapper: runSubReminder -> runMatchTimeReminder');
+    return runMatchTimeReminder(e);
+  }
+
+  function runMatchDayMinus2Dispatch(e) {
+    Logger.log('Compatibility wrapper: runMatchDayMinus2Dispatch -> runMatchTimeReminder');
+    return runMatchTimeReminder(e);
+  }
+
+  function runMatchDayMinus1Dispatch(e) {
+    Logger.log('Compatibility wrapper: runMatchDayMinus1Dispatch -> runMatchTimeReminder');
+    return runMatchTimeReminder(e);
+  }
+
 // ──────────────────────────────────────────────────
 // ROUTING
 // ──────────────────────────────────────────────────
@@ -979,15 +1007,102 @@ function runMatch(params) {
 // EMAIL
 // ──────────────────────────────────────────────────
 
+function _getEmailThrottleDateKey(date) {
+  try {
+    return Utilities.formatDate(date || new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  } catch (e) {
+    return (date || new Date()).toISOString().slice(0, 10);
+  }
+}
+
+function _buildEmailContentSignature(params) {
+  var payload = JSON.stringify({
+    to: params.to || '',
+    cc: params.cc || '',
+    subject: params.subject || '',
+    body: params.body || '',
+    htmlBody: params.htmlBody || '',
+    name: params.name || ''
+  });
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, payload);
+  return Utilities.base64Encode(digest);
+}
+
+function _resolveEmail(name, storedEmail, players) {
+  if (!name || !players || !players.length) return storedEmail || '';
+  var lower = name.toLowerCase();
+  var match = players.find(function(p) { return p.name && p.name.toLowerCase() === lower; });
+  return (match && match.email) ? match.email : (storedEmail || '');
+}
+
+function _isTomorrowOrDayAfterTomorrow(matchDate) {
+  try {
+    var tz = Session.getScriptTimeZone();
+    var today = new Date(Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd') + 'T00:00:00');
+    var target = new Date(matchDate + 'T00:00:00');
+    var diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+    return diffDays === 1 || diffDays === 2;
+  } catch (e) {
+    return false;
+  }
+}
+
+function _getVolunteerCcEmailsForMatch(matchDate, matchTime, players) {
+  if (!matchDate || !players || !players.length) return [];
+  var effectiveTime = (matchTime || '08:00').trim();
+  var volunteerMatches = getVolunteers().filter(function(v) {
+    if (!v || !v.email) return false;
+    if (v.date !== matchDate) return false;
+    if (!v.times || !v.times.length) return false;
+    if (v.status && ['matched', 'cancelled', 'expired'].indexOf(String(v.status).toLowerCase()) >= 0) return false;
+    return v.times.some(function(t) { return String(t).trim() === effectiveTime; });
+  });
+
+  var emails = [];
+  volunteerMatches.forEach(function(v) {
+    var email = _resolveEmail(v.name, v.email, players);
+    if (!email) return;
+    if (emails.map(function(existing) { return existing.toLowerCase(); }).indexOf(email.toLowerCase()) >= 0) return;
+    emails.push(email);
+  });
+  return emails;
+}
+
+function sendMailWithContentThrottle(params) {
+  if (!params) return false;
+  var props = PropertiesService.getScriptProperties();
+  var todayKey = _getEmailThrottleDateKey(new Date());
+  var contentSignature = _buildEmailContentSignature(params);
+  var throttleKey = 'emailThrottle:' + todayKey + ':' + contentSignature;
+  if (props.getProperty(throttleKey)) {
+    Logger.log('Skipping duplicate email for unchanged content: ' + (params.subject || ''));
+    return false;
+  }
+
+  MailApp.sendEmail(params);
+  props.setProperty(throttleKey, 'sent');
+  return true;
+}
+
 function sendConfirmationEmails(data, groupPlayers) {
   groupPlayers = groupPlayers || [];
   const dateStr    = formatDate(data.matchDate);
   const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
   const senderName = 'MWF Tennis League';
+  const players    = getPlayers();
 
-  // To: requestor + sub   CC: group partners
-  const toAddresses = [data.requestorEmail, data.subEmail].filter(Boolean).join(', ');
-  const ccList      = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
+  // To: requestor + sub   CC: group partners + near-term volunteer records
+  const resolvedRequestorEmail = _resolveEmail(data.requestorName, data.requestorEmail, players);
+  const resolvedSubEmail       = _resolveEmail(data.subName,       data.subEmail,       players);
+  const toAddresses = [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean).join(', ');
+  const groupCcList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
+  var volunteerCcList = [];
+  if (_isTomorrowOrDayAfterTomorrow(data.matchDate)) {
+    volunteerCcList = _getVolunteerCcEmailsForMatch(data.matchDate, data.matchTime, players);
+  }
+  var ccList = groupCcList.concat(volunteerCcList).filter(function(email, index, arr) {
+    return email && arr.map(function(item) { return String(item).toLowerCase(); }).indexOf(String(email).toLowerCase()) === index;
+  });
   const ccAddresses = ccList.join(', ');
 
   const subject =
@@ -1009,7 +1124,7 @@ function sendConfirmationEmails(data, groupPlayers) {
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
-  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+  if (isEmailEnabled()) sendMailWithContentThrottle(emailParams);
 }
 
 function saveMatchTimeReminderSettings(params) {
@@ -1090,7 +1205,7 @@ function runMatchTimeReminder() {
       name:     'MWF Tennis League'
     };
     if (ccList.length) emailParams.cc = ccList.join(', ');
-    if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+    if (isEmailEnabled()) sendMailWithContentThrottle(emailParams);
     notified++;
   });
 
@@ -1137,7 +1252,7 @@ function sendRetirementEmail(req) {
   var ccList = groupPlayers.map(function(p) { return p.email; }).filter(Boolean);
   var emailParams = { to: req.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
   if (ccList.length) emailParams.cc = ccList.join(', ');
-  if (isEmailEnabled()) MailApp.sendEmail(emailParams);
+  if (isEmailEnabled()) sendMailWithContentThrottle(emailParams);
 }
 
 function retireRequest(params) {
@@ -1335,7 +1450,7 @@ function checkAvailabilityWindow() {
   var emails = missing.map(function(p) { return p.email; }).filter(Boolean);
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + emails.length + ' player(s): ' + emails.join(', '));
   if (isEmailEnabled()) {
-    MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
+    sendMailWithContentThrottle({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
   }
 }
 
@@ -1351,7 +1466,7 @@ function testAvailabilityEmail() {
     'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
     'See you on the court!\n' +
     'MWF Tennis League';
-  MailApp.sendEmail({ to: 'brianna.biesecker@gmail.com, marobria@gmail.com', subject: subject, body: body, name: 'MWF Tennis League' });
+  sendMailWithContentThrottle({ to: 'brianna.biesecker@gmail.com, marobria@gmail.com', subject: subject, body: body, name: 'MWF Tennis League' });
   return { success: true, sent: 'brianna.biesecker@gmail.com, marobria@gmail.com' };
 }
 
@@ -1385,7 +1500,7 @@ function openAvailabilityWindow(params) {
       'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html\n\n' +
       'See you on the court!\n' +
       'MWF Tennis League';
-    if (isEmailEnabled()) MailApp.sendEmail({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
+    if (isEmailEnabled()) sendMailWithContentThrottle({ to: emails.join(', '), subject: subject, body: body, name: 'MWF Tennis League' });
   }
 
   return { success: true, playerCount: emails.length };
@@ -1485,7 +1600,7 @@ function submitAvailability(params) {
       'See you on the court!\n' +
       'MWF Tennis League';
 
-    if (isEmailEnabled()) MailApp.sendEmail({ to: email, subject: subject, body: body, name: 'MWF Tennis League' });
+    if (isEmailEnabled()) sendMailWithContentThrottle({ to: email, subject: subject, body: body, name: 'MWF Tennis League' });
   } catch(err) {
     Logger.log('Confirmation email failed: ' + err.message);
   }
