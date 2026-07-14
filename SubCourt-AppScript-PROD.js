@@ -95,6 +95,28 @@ function getConfig() {
 // the Config tab.
 // ──────────────────────────────────────────────────
 
+// Handler names from earlier dispatch schemes. Triggers can outlive the code
+// that created them — if one of these names is ever an active trigger's
+// handler, it must be deleted, never left to run. Do not add a compatibility
+// wrapper for a name in this list without also confirming no live trigger
+// still points at it.
+const LEGACY_TRIGGER_HANDLERS = [
+  'runPreMatchDayDispatch',
+  'runPreMatchDayDispatchNow',
+  'runMatchDayMinus2Dispatch',
+  'runMatchDayMinus1Dispatch',
+  'runSubReminder'
+];
+
+function deleteLegacyTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (LEGACY_TRIGGER_HANDLERS.indexOf(trigger.getHandlerFunction()) >= 0) {
+      Logger.log('Deleting stray legacy trigger: ' + trigger.getHandlerFunction());
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
+
 // ──────────────────────────────────────────────────
 // ONE-TIME SETUP
 // Run setupTriggers() once from the Apps Script editor
@@ -111,6 +133,7 @@ function setupTriggers() {
       ScriptApp.deleteTrigger(t);
     }
   });
+  deleteLegacyTriggers();
   // Install onEdit watcher for Config tab changes
   ScriptApp.newTrigger('onConfigEdit')
     .forSpreadsheet(SHEET_ID)
@@ -178,6 +201,7 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
+  deleteLegacyTriggers();
 
   if (!enabled) {
     Logger.log('Auto-dispatch is disabled. No trigger set.');
@@ -200,7 +224,7 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
     .inTimezone('America/New_York')
     .create();
 
-  Logger.log('Dispatch trigger set for ' + config.autoDispatchTimeET + ' ET daily.');
+  Logger.log('Dispatch trigger set for ' + timeET + ' ET daily.');
 }
 
 function runAutoDispatch() {
@@ -357,7 +381,7 @@ function doGet(e) {
         const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
         const hasTBDTime      = !matchTime;
         const effectiveTime   = (matchTime || '08:00').trim();
-        const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
+        const requireAllTimes = hasTBDTime || (!lastMinute && !urgent);
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
           const dateMatch    = v.date.trim() === matchDate.trim();
@@ -888,6 +912,41 @@ function updateRequestTime(params) {
   return { success: true };
 }
 
+function updatePublishedScheduleForSubAssignment(requestorEmail, subEmail, subName, matchDate) {
+  if (!requestorEmail || !subEmail || !matchDate) return;
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 14).getValues();
+  var requestorLower = requestorEmail.toLowerCase().trim();
+  var updates = [];
+
+  rows.forEach(function(row, idx) {
+    var rowDate = row[2] instanceof Date
+      ? Utilities.formatDate(row[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (row[2] ? row[2].toString() : '');
+    if (rowDate !== matchDate) return;
+
+    var changed = false;
+    for (var pi = 0; pi < 4; pi++) {
+      var nameCol = 4 + pi * 2;
+      var emailCol = 5 + pi * 2;
+      var rowEmail = (row[emailCol] || '').toString().toLowerCase().trim();
+      if (rowEmail === requestorLower) {
+        row[nameCol] = subName || row[nameCol];
+        row[emailCol] = subEmail;
+        changed = true;
+      }
+    }
+    if (changed) updates.push({ rowIndex: idx + 2, values: row });
+  });
+
+  updates.forEach(function(update) {
+    sheet.getRange(update.rowIndex, 1, 1, 14).setValues([update.values]);
+  });
+}
+
 function confirmSub(params) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
 
@@ -902,11 +961,14 @@ function confirmSub(params) {
     volSheet.getRange(parseInt(params.volunteerRowIndex), 7).setValue('matched');
   }
 
-  // 3. Parse group players
+  // 3. Update published schedule if the requestor is still listed on the schedule for that date.
+  updatePublishedScheduleForSubAssignment(params.requestorEmail, params.subEmail, params.subName, params.matchDate);
+
+  // 4. Parse group players
   var groupPlayers = [];
   try { groupPlayers = JSON.parse(params.groupPlayers || '[]'); } catch(e) {}
 
-  // 4. Send email
+  // 5. Send email
   sendConfirmationEmails(params, groupPlayers);
 
   return { success: true };
@@ -937,7 +999,7 @@ function runMatch(params) {
   const effectiveTime   = (matchTime || '08:00').trim();
 
   const skillWindow     = lastMinute ? Infinity : (!urgent ? config.skillWindowPreSchedule : config.skillWindowPostSchedule);
-  const requireAllTimes = !lastMinute && !urgent && !hasTBDTime;
+  const requireAllTimes = hasTBDTime || (!lastMinute && !urgent);
   const phase           = lastMinute ? 'last-minute' : (!urgent ? 'pre-schedule' : 'post-schedule');
 
   let candidates = volunteers.filter(v => {
@@ -1144,6 +1206,7 @@ function saveMatchTimeReminderSettings(params) {
 }
 
 function updateMatchTimeReminderTrigger(enabled, time) {
+  deleteLegacyTriggers();
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === 'runMatchTimeReminder') {
       ScriptApp.deleteTrigger(trigger);

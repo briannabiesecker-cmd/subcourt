@@ -1,9 +1,9 @@
 {
-  "scriptId": "1eSjMqsbLquKowkSPe1O-KIkG0YXP2lAojDqKYm_3tVOBSgOBZYJH8Iki",
-  "rootDir": "",
+  "scriptId": "1H_6VlAqhdjzwmeyVbm7HulwTHMA7_0O8NBNfoC4IHe_upGye13nvpW1_",
+  "rootDir": "clasp/prod",
   "scriptExtensions": [".js", ".gs"],
   "htmlExtensions": [".html"],
   "jsonExtensions": [".json"],
-  "filePushOrder": ["SubCourt-AppScript.js"],
+  "filePushOrder": ["Code.js"],
   "skipSubdirectories": false
 }
