@@ -3166,7 +3166,10 @@ function getPlayersScheduledForDate(targetDate) {
   return players;
 }
 
-function buildLeftoverVolunteersEmailHtml(volunteers, dateStr) {
+function buildLeftoverVolunteersEmailHtml(volunteers, dateStr, stillUnfilled) {
+  var introText = stillUnfilled
+    ? 'Sub requests for <strong>' + dateStr + '</strong> are still being worked, but the players below already offered to sub and haven\'t been matched — reach out directly if you need one of them.'
+    : 'All sub requests for <strong>' + dateStr + '</strong> have been filled. The players below also offered to sub and are still available if needed — reach out directly if a last-minute need comes up.';
   var dataRows = volunteers.map(function(v) {
     var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
@@ -3188,7 +3191,7 @@ function buildLeftoverVolunteersEmailHtml(volunteers, dateStr) {
     '<tr><td style="padding:24px;">' +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
     '<tr><td colspan="3" style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' +
-      'All sub requests for <strong>' + dateStr + '</strong> have been filled. The players below also offered to sub and are still available if needed — reach out directly if a last-minute need comes up.' +
+      introText +
     '</td></tr>' +
     '<tr><td colspan="3"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
     '<tr style="border-bottom:2px solid #e5e7eb;">' +
@@ -3204,10 +3207,14 @@ function buildLeftoverVolunteersEmailHtml(volunteers, dateStr) {
     '</table></td></tr></table></body></html>';
 }
 
-function buildLeftoverVolunteersEmailText(volunteers, dateStr) {
+function buildLeftoverVolunteersEmailText(volunteers, dateStr, stillUnfilled) {
   var lines = [];
-  lines.push('All sub requests for ' + dateStr + ' have been filled.');
-  lines.push('The players below also offered to sub and are still available if needed:');
+  if (stillUnfilled) {
+    lines.push('Sub requests for ' + dateStr + ' are still being worked, but the players below already offered to sub and haven\'t been matched:');
+  } else {
+    lines.push('All sub requests for ' + dateStr + ' have been filled.');
+    lines.push('The players below also offered to sub and are still available if needed:');
+  }
   lines.push('');
   volunteers.forEach(function(v) {
     var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
@@ -3223,7 +3230,7 @@ function buildLeftoverVolunteersEmailText(volunteers, dateStr) {
 // Fires on the final Pre-Match Day run (row.cancel) once every open request for
 // targetDate has been filled or given up on. If any volunteers for that date were
 // never used, lets them and everyone scheduled to play know backup is still around.
-function sendLeftoverVolunteersEmail(targetDate) {
+function sendLeftoverVolunteersEmail(targetDate, stillUnfilled) {
   if (!isEmailEnabled()) return;
   var volunteers = getLeftoverVolunteersForDate(targetDate);
   if (!volunteers.length) return;
@@ -3238,13 +3245,16 @@ function sendLeftoverVolunteersEmail(targetDate) {
   var config     = getConfig();
   var dateStr    = formatDate(targetDate);
   var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
+  var subject    = stillUnfilled
+    ? 'MWF Tennis League — Subs still needed for ' + dateStr + ', extra help available'
+    : 'MWF Tennis League — Subs filled for ' + dateStr + ', extra help available';
 
   sendLeagueEmail({
     to:       adminEmail,
     bcc:      bccList.join(','),
-    subject:  'MWF Tennis League — Subs filled for ' + dateStr + ', extra help available',
-    body:     buildLeftoverVolunteersEmailText(volunteers, dateStr),
-    htmlBody: buildLeftoverVolunteersEmailHtml(volunteers, dateStr),
+    subject:  subject,
+    body:     buildLeftoverVolunteersEmailText(volunteers, dateStr, stillUnfilled),
+    htmlBody: buildLeftoverVolunteersEmailHtml(volunteers, dateStr, stillUnfilled),
     name:     'MWF Tennis League'
   });
   Logger.log('Leftover volunteers email sent for ' + targetDate + ' to ' + bccList.length + ' recipient(s).');
@@ -3308,10 +3318,11 @@ function runPreMatchDayDispatch() {
           Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
         }
       });
-    } else {
-      try { sendLeftoverVolunteersEmail(targetDate); } catch(e) {
-        Logger.log('Leftover volunteers notify failed for ' + targetDate + ': ' + e.message);
-      }
+    }
+    // Independent of whether every request got filled — a volunteer can go unused
+    // even with an open request if their rating falls outside the match's skill window.
+    try { sendLeftoverVolunteersEmail(targetDate, openReqs.length > 0); } catch(e) {
+      Logger.log('Leftover volunteers notify failed for ' + targetDate + ': ' + e.message);
     }
   }
 }
