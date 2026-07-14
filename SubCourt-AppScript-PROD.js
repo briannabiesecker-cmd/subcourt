@@ -3132,6 +3132,124 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   Logger.log('Urgent sub broadcast sent via BCC to ' + players.length + ' player(s) for ' + targetDate);
 }
 
+// Volunteers for targetDate who were never used as a sub — status is either still
+// 'pending' (open) or already flagged 'expired'. Excludes 'matched'/'cancelled'.
+function getLeftoverVolunteersForDate(targetDate) {
+  return getVolunteers().filter(function(v) {
+    return v.date === targetDate && (v.status === 'pending' || v.status === 'expired');
+  });
+}
+
+// Unique {name,email} of every player in a MatchGroups slot for targetDate.
+// Sit-out players are excluded — they aren't playing that day.
+function getPlayersScheduledForDate(targetDate) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 16).getValues();
+  var seen = {};
+  var players = [];
+  rows.forEach(function(r) {
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== targetDate) return;
+    for (var pi = 0; pi < 4; pi++) {
+      var name  = r[4 + pi * 2]     ? r[4 + pi * 2].toString().trim()     : '';
+      var email = r[4 + pi * 2 + 1] ? r[4 + pi * 2 + 1].toString().trim() : '';
+      if (!name || !email) continue;
+      var key = email.toLowerCase();
+      if (seen[key]) continue;
+      seen[key] = true;
+      players.push({ name: name, email: email });
+    }
+  });
+  return players;
+}
+
+function buildLeftoverVolunteersEmailHtml(volunteers, dateStr) {
+  var dataRows = volunteers.map(function(v) {
+    var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
+    return '<tr style="border-bottom:1px solid #f0f0f0;">' +
+      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.name + '</td>' +
+      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.email + '</td>' +
+      '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + times + '</td>' +
+      '</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head>' +
+    '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+    '<title>Extra Subs Available</title></head>' +
+    '<body style="margin:0;padding:0;background-color:#f9fafb;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f9fafb;">' +
+    '<tr><td style="padding:20px 12px;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:650px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">' +
+    '<tr><td style="padding:24px;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    '<tr><td colspan="3" style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' +
+      'All sub requests for <strong>' + dateStr + '</strong> have been filled. The players below also offered to sub and are still available if needed — reach out directly if a last-minute need comes up.' +
+    '</td></tr>' +
+    '<tr><td colspan="3"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    '<tr style="border-bottom:2px solid #e5e7eb;">' +
+    '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Name</th>' +
+    '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Email</th>' +
+    '<th style="text-align:left;padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Available Times</th>' +
+    '</tr>' + dataRows +
+    '</table></td></tr>' +
+    '<tr><td colspan="3" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
+    '</table></td></tr>' +
+    '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
+    'MWF Tennis League &bull; You are receiving this email as a registered player in the league.</td></tr>' +
+    '</table></td></tr></table></body></html>';
+}
+
+function buildLeftoverVolunteersEmailText(volunteers, dateStr) {
+  var lines = [];
+  lines.push('All sub requests for ' + dateStr + ' have been filled.');
+  lines.push('The players below also offered to sub and are still available if needed:');
+  lines.push('');
+  volunteers.forEach(function(v) {
+    var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
+    lines.push(v.name + '  |  ' + v.email + '  |  ' + times);
+  });
+  lines.push('');
+  lines.push('Do not reply to this email.');
+  lines.push('');
+  lines.push('MWF Tennis League');
+  return lines.join('\n');
+}
+
+// Fires on the final Pre-Match Day run (row.cancel) once every open request for
+// targetDate has been filled or given up on. If any volunteers for that date were
+// never used, lets them and everyone scheduled to play know backup is still around.
+function sendLeftoverVolunteersEmail(targetDate) {
+  if (!isEmailEnabled()) return;
+  var volunteers = getLeftoverVolunteersForDate(targetDate);
+  if (!volunteers.length) return;
+
+  var scheduledPlayers = getPlayersScheduledForDate(targetDate);
+  var recipients = {};
+  volunteers.forEach(function(v) { if (v.email) recipients[v.email.toLowerCase()] = v.email; });
+  scheduledPlayers.forEach(function(p) { if (p.email) recipients[p.email.toLowerCase()] = p.email; });
+  var bccList = Object.keys(recipients).map(function(k) { return recipients[k]; });
+  if (!bccList.length) return;
+
+  var config     = getConfig();
+  var dateStr    = formatDate(targetDate);
+  var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
+
+  sendLeagueEmail({
+    to:       adminEmail,
+    bcc:      bccList.join(','),
+    subject:  'MWF Tennis League — Subs filled for ' + dateStr + ', extra help available',
+    body:     buildLeftoverVolunteersEmailText(volunteers, dateStr),
+    htmlBody: buildLeftoverVolunteersEmailHtml(volunteers, dateStr),
+    name:     'MWF Tennis League'
+  });
+  Logger.log('Leftover volunteers email sent for ' + targetDate + ' to ' + bccList.length + ' recipient(s).');
+}
+
 // ── Pre-match-day dispatch (runs 5× on Sun/Tue/Thu via fixed weekly triggers) ──
 // Config rows 43–47 (Time / Dispatch / Broadcast / Cancel) control each run.
 
@@ -3181,14 +3299,20 @@ function runPreMatchDayDispatch() {
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
     sendUrgentSubBroadcast(openReqs, targetDate);
   }
-  if (row.cancel && openReqs.length) {
-    var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
-    openReqs.forEach(function(req) {
-      reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
-      try { sendSubNeededTomorrowEmail(req); } catch(e) {
-        Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
+  if (row.cancel) {
+    if (openReqs.length) {
+      var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+      openReqs.forEach(function(req) {
+        reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+        try { sendSubNeededTomorrowEmail(req); } catch(e) {
+          Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
+        }
+      });
+    } else {
+      try { sendLeftoverVolunteersEmail(targetDate); } catch(e) {
+        Logger.log('Leftover volunteers notify failed for ' + targetDate + ': ' + e.message);
       }
-    });
+    }
   }
 }
 
