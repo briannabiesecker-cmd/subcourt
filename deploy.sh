@@ -35,12 +35,8 @@ if [ "$TARGET" = "dev" ]; then
   echo "✓ DEV deploy complete and live."
 
 elif [ "$TARGET" = "prod" ]; then
-  if [ -z "$PROD_SHEET_ID" ]; then
-    echo "Error: PROD_SHEET_ID is not set in deploy.sh. Add it before deploying to prod."
-    exit 1
-  fi
   echo "→ Deploying to PROD..."
-  sed "s/$DEV_SHEET_ID/$PROD_SHEET_ID/;s/rally-tennis-dev\.html/rally-tennis-prod.html/g" "$SOURCE" > "$SCRIPT_DIR/clasp/prod/Code.js"
+  cp "$SCRIPT_DIR/SubCourt-AppScript-PROD.js" "$SCRIPT_DIR/clasp/prod/Code.js"
   cd "$SCRIPT_DIR/clasp/prod"
   clasp push --force
   if [ -n "$DESCRIPTION" ]; then

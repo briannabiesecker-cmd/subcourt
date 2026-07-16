@@ -2374,7 +2374,7 @@ function createScheduleDraft(params) {
 
   // ── Send via MailApp (BCC-chunked through sendLeagueEmail) ───────────
   var csvBlob    = Utilities.newBlob('﻿' + csvContent, 'text/csv', csvFileName);
-  var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
+  var adminEmail = 'marobria@gmail.com';
   try {
     sendLeagueEmail({
       to:          adminEmail,
@@ -3120,7 +3120,7 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   });
   if (!players.length) return;
   var bccList   = players.map(function(p) { return p.email; }).join(',');
-  var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
+  var adminEmail = 'marobria@gmail.com';
   sendLeagueEmail({
     to:       adminEmail,
     bcc:      bccList,
@@ -3233,22 +3233,23 @@ function sendLeftoverVolunteersEmail(targetDate) {
   var recipients = {};
   volunteers.forEach(function(v) { if (v.email) recipients[v.email.toLowerCase()] = v.email; });
   scheduledPlayers.forEach(function(p) { if (p.email) recipients[p.email.toLowerCase()] = p.email; });
-  var bccList = Object.keys(recipients).map(function(k) { return recipients[k]; });
-  if (!bccList.length) return;
+  var toList = Object.keys(recipients).map(function(k) { return recipients[k]; });
+  if (!toList.length) return;
 
-  var config     = getConfig();
-  var dateStr    = formatDate(targetDate);
-  var adminEmail = config.senderEmail || 'mwf_league@mtctennis.com';
+  var config  = getConfig();
+  var dateStr = formatDate(targetDate);
 
-  sendLeagueEmail({
-    to:       adminEmail,
-    bcc:      bccList.join(','),
+  var emailParams = {
+    to:       toList.join(','),
     subject:  'MWF Tennis League — Players available for ' + dateStr + ' if needed',
     body:     buildLeftoverVolunteersEmailText(volunteers),
     htmlBody: buildLeftoverVolunteersEmailHtml(volunteers),
     name:     'MWF Tennis League'
-  });
-  Logger.log('Leftover volunteers email sent for ' + targetDate + ' to ' + bccList.length + ' recipient(s).');
+  };
+  if (config.senderEmail) emailParams.cc = config.senderEmail;
+
+  sendLeagueEmail(emailParams);
+  Logger.log('Leftover volunteers email sent for ' + targetDate + ' to ' + toList.length + ' recipient(s).');
 }
 
 // ── Pre-match-day dispatch (runs 5× on Sun/Tue/Thu via fixed weekly triggers) ──
@@ -3768,8 +3769,7 @@ function checkAvailabilityWindow() {
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
   if (!isEmailEnabled()) return;
 
-  var config2    = getConfig();
-  var adminEmail = config2.senderEmail || 'mwf_league@mtctennis.com';
+  var adminEmail = 'marobria@gmail.com';
   sendLeagueEmail({
     to:       adminEmail,
     bcc:      missing.map(function(p) { return p.email; }).join(','),
@@ -3919,8 +3919,7 @@ function _runQueuedAvailBlast() {
     'See you on the court!<br>' +
     'MWF Tennis League';
 
-  const config2    = getConfig();
-  const adminEmail = config2.senderEmail || 'mwf_league@mtctennis.com';
+  const adminEmail = 'marobria@gmail.com';
   sendLeagueEmail({
     to:       adminEmail,
     bcc:      allPlayers.map(function(p) { return p.email; }).join(','),
@@ -5111,7 +5110,7 @@ function sendScheduleEmails(params) {
         textContent:  emailParts.body
       });
     } else {
-      var adminEmail2 = config.senderEmail || 'mwf_league@mtctennis.com';
+      var adminEmail2 = 'marobria@gmail.com';
       sendLeagueEmail({
         to:       adminEmail2,
         bcc:      allPlayers.map(function(p) { return p.email; }).join(','),
