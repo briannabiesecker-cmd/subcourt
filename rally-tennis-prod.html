@@ -2191,6 +2191,17 @@ const TIMES = ['08:00','09:30','11:00','12:30'];
 const TIME_LABELS = {'08:00':'8:00 AM','09:30':'9:30 AM','11:00':'11:00 AM','12:30':'12:30 PM'};
 const TIME_LABELS_SHORT = {'08:00':'8:00','09:30':'9:30','11:00':'11:00','12:30':'12:30'};
 
+// True for match dates that are tomorrow or the day after — mirrors the backend's
+// _isTomorrowOrDayAfterTomorrow(). Requests this close to match day must have a
+// real court time; TBD is not allowed.
+function isNearTermRequestDate(dateStr) {
+  if (!dateStr) return false;
+  const today  = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
+  const target = new Date(dateStr + 'T00:00:00');
+  const diffDays = Math.round((target - today) / 86400000);
+  return diffDays === 1 || diffDays === 2;
+}
+
 // ══════════════════════════════════════════════════
 // CONFIG — paste your Apps Script URL here after deploying
 // ══════════════════════════════════════════════════
@@ -2605,14 +2616,25 @@ async function onReqDateChange() {
       partners:  result.players.filter(p => (p.email || '').toLowerCase() !== email.toLowerCase())
     };
 
+    const needsTimePick = isNearTermRequestDate(matchDate) && !reqAutoFill.matchTime;
     const timeLabel = reqAutoFill.matchTime
       ? (TIME_LABELS[reqAutoFill.matchTime] || reqAutoFill.matchTime)
-      : 'TBD';
+      : (needsTimePick ? 'Required below' : 'TBD');
 
     const playerTags = result.players.map(p => {
       const isMe = (p.email || '').toLowerCase() === email.toLowerCase();
       return `<span style="font-weight:${isMe ? '700' : '500'};color:${isMe ? 'var(--clay)' : 'var(--ink)'};white-space:nowrap;">${p.name}${isMe ? ' ★' : ''}</span>`;
     }).join('<span style="color:var(--line);margin:0 5px;">|</span>');
+
+    const timePickerHtml = needsTimePick
+      ? `<div style="margin-top:8px;">
+           <label style="font-size:12px;font-weight:600;color:var(--danger);">Match time required — this date is within 2 days, TBD is not allowed</label>
+           <select id="req-time-required" style="width:100%;margin-top:3px;font-size:14px;padding:7px 9px;border:1.5px solid var(--danger);border-radius:8px;box-sizing:border-box;">
+             <option value="" selected disabled>Select a time…</option>
+             ${TIMES.map(t => `<option value="${t}">${TIME_LABELS[t]}</option>`).join('')}
+           </select>
+         </div>`
+      : '';
 
     wrap.innerHTML = `<div style="background:var(--chalk);border-radius:var(--radius);padding:0.75rem 1rem;">
       <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:6px;">Match from schedule</div>
@@ -2620,6 +2642,7 @@ async function onReqDateChange() {
         <div><span style="font-size:12px;color:var(--ink-light);">Time</span><br><span style="font-weight:600;font-size:14px;">${timeLabel}</span></div>
         <div><span style="font-size:12px;color:var(--ink-light);">Group</span><br><span style="font-size:14px;line-height:1.6;">${playerTags}</span></div>
       </div>
+      ${timePickerHtml}
     </div>`;
   } catch(e) {
     if (seq !== reqLookupSeq) return;
@@ -2644,7 +2667,15 @@ async function submitRequest() {
     return;
   }
 
-  const matchTime = reqAutoFill.matchTime || '';
+  let matchTime = reqAutoFill.matchTime || '';
+  if (!matchTime && isNearTermRequestDate(matchDate)) {
+    const timeSel = document.getElementById('req-time-required');
+    matchTime = timeSel ? timeSel.value : '';
+    if (!matchTime) {
+      showAlert('req-alert', 'error', 'Please select a match time — TBD is not allowed for requests within the next two days.');
+      return;
+    }
+  }
   const partners  = reqAutoFill.partners.filter(p => p.name && p.email);
 
   const btn = document.getElementById('req-submit-btn');
@@ -2821,7 +2852,7 @@ async function loadReqSchedule(email, name) {
         });
         const cbHtml = alreadyRequested
           ? `<span style="font-size:12px;color:var(--ink-light);">Requested</span>`
-          : `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" />`;
+          : (isNearTermRequestDate(d.date) ? _reqTimeSelectHtml(key) : _reqCheckboxHtml(key));
         rows += `<tr>
           <td style="text-align:center;">${cbHtml}</td>
           <td class="date-cell" style="white-space:nowrap;line-height:1.4;">${dow}<br><span style="font-size:12px;color:var(--ink-mid);">${mdd}</span></td>
@@ -2848,6 +2879,18 @@ async function loadReqSchedule(email, name) {
   }
 }
 
+function _reqCheckboxHtml(key) {
+  return `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" />`;
+}
+
+// Match dates within 2 days can't be TBD — a required time picker replaces the checkbox.
+function _reqTimeSelectHtml(key) {
+  const opts = TIMES.map(t => `<option value="${t}">${TIME_LABELS_SHORT[t]}</option>`).join('');
+  return `<select onchange="onReqScheduleTimeSelect(this,'${key}')" style="font-size:12px;padding:3px 4px;border:1.5px solid var(--danger);border-radius:6px;">
+    <option value="" selected disabled>Time?</option>${opts}
+  </select>`;
+}
+
 async function onReqScheduleCheck(checkbox, key) {
   if (!checkbox.checked) return;
   const slot = reqScheduleData[key];
@@ -2864,18 +2907,45 @@ async function onReqScheduleCheck(checkbox, key) {
 
   if (findAnitaGroupReq(existing, slot.matchDate, email)) {
     showAnitaCheckModal({
-      onProceed: () => _submitScheduleCheckRequest(checkbox, key, slot, name, email),
+      onProceed: () => _submitScheduleCheckRequest(checkbox, key, slot, name, email, _reqCheckboxHtml(key)),
       onDone:    () => { checkbox.checked = false; checkbox.disabled = false; }
     });
     return;
   }
 
-  await _submitScheduleCheckRequest(checkbox, key, slot, name, email);
+  await _submitScheduleCheckRequest(checkbox, key, slot, name, email, _reqCheckboxHtml(key));
 }
 
-async function _submitScheduleCheckRequest(checkbox, key, slot, name, email) {
-  const cell = checkbox.closest('td');
-  checkbox.disabled = true;
+async function onReqScheduleTimeSelect(select, key) {
+  const time = select.value;
+  if (!time) return;
+  const slot = reqScheduleData[key];
+  if (!slot) return;
+  slot.matchTime = time;
+  const { name, email } = getTypeaheadValue('req');
+
+  select.disabled = true;
+
+  let existing = [];
+  try {
+    requestCache = null;
+    existing = await getRequests();
+  } catch(e) {}
+
+  if (findAnitaGroupReq(existing, slot.matchDate, email)) {
+    showAnitaCheckModal({
+      onProceed: () => _submitScheduleCheckRequest(select, key, slot, name, email, _reqTimeSelectHtml(key)),
+      onDone:    () => { select.value = ''; select.disabled = false; }
+    });
+    return;
+  }
+
+  await _submitScheduleCheckRequest(select, key, slot, name, email, _reqTimeSelectHtml(key));
+}
+
+async function _submitScheduleCheckRequest(el, key, slot, name, email, retryHtml) {
+  const cell = el.closest('td');
+  el.disabled = true;
   cell.innerHTML = '<div class="loading" style="justify-content:center;padding:0;gap:4px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>';
   try {
     const partners = slot.partners.filter(p => p.name && p.email);
@@ -2891,7 +2961,7 @@ async function _submitScheduleCheckRequest(checkbox, key, slot, name, email) {
     const selName = document.getElementById('req-selected-name')?.textContent?.trim() || name;
     loadMyRequests(email, selName);
   } catch(e) {
-    cell.innerHTML = `<input type="checkbox" onchange="onReqScheduleCheck(this,'${key}')" style="width:18px;height:18px;cursor:pointer;" title="Failed — click to retry" />`;
+    cell.innerHTML = retryHtml;
   }
 }
 
