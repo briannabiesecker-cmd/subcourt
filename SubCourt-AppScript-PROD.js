@@ -1157,7 +1157,7 @@ function doGet(e) {
         const effectiveTime   = (matchTime || '08:00').trim();
         const { phase: _phase, skillWindow } = getDispatchPhase(req, config);
         const lastMinute      = _phase === 'last-minute';
-        const requireAllTimes = _phase === 'pre-schedule' && !hasTBDTime;
+        const requireAllTimes = hasTBDTime || _phase === 'pre-schedule';
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
           const dateMatch    = v.date.trim() === matchDate.trim();
@@ -2575,7 +2575,7 @@ function runMatch(params) {
   const effectiveTime   = (matchTime || '08:00').trim();
   const { phase, skillWindow } = getDispatchPhase(req, config);
   const lastMinute      = phase === 'last-minute';
-  const requireAllTimes = phase === 'pre-schedule' && !hasTBDTime;
+  const requireAllTimes = hasTBDTime || phase === 'pre-schedule';
 
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
