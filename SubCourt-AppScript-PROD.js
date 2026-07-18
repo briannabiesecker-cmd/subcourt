@@ -694,14 +694,21 @@ function getConfig() {
       sheet.getRange('E50').setValue('Time Reminder');
       sheet.getRange('E51:E55').setValues([['No'], ['No'], ['No'], ['No'], ['No']]);
     }
-    var md2Rows = sheet.getRange('A51:E55').getValues();
+    // Overflow-detect column — auto-init on first use (column F, rows 50–55).
+    var f50 = sheet.getRange('F50').getValue();
+    if (f50 === '' || f50 === null) {
+      sheet.getRange('F50').setValue('Overflow Detect');
+      sheet.getRange('F51:F55').setValues([['No'], ['No'], ['No'], ['No'], ['No']]);
+    }
+    var md2Rows = sheet.getRange('A51:F55').getValues();
     var matchDayMinus2Schedule = md2Rows.map(function(row) {
       return {
         run:               row[0].toString(),
         time:              formatSheetTime(row[1]) || row[1].toString().trim(),
         dispatch:          row[2] !== 'No' && row[2] !== false,
         broadcast:         row[3] !== 'No' && row[3] !== false,
-        matchTimeReminder: row[4] === 'Yes' || row[4] === true
+        matchTimeReminder: row[4] === 'Yes' || row[4] === true,
+        overflowDetect:    row[5] === 'Yes' || row[5] === true
       };
     });
     // Friday auto dispatch — auto-init on first use (rows 57–59)
@@ -1149,6 +1156,9 @@ function doGet(e) {
       const req = reqs.find(r => r.id === requestId);
       if (!req) {
         result = { error: 'Request not found' };
+      } else if (req.matchTime === 'Overflow') {
+        result = { req: { id: req.id, matchDate: req.matchDate, matchTime: req.matchTime, email: req.email },
+                   requireAllTimes: false, skillWindow: null, trace: [], overflow: true };
       } else {
         const reqPlayer       = players.find(p => p.email === req.email.toLowerCase());
         const reqRating       = reqPlayer ? reqPlayer.rating : null;
@@ -2565,6 +2575,11 @@ function runMatch(params) {
 
   const req = requests.find(r => r.id === params.requestId);
   if (!req) return { error: 'Request not found' };
+  // Overflow requests have no real court time (group hasn't heard from Chelsea yet) —
+  // never assign a volunteer to one.
+  if (req.matchTime === 'Overflow') {
+    return { candidates: [], skillWindow: null, requireAllTimes: false, phase: null, matchTime: 'Overflow' };
+  }
 
   const reqPlayer = players.find(p => p.email === req.email.toLowerCase());
   if (!reqPlayer) return { error: 'Requestor not found in Players sheet' };
@@ -2930,6 +2945,59 @@ function sendSubNeededTomorrowEmail(req) {
   sendLeagueEmail(emailParams);
 }
 
+// Marks still-TBD sub requests for targetDate as 'Overflow' (Match Day -2 Dispatch,
+// Config column F) before dispatch runs. A TBD request this close to match day likely
+// means the group has no Chelsea court time yet — runMatch() skips 'Overflow' requests
+// so dispatch never assigns a volunteer to one.
+function markOverflowRequests(targetDate) {
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  var requests = getRequests().filter(function(r) {
+    return r.status === 'open' && r.matchDate === targetDate && !r.matchTime;
+  });
+  requests.forEach(function(req) {
+    var cell = reqSheet.getRange(req.rowIndex, 6);
+    cell.setNumberFormat('@');
+    cell.setValue('Overflow');
+    try { sendOverflowNotification(req); } catch(e) {
+      Logger.log('sendOverflowNotification failed for ' + req.id + ': ' + e.message);
+    }
+  });
+  Logger.log('markOverflowRequests: ' + requests.length + ' request(s) marked Overflow for ' + targetDate);
+  return requests.length;
+}
+
+function sendOverflowNotification(req) {
+  if (!isEmailEnabled()) return;
+
+  var players      = getPlayers();
+  var isAnitaSub    = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
+  var groupPlayers  = req.groupPlayers || [];
+
+  var allEmails = [];
+  if (!isAnitaSub && req.name) allEmails.push(_resolveEmail(req.name, req.email, players));
+  groupPlayers.forEach(function(p) { if (p.name || p.email) allEmails.push(_resolveEmail(p.name, p.email, players)); });
+  var seen = {};
+  allEmails = allEmails.filter(function(e) {
+    var k = e.toLowerCase(); if (seen[k]) return false; seen[k] = true; return true;
+  });
+  if (!allEmails.length) return;
+
+  var reqUrl  = APP_BASE_URL + '#request';
+  var dateStr = formatDate(req.matchDate);
+  var subject = 'MWF Tennis League — Sub request assumed Overflow: ' + dateStr;
+  var body =
+    'This sub request cannot be filled because there is no match time, so it is assumed to be in \'Overflow\'.\n\n' +
+    'Update that match time when you get a court assignment from Chelsea, on the Request a Sub page:\n' +
+    reqUrl + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'This sub request cannot be filled because there is no match time, so it is assumed to be in <strong>Overflow</strong>.<br><br>' +
+    'Update that match time when you get a court assignment from Chelsea, on the <a href="' + reqUrl + '">Request a Sub</a> page.<br><br>' +
+    'MWF Tennis League';
+
+  sendLeagueEmail({ to: allEmails.join(', '), subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+}
+
 // ──────────────────────────────────────────────────
 // URGENT SUB EMAIL BROADCAST & FOLLOWUP DISPATCH
 // ──────────────────────────────────────────────────
@@ -2998,9 +3066,12 @@ function buildSubNeededEmailHtml(requests, scriptUrl) {
       .filter(function(p) { return (p.email || '').toLowerCase() !== (req.email || '').toLowerCase(); })
       .map(function(p) { return p.name; }).join(', ');
     var linkUrl = scriptUrl + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(req.id);
+    var buttonHtml = req.matchTime === 'Overflow'
+      ? '<span style="display:inline-block;padding:7px 14px;background-color:#9ca3af;color:#f3f4f6;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</span>'
+      : '<a href="' + linkUrl + '" style="display:inline-block;padding:7px 14px;background-color:#1a5c3a;color:#ffffff;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</a>';
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
       '<td style="padding:10px 12px 10px 0;vertical-align:middle;">' +
-        '<a href="' + linkUrl + '" style="display:inline-block;padding:7px 14px;background-color:#1a5c3a;color:#ffffff;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</a>' +
+        buttonHtml +
       '</td>' +
       '<td style="padding:10px 12px 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;vertical-align:middle;">' + (req.name || '') + '</td>' +
       '<td style="padding:10px 12px 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;vertical-align:middle;white-space:nowrap;">' + timeLabel + '</td>' +
@@ -3289,7 +3360,15 @@ function runMatchDayMinus2Dispatch() {
   if (!row) row = { dispatch: true, broadcast: true };
 
   Logger.log('runMatchDayMinus2Dispatch: ' + targetDate + ' hour=' + currentHour +
-    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' matchTimeReminder=' + !!row.matchTimeReminder);
+    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' matchTimeReminder=' + !!row.matchTimeReminder +
+    ' overflowDetect=' + !!row.overflowDetect);
+
+  // Before filling anything: TBD requests this close to match day likely mean the group
+  // is on Overflow with no Chelsea court time yet. Mark them Overflow so dispatch skips
+  // them instead of assigning a volunteer to a request that may never get a real time.
+  if (row.overflowDetect) {
+    try { markOverflowRequests(targetDate); } catch(e) { Logger.log('markOverflowRequests failed: ' + e.message); }
+  }
 
   if (row.dispatch) runDispatchForDate(targetDate);
 
