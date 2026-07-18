@@ -687,13 +687,21 @@ function getConfig() {
         ['5', '8:00 PM',  'Yes', 'Yes']
       ]);
     }
-    var md2Rows = sheet.getRange('A51:D55').getValues();
+    // Match time reminder column — auto-init on first use (column E, rows 50–55).
+    // Separate from the block above since existing sheets already have A50:D55 populated.
+    var e50 = sheet.getRange('E50').getValue();
+    if (e50 === '' || e50 === null) {
+      sheet.getRange('E50').setValue('Time Reminder');
+      sheet.getRange('E51:E55').setValues([['No'], ['No'], ['No'], ['No'], ['No']]);
+    }
+    var md2Rows = sheet.getRange('A51:E55').getValues();
     var matchDayMinus2Schedule = md2Rows.map(function(row) {
       return {
-        run:       row[0].toString(),
-        time:      formatSheetTime(row[1]) || row[1].toString().trim(),
-        dispatch:  row[2] !== 'No' && row[2] !== false,
-        broadcast: row[3] !== 'No' && row[3] !== false
+        run:               row[0].toString(),
+        time:              formatSheetTime(row[1]) || row[1].toString().trim(),
+        dispatch:          row[2] !== 'No' && row[2] !== false,
+        broadcast:         row[3] !== 'No' && row[3] !== false,
+        matchTimeReminder: row[4] === 'Yes' || row[4] === true
       };
     });
     // Friday auto dispatch — auto-init on first use (rows 57–59)
@@ -727,9 +735,6 @@ function getConfig() {
       // Dispatch automation (Friday only) — rows 58–59
       autoDispatchEnabled:      (function() { var v = sheet.getRange('B58').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B59').getValue()) || '13:00',
-      // Match time reminder — rows 28–29
-      matchTimeReminderEnabled: (function() { var v = sheet.getRange('B28').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
-      matchTimeReminderTimeET:  formatSheetTime(sheet.getRange('B29').getValue()) || '10:00',
       // Sender email — row 30
       senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
       // Players Email Group — row 33
@@ -763,8 +768,6 @@ function getConfig() {
       calendarLookaheadDays:   30,
       autoDispatchEnabled:      false,
       autoDispatchTimeET:       '08:00',
-      matchTimeReminderEnabled: false,
-      matchTimeReminderTimeET:  '10:00',
       senderEmail: '',
       playersGroupEmail: '',
       brevoApiKey: '',
@@ -839,12 +842,11 @@ function setupTriggers() {
   updateMatchDayMinus2Triggers();
 
   var config = getConfig();
-  updateMatchTimeReminderTrigger(config.matchTimeReminderEnabled, config.matchTimeReminderTimeET);
   Logger.log('Triggers installed. Dispatch: ' +
     (config.autoDispatchEnabled ? 'Fridays at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
     '. Match day -2 runs: Sat/Mon/Wed at 8am, 11am, 2pm, 5pm, 8pm ET.' +
     '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.' +
-    ' Match time reminder: ' + (config.matchTimeReminderEnabled ? 'daily at ' + config.matchTimeReminderTimeET + ' ET (sends Sat/Mon/Wed)' : 'disabled') + '.');
+    ' Match time reminder: fires on Match day -2 runs whose Config column E (rows 51-55) is Yes.');
 }
 
 function onConfigEdit(e) {
@@ -1099,7 +1101,6 @@ function doGet(e) {
     else if (action === 'manuallyAssignSub')      result = manuallyAssignSub(e.parameter);
     else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
     else if (action === 'runAutoDispatchNow')             result = scheduleImmediateDispatch();
-    else if (action === 'saveMatchTimeReminderSettings') result = saveMatchTimeReminderSettings(e.parameter);
     else if (action === 'runMatchTimeReminderNow')        result = runMatchTimeReminder();
     else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
@@ -2758,57 +2759,18 @@ function setupSubReminderTrigger() {
     .inTimezone('America/New_York').create();
 }
 
-function saveMatchTimeReminderSettings(params) {
-  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-  var enabled = params.enabled === 'true' || params.enabled === true;
-  var time    = (params.time || '10:00').trim();
-
-  sheet.getRange('A28').setValue('Match Time Reminder Enabled');
-  sheet.getRange('B28').setValue(enabled);
-  sheet.getRange('A29').setValue('Match Time Reminder Time (ET)');
-  var timeCell = sheet.getRange('B29');
-  timeCell.setNumberFormat('@');
-  timeCell.setValue(time);
-  SpreadsheetApp.flush();
-
-  try { updateMatchTimeReminderTrigger(enabled, time); } catch(e) { Logger.log('updateMatchTimeReminderTrigger error: ' + e.message); }
-
-  return { success: true, matchTimeReminderEnabled: enabled, matchTimeReminderTimeET: time };
-}
-
-function updateMatchTimeReminderTrigger(enabled, time) {
-  ScriptApp.getProjectTriggers().forEach(function(trigger) {
-    if (trigger.getHandlerFunction() === 'runMatchTimeReminder') {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  });
-  if (!enabled) return;
-  var parts  = time.split(':');
-  var hourET = parseInt(parts[0]);
-  var minET  = parseInt(parts[1]) || 0;
-  // Single daily trigger; the function itself skips initial sends on non-reminder days.
-  ScriptApp.newTrigger('runMatchTimeReminder')
-    .timeBased().atHour(hourET).nearMinute(minET).everyDays(1)
-    .inTimezone('America/New_York').create();
-}
-
+// Fires from runMatchDayMinus2Dispatch() when the matched run's Config column E
+// (rows 51–55) is Yes. "Run Now" (runMatchTimeReminderNow) calls this directly,
+// bypassing that gate.
 function runMatchTimeReminder() {
-  var config = getConfig();
-  if (!config.matchTimeReminderEnabled) return { skipped: 'disabled' };
-
   var now       = new Date();
-  var tz        = Session.getScriptTimeZone();
   var FOUR_HOURS = 4 * 60 * 60 * 1000;
 
-  // Track last-sent time per request ID so we resend at most once per 4 hours.
+  // Track last-sent time per request ID so we resend at most once per 4 hours,
+  // in case column E is Yes on more than one run in the same day.
   var props = PropertiesService.getScriptProperties();
   var log = {};
   try { log = JSON.parse(props.getProperty('matchTimeReminderLog') || '{}'); } catch(e) {}
-
-  // On Sat/Mon/Wed, send initial reminders. On other days, only the 4-hour follow-up
-  // chain (_runMatchTimeReminderCheck) should be calling this — let the log guard handle it.
-  var dow = parseInt(Utilities.formatDate(now, tz, 'u')); // 1=Mon … 6=Sat, 7=Sun
-  var isReminderDay = (dow === 6 || dow === 1 || dow === 3); // Sat, Mon, Wed
 
   var requests  = getRequests();
   var players   = getPlayers();
@@ -2829,9 +2791,6 @@ function runMatchTimeReminder() {
 
     // Skip if a reminder was already sent within the last 4 hours
     if (log[req.id] && (now.getTime() - log[req.id]) < FOUR_HOURS) return;
-
-    // On non-reminder days, only send if a prior reminder exists in the log (follow-up chain)
-    if (!isReminderDay && !log[req.id]) return;
 
     var groupPlayers = req.groupPlayers || [];
     var isAnitaSub = /^anita\.sub\d+@xgmail\.com$/i.test(req.email || '');
@@ -2875,23 +2834,8 @@ function runMatchTimeReminder() {
   Object.keys(log).forEach(function(id) { if (!activeIds[id]) delete log[id]; });
   props.setProperty('matchTimeReminderLog', JSON.stringify(log));
 
-  // Schedule a follow-up check in 4 hours if any reminders went out
-  if (notified > 0 && isEmailEnabled()) {
-    ScriptApp.getProjectTriggers().forEach(function(t) {
-      if (t.getHandlerFunction() === '_runMatchTimeReminderCheck') ScriptApp.deleteTrigger(t);
-    });
-    ScriptApp.newTrigger('_runMatchTimeReminderCheck').timeBased().after(FOUR_HOURS).create();
-  }
-
   Logger.log('runMatchTimeReminder: notified ' + notified + ' requestor(s).');
   return { success: true, notified: notified };
-}
-
-function _runMatchTimeReminderCheck() {
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === '_runMatchTimeReminderCheck') ScriptApp.deleteTrigger(t);
-  });
-  runMatchTimeReminder();
 }
 
 function saveAutoDispatchSettings(params) {
@@ -3345,13 +3289,17 @@ function runMatchDayMinus2Dispatch() {
   if (!row) row = { dispatch: true, broadcast: true };
 
   Logger.log('runMatchDayMinus2Dispatch: ' + targetDate + ' hour=' + currentHour +
-    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast);
+    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' matchTimeReminder=' + !!row.matchTimeReminder);
 
   if (row.dispatch) runDispatchForDate(targetDate);
 
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
     sendUrgentSubBroadcast(openReqs, targetDate);
+  }
+
+  if (row.matchTimeReminder) {
+    try { runMatchTimeReminder(); } catch(e) { Logger.log('runMatchTimeReminder failed: ' + e.message); }
   }
 }
 
