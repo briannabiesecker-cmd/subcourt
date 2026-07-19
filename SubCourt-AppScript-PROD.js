@@ -112,14 +112,15 @@ function notifyGroupRosterChange(changes) {
   });
 }
 
-// Unified email sender — uses MailApp.
 function sendBrevoEmail(params) {
-  // params: { apiKey, recipients: [{email, name}], subject, htmlContent, textContent, attachments, replyTo: {email, name} }
+  // params: { apiKey, recipients: [{email, name}], cc, bcc, subject, htmlContent, textContent, attachments, replyTo: {email, name} }
   var payload = {
     sender: { name: 'MWF Tennis League', email: 'noreply@mtctennis.com' },
     to: params.recipients,
     subject: params.subject
   };
+  if (params.cc)            payload.cc          = params.cc;
+  if (params.bcc)           payload.bcc         = params.bcc;
   if (params.htmlContent)  payload.htmlContent = params.htmlContent;
   if (params.textContent)  payload.textContent = params.textContent;
   if (params.attachments)  payload.attachment  = params.attachments;
@@ -401,6 +402,9 @@ function _getVolunteerCcEmailsForMatch(matchDate, matchTime, players) {
   return emails;
 }
 
+// Unified email sender for every real Rally email — routes through Brevo when
+// configured (own quota, unaffected by MailApp's), falling back to MailApp otherwise
+// or if Brevo itself fails.
 function sendLeagueEmail(params) {
   var props = PropertiesService.getScriptProperties();
   var throttleKey = 'emailThrottle:' + _getEmailThrottleDateKey(new Date()) + ':' + _buildEmailContentSignature(params);
@@ -410,10 +414,26 @@ function sendLeagueEmail(params) {
   }
 
   var config = getConfig();
+
+  // Brevo is the primary path — it has its own quota, independent of MailApp's daily
+  // recipient cap. Falls through to MailApp below if Brevo isn't configured or fails.
+  if (config.brevoApiKey) {
+    try {
+      _sendLeagueEmailViaBrevo(params, config);
+      _logEmail(params.to, params.subject, 'sent via Brevo');
+      props.setProperty(throttleKey, 'sent');
+      return;
+    } catch(e) {
+      Logger.log('Brevo send failed for "' + params.subject + '", falling back to MailApp: ' + e.message);
+      _logEmail(params.to, params.subject, 'Brevo failed (' + e.message + '), trying MailApp');
+    }
+  }
+
   var senderEmail = config.senderEmail || '';
   var baseOpts = { name: params.name || 'MWF Tennis League' };
   if (params.htmlBody)     baseOpts.htmlBody = params.htmlBody;
   if (params.cc)           baseOpts.cc       = params.cc;
+  if (params.attachments)  baseOpts.attachments = params.attachments;
   if (senderEmail)         baseOpts.replyTo  = senderEmail;
   else if (params.replyTo) baseOpts.replyTo  = params.replyTo;
 
@@ -430,7 +450,7 @@ function sendLeagueEmail(params) {
     if (bccAddrs.length)      opts.bcc         = bccAddrs.join(',');
     try {
       MailApp.sendEmail(params.to, params.subject, params.body, opts);
-      _logEmail(params.to, params.subject, 'sent');
+      _logEmail(params.to, params.subject, 'sent via MailApp');
     } catch(e) {
       _logEmail(params.to, params.subject, 'failed: ' + e.message);
       _sendAdminFallbackEmail(params);
@@ -448,7 +468,7 @@ function sendLeagueEmail(params) {
       if (i > 0) Utilities.sleep(500);
       try {
         MailApp.sendEmail(params.to, params.subject, params.body, chunkOpts);
-        _logEmail(params.to, params.subject, 'sent (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ')');
+        _logEmail(params.to, params.subject, 'sent via MailApp (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ')');
       } catch(e) {
         _logEmail(params.to, params.subject, 'failed chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ': ' + e.message);
         _sendAdminFallbackEmail(params);
@@ -457,6 +477,49 @@ function sendLeagueEmail(params) {
     }
   }
   props.setProperty(throttleKey, 'sent');
+}
+
+// Recipient-count chunking mirrors the MailApp path above — kept conservative since
+// Brevo's exact per-call recipient ceiling isn't documented as precisely as MailApp's.
+function _sendLeagueEmailViaBrevo(params, config) {
+  var toAddrs  = (params.to  || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  var ccAddrs  = params.cc   ? params.cc.split(',').map(function(s) { return s.trim(); }).filter(Boolean)  : [];
+  var bccAddrs = params.bcc  ? params.bcc.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+  if (!toAddrs.length) throw new Error('No "to" address for Brevo send.');
+
+  var replyToEmail = config.senderEmail || params.replyTo || '';
+
+  function toRecipients(list) { return list.map(function(e) { return { email: e }; }); }
+
+  function buildParams(bccChunk) {
+    var p = {
+      apiKey:      config.brevoApiKey,
+      recipients:  toRecipients(toAddrs),
+      subject:     params.subject,
+      textContent: params.body
+    };
+    if (params.htmlBody)    p.htmlContent = params.htmlBody;
+    if (ccAddrs.length)     p.cc          = toRecipients(ccAddrs);
+    if (bccChunk.length)    p.bcc         = toRecipients(bccChunk);
+    if (replyToEmail)       p.replyTo     = { email: replyToEmail };
+    if (params.attachments) p.attachments = _blobsToBrevoAttachments(params.attachments);
+    return p;
+  }
+
+  if (bccAddrs.length <= BCC_CHUNK_SIZE) {
+    sendBrevoEmail(buildParams(bccAddrs));
+  } else {
+    for (var i = 0; i < bccAddrs.length; i += BCC_CHUNK_SIZE) {
+      if (i > 0) Utilities.sleep(300);
+      sendBrevoEmail(buildParams(bccAddrs.slice(i, i + BCC_CHUNK_SIZE)));
+    }
+  }
+}
+
+function _blobsToBrevoAttachments(blobs) {
+  return blobs.map(function(b) {
+    return { content: Utilities.base64Encode(b.getBytes()), name: b.getName() };
+  });
 }
 
 function _logEmail(to, subject, status) {
