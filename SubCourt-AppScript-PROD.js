@@ -1146,6 +1146,10 @@ function doGet(e) {
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
     else if (action === 'createScheduleDraft')         result = createScheduleDraft(e.parameter);
     else if (action === 'sendTestEmail')             result = sendTestEmail();
+    else if (action === 'getRecentEmailLog')         result = getRecentEmailLog(e.parameter);
+    else if (action === 'resendUrgentSubBroadcast')  result = resendUrgentSubBroadcast(e.parameter);
+    else if (action === 'checkEmailQuotaNow')        result = { remaining: MailApp.getRemainingDailyQuota() };
+    else if (action === 'sendBroadcastFallbackToAdmin') result = sendBroadcastFallbackToAdmin(e.parameter);
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -3831,6 +3835,73 @@ function testCheckAvailabilityWindowEmail() {
     'MWF Tennis League';
   MailApp.sendEmail({ to: 'marobria@gmail.com', subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
   return { success: true };
+}
+
+// Diagnostic: returns EmailLog rows newer than params.hours ago (default 24), so a
+// failed dispatch run can be audited without opening the Sheet.
+// Manual recovery: resends the urgent-sub broadcast for an explicit date, using
+// whichever requests are open right now. For when a scheduled broadcast failed
+// outright (e.g. MailApp quota) and needs a manual retry for that date.
+// Manual recovery, quota-safe: sends the subs-needed content for an explicit date to
+// marobria@gmail.com only (1 recipient) with the full player address list appended,
+// for manual forward/BCC when MailApp quota is too low to BCC the whole roster directly.
+function sendBroadcastFallbackToAdmin(params) {
+  var targetDate = (params.matchDate || '').toString().trim();
+  if (!targetDate) return { success: false, error: 'matchDate is required (yyyy-MM-dd).' };
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length) return { success: true, sent: false, reason: 'No open requests for ' + targetDate };
+
+  var players = getPlayersWithRatings().filter(function(p) {
+    return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
+  });
+  var addressList = players.map(function(p) { return p.name + ' <' + p.email + '>'; });
+
+  var d        = new Date(targetDate + 'T12:00:00');
+  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  var subject  = '[FORWARD TO LEAGUE] MWF Tennis, subs needed ' + monthDay;
+
+  var body = buildSubNeededEmailText(openReqs, targetDate) +
+    '\n\n---\nForward to (or BCC):\n' + addressList.join('\n');
+  var htmlBody = buildSubNeededEmailHtml(openReqs, SCRIPT_URL) +
+    '<div style="margin-top:20px;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;">' +
+    '<strong>Forward to (or BCC):</strong><br>' + addressList.map(function(a) { return a.replace(/</g, '&lt;').replace(/>/g, '&gt;'); }).join('<br>') +
+    '</div>';
+
+  MailApp.sendEmail({ to: 'marobria@gmail.com', subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+  return { success: true, sent: true, recipientCount: addressList.length };
+}
+
+function resendUrgentSubBroadcast(params) {
+  var targetDate = (params.matchDate || '').toString().trim();
+  if (!targetDate) return { success: false, error: 'matchDate is required (yyyy-MM-dd).' };
+  if (!isEmailEnabled()) return { success: false, error: 'Email is disabled (Config B27).' };
+  var config = getConfig();
+  if (!config.urgentSubEmailsEnabled) return { success: false, error: 'Urgent Sub Emails disabled (Config B39).' };
+  var openReqs = getOpenRequestsForDate(targetDate);
+  if (!openReqs.length) return { success: true, sent: false, reason: 'No open requests for ' + targetDate };
+  sendUrgentSubBroadcast(openReqs, targetDate);
+  return { success: true, sent: true, openRequests: openReqs.length };
+}
+
+function getRecentEmailLog(params) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.emailLog);
+  if (!sheet || sheet.getLastRow() < 2) return { rows: [] };
+  var hours  = parseFloat(params.hours) || 24;
+  var cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var rows = data
+    .map(function(r) {
+      var ts = r[0] instanceof Date ? r[0] : new Date(r[0]);
+      return { timestamp: ts, to: r[1], subject: r[2], status: r[3] };
+    })
+    .filter(function(r) { return r.timestamp >= cutoff; })
+    .map(function(r) {
+      return {
+        timestamp: Utilities.formatDate(r.timestamp, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'),
+        to: r.to, subject: r.subject, status: r.status
+      };
+    });
+  return { rows: rows };
 }
 
 function checkEmailQuota() {
