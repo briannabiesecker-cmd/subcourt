@@ -3314,7 +3314,8 @@ function runPreMatchDayDispatch() {
 
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
-    sendUrgentSubBroadcast(openReqs, targetDate);
+    try { sendUrgentSubBroadcast(openReqs, targetDate); }
+    catch(e) { Logger.log('sendUrgentSubBroadcast failed: ' + e.message); }
   }
   if (row.cancel) {
     if (openReqs.length) {
@@ -3374,7 +3375,8 @@ function runMatchDayMinus2Dispatch() {
 
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
-    sendUrgentSubBroadcast(openReqs, targetDate);
+    try { sendUrgentSubBroadcast(openReqs, targetDate); }
+    catch(e) { Logger.log('sendUrgentSubBroadcast failed: ' + e.message); }
   }
 
   if (row.matchTimeReminder) {
@@ -3408,7 +3410,8 @@ function _runQueuedBroadcast() {
   var targetDate = getDateStr(1);
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
-    sendUrgentSubBroadcast(openReqs, targetDate);
+    try { sendUrgentSubBroadcast(openReqs, targetDate); }
+    catch(e) { Logger.log('sendUrgentSubBroadcast failed: ' + e.message); }
   }
 }
 
