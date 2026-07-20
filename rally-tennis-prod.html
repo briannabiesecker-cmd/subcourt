@@ -2895,6 +2895,16 @@ async function onReqScheduleCheck(checkbox, key) {
   if (!checkbox.checked) return;
   const slot = reqScheduleData[key];
   if (!slot) { checkbox.checked = false; return; }
+
+  // Safety net: this table's checkbox-vs-time-picker choice was decided when the page
+  // was last loaded. If enough time has passed that this date is now within 2 days,
+  // re-check here rather than silently submitting a TBD time for a near-term match.
+  if (isNearTermRequestDate(slot.matchDate)) {
+    checkbox.checked = false;
+    showAlert('req-alert', 'error', 'This date is now within 2 days and requires a match time — please refresh the page and try again.');
+    return;
+  }
+
   const { name, email } = getTypeaheadValue('req');
 
   checkbox.disabled = true;
