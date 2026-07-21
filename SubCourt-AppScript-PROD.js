@@ -1610,6 +1610,22 @@ function submitRequest(params) {
     sendLeagueEmail({ to: params.email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
   }
 
+  // If this request is for tomorrow (the Pre-Match Day target) and fewer than 3 of the
+  // scheduled Pre-Match Day dispatch runs are still left today, don't wait for the next
+  // one — queue an immediate broadcast resend so it doesn't sit unseen for hours.
+  // Reuses _runQueuedBroadcast's one-shot-trigger pattern (same as the admin's manual
+  // Run Now button) so this HTTP response isn't held up by a slow bulk email send.
+  try {
+    if (params.matchDate === getDateStr(1) && _remainingPreMatchRunsToday(getConfig()) < 3) {
+      ScriptApp.getProjectTriggers().forEach(function(t) {
+        if (t.getHandlerFunction() === '_runQueuedBroadcast') ScriptApp.deleteTrigger(t);
+      });
+      ScriptApp.newTrigger('_runQueuedBroadcast').timeBased().after(60000).create();
+    }
+  } catch(e) {
+    Logger.log('Immediate pre-match broadcast check failed: ' + e.message);
+  }
+
   return { success: true };
 }
 
@@ -3411,6 +3427,19 @@ function _preMatchDayTargetDate() {
   var dow = parseInt(Utilities.formatDate(new Date(), tz, 'u')); // 1=Mon … 7=Sun
   if (dow !== 7 && dow !== 2 && dow !== 4) return null; // Sun/Tue/Thu only
   return getDateStr(1);
+}
+
+// Count of configured Pre-Match Day dispatch runs (Config A43:E47) whose hour hasn't
+// passed yet today.
+function _remainingPreMatchRunsToday(config) {
+  var tz = Session.getScriptTimeZone();
+  var currentHour = parseInt(Utilities.formatDate(new Date(), tz, 'H'));
+  var remaining = 0;
+  (config.preMatchSchedule || []).forEach(function(r) {
+    var h = _parseConfigHour(r.time);
+    if (h > currentHour) remaining++;
+  });
+  return remaining;
 }
 
 function _parseConfigHour(timeStr) {
