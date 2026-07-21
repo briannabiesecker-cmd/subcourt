@@ -1181,6 +1181,7 @@ function doGet(e) {
     else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
     else if (action === 'addPlayer')               result = addPlayer(e.parameter);
     else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
+    else if (action === 'propagateEmailChange')    result = propagateEmailChange(e.parameter);
     else if (action === 'deletePlayer')            result = deletePlayer(e.parameter);
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
     else if (action === 'getEmailSettings')         result = getEmailSettings();
@@ -2024,12 +2025,80 @@ function updatePlayer(params) {
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
   sortPlayersSheet(sheet);
   if (oldEmail && oldEmail !== email) {
+    try { propagateEmailChange({ oldEmail: oldEmail, newEmail: email }); }
+    catch(e) { Logger.log('propagateEmailChange failed: ' + e.message); }
     notifyGroupRosterChange({
       remove: [{ name: oldName, email: oldEmail }],
       add:    [{ name: name, email: email }]
     });
   }
   return { success: true };
+}
+
+// Keeps open SubRequests and pending Volunteers records pointing at a player's current
+// email after it changes — as the primary requestor/volunteer, and as a groupPlayers
+// reference on someone else's open request. Without this, a stale email on an open
+// request silently breaks matching (runMatch can't resolve the requestor to a Player
+// row), with no visible symptom beyond "no candidates."
+function propagateEmailChange(params) {
+  var oldEmail = (params.oldEmail || '').toString().toLowerCase().trim();
+  var newEmail = (params.newEmail || '').toString().trim();
+  if (!oldEmail || !newEmail) return { success: false, error: 'oldEmail and newEmail are required.' };
+  if (oldEmail === newEmail.toLowerCase()) return { success: true, requestsUpdated: 0, groupRefsUpdated: 0, volunteersUpdated: 0 };
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var requestsUpdated = 0, groupRefsUpdated = 0, volunteersUpdated = 0;
+
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  if (reqSheet && reqSheet.getLastRow() >= 2) {
+    var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 9).getValues();
+    reqRows.forEach(function(r, i) {
+      var rowNum = i + 2;
+      if ((r[6] || '').toString().toLowerCase().trim() !== 'open') return;
+
+      if ((r[3] || '').toString().toLowerCase().trim() === oldEmail) {
+        reqSheet.getRange(rowNum, 4).setValue(newEmail);
+        requestsUpdated++;
+      }
+
+      var groupPlayers;
+      try { groupPlayers = JSON.parse(r[8] || '[]'); } catch(e) { return; }
+      if (!Array.isArray(groupPlayers) || !groupPlayers.length) return;
+      var changed = false;
+      var updated = groupPlayers.map(function(p) {
+        if ((p.email || '').toString().toLowerCase().trim() !== oldEmail) return p;
+        changed = true;
+        var copy = {};
+        for (var k in p) { copy[k] = p[k]; }
+        copy.email = newEmail;
+        return copy;
+      });
+      if (changed) {
+        var cell = reqSheet.getRange(rowNum, 9);
+        cell.setNumberFormat('@');
+        cell.setValue(JSON.stringify(updated));
+        groupRefsUpdated++;
+      }
+    });
+  }
+
+  var volSheet = ss.getSheetByName(TABS.volunteers);
+  if (volSheet && volSheet.getLastRow() >= 2) {
+    var volRows = volSheet.getRange(2, 1, volSheet.getLastRow() - 1, 7).getValues();
+    volRows.forEach(function(r, i) {
+      var rowNum = i + 2;
+      var status = (r[6] || 'pending').toString().toLowerCase().trim();
+      if (status !== 'pending') return;
+      if ((r[3] || '').toString().toLowerCase().trim() === oldEmail) {
+        volSheet.getRange(rowNum, 4).setValue(newEmail);
+        volunteersUpdated++;
+      }
+    });
+  }
+
+  Logger.log('propagateEmailChange: ' + oldEmail + ' -> ' + newEmail +
+    ' | requests=' + requestsUpdated + ' groupRefs=' + groupRefsUpdated + ' volunteers=' + volunteersUpdated);
+  return { success: true, requestsUpdated: requestsUpdated, groupRefsUpdated: groupRefsUpdated, volunteersUpdated: volunteersUpdated };
 }
 
 function deletePlayer(params) {
