@@ -1214,6 +1214,7 @@ function doGet(e) {
     else if (action === 'resendUrgentSubBroadcast')  result = resendUrgentSubBroadcast(e.parameter);
     else if (action === 'checkEmailQuotaNow')        result = { remaining: MailApp.getRemainingDailyQuota() };
     else if (action === 'sendBroadcastFallbackToAdmin') result = sendBroadcastFallbackToAdmin(e.parameter);
+    else if (action === 'backfillNo8amFlags')        result = backfillNo8amFlags();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -1581,11 +1582,11 @@ function nowEasternISO() {
 // given emails belongs to a No8am player. Purely a spreadsheet-visible marker for
 // coordinators — matching logic recomputes this itself rather than trusting the cell,
 // so it can't go stale.
-function _flagNo8amOnRequestRow(reqSheet, rowNum, emails) {
+function _flagNo8amOnRequestRow(reqSheet, rowNum, emails, allPlayers) {
   try {
-    var allPlayers = getPlayersWithRatings();
+    var players = allPlayers || getPlayersWithRatings();
     var hasNo8am = emails.filter(Boolean).some(function(e) {
-      var p = allPlayers.find(function(pl) { return (pl.email || '').toLowerCase() === e.toLowerCase().trim(); });
+      var p = players.find(function(pl) { return (pl.email || '').toLowerCase() === e.toLowerCase().trim(); });
       return !!(p && p.no8am);
     });
     var headerCell = reqSheet.getRange(1, 10);
@@ -1594,6 +1595,26 @@ function _flagNo8amOnRequestRow(reqSheet, rowNum, emails) {
   } catch(e) {
     Logger.log('_flagNo8amOnRequestRow failed: ' + e.message);
   }
+}
+
+// One-off backfill: applies the No8am flag (column J) to every currently open
+// SubRequests row. New requests get it automatically going forward via
+// _flagNo8amOnRequestRow (submitRequest, publishScheduleSlot's Anita Sub creation).
+function backfillNo8amFlags() {
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  if (!reqSheet || reqSheet.getLastRow() < 2) return { success: true, updated: 0 };
+  var allPlayers = getPlayersWithRatings();
+  var rows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 9).getValues();
+  var updated = 0;
+  rows.forEach(function(r, i) {
+    if ((r[6] || '').toString().toLowerCase().trim() !== 'open') return;
+    var groupPlayers = [];
+    try { groupPlayers = JSON.parse(r[8] || '[]'); } catch(e) {}
+    var emails = [r[3]].concat(groupPlayers.map(function(p) { return p.email; }));
+    _flagNo8amOnRequestRow(reqSheet, i + 2, emails, allPlayers);
+    updated++;
+  });
+  return { success: true, updated: updated };
 }
 
 function submitRequest(params) {
