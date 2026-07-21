@@ -1237,6 +1237,11 @@ function doGet(e) {
         const { phase: _phase, skillWindow } = getDispatchPhase(req, config);
         const lastMinute      = _phase === 'last-minute';
         const requireAllTimes = hasTBDTime || _phase === 'pre-schedule';
+        const reqHasNo8am = [req.email].concat((req.groupPlayers || []).map(p => p.email)).filter(Boolean)
+          .some(e => {
+            const p = players.find(pl => pl.email.toLowerCase() === e.toLowerCase().trim());
+            return !!(p && p.no8am);
+          });
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
           const dateMatch    = v.date.trim() === matchDate.trim();
@@ -1247,6 +1252,10 @@ function doGet(e) {
           const skillOk      = (() => {
             const p = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
             return p ? Math.abs(p.rating - reqRating) <= skillWindow : false;
+          })();
+          const no8amOk      = (() => {
+            const p = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
+            return !(p && p.no8am && effectiveTime === '08:00' && !(hasTBDTime && reqHasNo8am));
           })();
           const notAssigned  = !reqs.some(r =>
             r.assignedSub && r.assignedSub.toLowerCase() === v.email.toLowerCase() &&
@@ -1264,14 +1273,14 @@ function doGet(e) {
             name: v.name, email: v.email,
             volDate: v.date, reqDate: matchDate,
             volTimes: v.times, reqTime: matchTime,
-            dateMatch, notRequestor, timeMatch, skillOk, notAssigned, notPlaying,
-            passes: dateMatch && notRequestor && timeMatch && skillOk && notAssigned && notPlaying,
+            dateMatch, notRequestor, timeMatch, skillOk, no8amOk, notAssigned, notPlaying,
+            passes: dateMatch && notRequestor && timeMatch && skillOk && no8amOk && notAssigned && notPlaying,
             playingTriggers
           };
         });
         result = {
           req: { id: req.id, matchDate, matchTime, email: req.email },
-          lastMinute, requireAllTimes,
+          lastMinute, requireAllTimes, reqHasNo8am,
           skillWindow: skillWindow,
           trace
         };
@@ -1568,11 +1577,33 @@ function nowEasternISO() {
   return Utilities.formatDate(new Date(), 'America/New_York', "yyyy-MM-dd'T'HH:mm:ssXXX");
 }
 
+// Flags column J ('No8am') on a SubRequests row Yes/No based on whether any of the
+// given emails belongs to a No8am player. Purely a spreadsheet-visible marker for
+// coordinators — matching logic recomputes this itself rather than trusting the cell,
+// so it can't go stale.
+function _flagNo8amOnRequestRow(reqSheet, rowNum, emails) {
+  try {
+    var allPlayers = getPlayersWithRatings();
+    var hasNo8am = emails.filter(Boolean).some(function(e) {
+      var p = allPlayers.find(function(pl) { return (pl.email || '').toLowerCase() === e.toLowerCase().trim(); });
+      return !!(p && p.no8am);
+    });
+    var headerCell = reqSheet.getRange(1, 10);
+    if (!headerCell.getValue()) headerCell.setValue('No8am');
+    reqSheet.getRange(rowNum, 10).setValue(hasNo8am ? 'Yes' : 'No');
+  } catch(e) {
+    Logger.log('_flagNo8amOnRequestRow failed: ' + e.message);
+  }
+}
+
 function submitRequest(params) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
-  const groupPlayers = params.groupPlayers
-    ? (typeof params.groupPlayers === 'string' ? params.groupPlayers : JSON.stringify(params.groupPlayers))
-    : '[]';
+  var groupPlayersArr = [];
+  if (params.groupPlayers) {
+    try { groupPlayersArr = typeof params.groupPlayers === 'string' ? JSON.parse(params.groupPlayers) : params.groupPlayers; }
+    catch(e) { groupPlayersArr = []; }
+  }
+  const groupPlayers = JSON.stringify(groupPlayersArr);
   const row = [
     uid(),
     nowEasternISO(),
@@ -1589,6 +1620,7 @@ function submitRequest(params) {
   sheet.getRange(lastRow, 5).setNumberFormat('@');
   sheet.getRange(lastRow, 6).setNumberFormat('@');
   sheet.getRange(lastRow, 9).setNumberFormat('@');
+  _flagNo8amOnRequestRow(sheet, lastRow, [params.email].concat(groupPlayersArr.map(function(p) { return p.email; })));
 
   // Confirmation email to requester
   if (params.email && isEmailEnabled()) {
@@ -2744,6 +2776,14 @@ function runMatch(params) {
   const { phase, skillWindow } = getDispatchPhase(req, config);
   const lastMinute      = phase === 'last-minute';
   const requireAllTimes = hasTBDTime || phase === 'pre-schedule';
+  // If the request's own group already includes a No8am player, this match was never
+  // scheduled at 8am in the first place — safe to relax the TBD-defaults-to-8am guard
+  // below for a No8am substitute.
+  const reqHasNo8am = [req.email].concat((req.groupPlayers || []).map(p => p.email)).filter(Boolean)
+    .some(e => {
+      const p = players.find(pl => pl.email.toLowerCase() === e.toLowerCase().trim());
+      return !!(p && p.no8am);
+    });
 
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
@@ -2759,9 +2799,10 @@ function runMatch(params) {
     const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
     if (!vol) return false;
     if (Math.abs(vol.rating - reqRating) > skillWindow) return false;
-    // No8am volunteers must never be matched to an 8am slot or a TBD request
-    // (TBD defaults to effectiveTime '08:00', which could turn out to be 8am).
-    if (vol && vol.no8am && effectiveTime === '08:00') return false;
+    // No8am volunteers must never be matched to a confirmed 8am slot. A TBD request
+    // defaults to effectiveTime '08:00' too (it could turn out to be 8am) — unless the
+    // request's own group already includes a No8am player, which rules that out.
+    if (vol && vol.no8am && effectiveTime === '08:00' && !(hasTBDTime && reqHasNo8am)) return false;
     const alreadyAssigned = requests.some(r =>
       r.assignedSub && r.assignedSub.toLowerCase() === v.email.toLowerCase() &&
       r.matchDate === matchDate && r.status === 'filled' &&
@@ -5076,6 +5117,7 @@ function publishScheduleSlot(params) {
       rSheet.getRange(lastReqRow, 5).setNumberFormat('@');
       rSheet.getRange(lastReqRow, 6).setNumberFormat('@');
       rSheet.getRange(lastReqRow, 9).setNumberFormat('@');
+      _flagNo8amOnRequestRow(rSheet, lastReqRow, groupForRequest.map(function(p) { return p.email; }));
 
       Logger.log('Created ' + anitaName + ' (rating ' + anitaRating + ') for ' + slot.date + ' group ' + String.fromCharCode(65 + gi));
       var captainPlayer = workingGroup.find(function(p) { return p.email.toLowerCase() === captainEmail.toLowerCase(); });
