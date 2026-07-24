@@ -4228,7 +4228,7 @@ function showAdminTab(tab, btn) {
 // PLAYER RATINGS
 // ══════════════════════════════════════════════════
 let playerRatings = []; // current loaded player list with coordinator's ratings
-let ratingsSort   = { col: 'name', dir: 'asc' };
+let ratingsSort   = { col: 'rating', dir: 'asc' };
 
 function checkDuplicateEmails() {
   const alertEl = document.getElementById('players-alert');
@@ -4488,8 +4488,15 @@ async function loadCoordinatorRatings(forceRefresh) {
     }
 
     playerRatings = (result.players || []).filter(p => !/^anita\.sub\d+@xgmail\.com$/i.test(p.email || ''));
-    ratingsSort = { col: 'name', dir: 'asc' };
-    playerRatings.sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+    ratingsSort = { col: 'rating', dir: 'asc' };
+    playerRatings.sort((a, b) => {
+      const noA = a.myRating === '' || a.myRating === null;
+      const noB = b.myRating === '' || b.myRating === null;
+      if (noA && noB) return 0;
+      if (noA) return 1;   // empty always last
+      if (noB) return -1;
+      return parseFloat(a.myRating) - parseFloat(b.myRating);
+    });
     renderRatingsTable();
   } catch(e) {
     document.getElementById('players-loading').classList.add('hidden');
