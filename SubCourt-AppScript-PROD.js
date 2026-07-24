@@ -1243,12 +1243,13 @@ function doGet(e) {
             const p = players.find(pl => pl.email.toLowerCase() === e.toLowerCase().trim());
             return !!(p && p.no8am);
           });
+        const timesNeeded = (hasTBDTime && reqHasNo8am) ? TIMES.filter(t => t !== '08:00') : TIMES;
         const trace = vols.map(v => {
           const volTimes     = v.times.map(t => t.trim());
           const dateMatch    = v.date.trim() === matchDate.trim();
           const notRequestor = v.email.toLowerCase() !== req.email.toLowerCase();
           const timeMatch    = requireAllTimes
-                                 ? TIMES.every(t => volTimes.includes(t))
+                                 ? timesNeeded.every(t => volTimes.includes(t))
                                  : volTimes.includes(effectiveTime);
           const skillOk      = (() => {
             const p = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
@@ -2798,13 +2799,15 @@ function runMatch(params) {
   const lastMinute      = phase === 'last-minute';
   const requireAllTimes = hasTBDTime || phase === 'pre-schedule';
   // If the request's own group already includes a No8am player, this match was never
-  // scheduled at 8am in the first place — safe to relax the TBD-defaults-to-8am guard
-  // below for a No8am substitute.
+  // going to be scheduled at 8am in the first place.
   const reqHasNo8am = [req.email].concat((req.groupPlayers || []).map(p => p.email)).filter(Boolean)
     .some(e => {
       const p = players.find(pl => pl.email.toLowerCase() === e.toLowerCase().trim());
       return !!(p && p.no8am);
     });
+  // ...so for a TBD request from that group, 8am was never a realistic outcome — nobody
+  // needs to cover it to be a valid candidate, No8am or not.
+  const timesNeeded = (hasTBDTime && reqHasNo8am) ? TIMES.filter(t => t !== '08:00') : TIMES;
 
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
@@ -2812,7 +2815,7 @@ function runMatch(params) {
     if (v.status === 'matched' || v.status === 'cancelled' || v.status === 'expired') return false;
     const volTimes = v.times.map(t => t.trim());
     if (requireAllTimes) {
-      if (!TIMES.every(t => volTimes.includes(t))) return false;
+      if (!timesNeeded.every(t => volTimes.includes(t))) return false;
     } else {
       if (!volTimes.includes(effectiveTime)) return false;
     }
