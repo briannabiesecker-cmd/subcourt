@@ -3398,16 +3398,61 @@ function getPlayersScheduledForDate(targetDate) {
   return players;
 }
 
-function buildLeftoverVolunteersEmailHtml(volunteers) {
+// Match groups (court assignments) for targetDate, sorted by group letter — for the
+// "groups playing tomorrow" table on the leftover-volunteers email.
+function getMatchGroupsForDate(targetDate) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 16).getValues();
+  var groups = [];
+  rows.forEach(function(r) {
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== targetDate) return;
+    var letter = r[3] ? r[3].toString().trim() : '';
+    if (!letter) return;
+    var players = [];
+    for (var pi = 0; pi < 4; pi++) {
+      var name  = r[4 + pi * 2]     ? r[4 + pi * 2].toString().trim()     : '';
+      var email = r[4 + pi * 2 + 1] ? r[4 + pi * 2 + 1].toString().trim() : '';
+      if (name) players.push({ name: name, email: email, isCaptain: pi === 0 });
+    }
+    if (players.length) groups.push({ letter: letter, players: players });
+  });
+  groups.sort(function(a, b) { return a.letter.localeCompare(b.letter); });
+  return groups;
+}
+
+function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
   var introText = 'No more sub requests can be filled for tomorrow. The following players are available if needed.';
   var dataRows = volunteers.map(function(v) {
     var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
       '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.name + '</td>' +
       '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.email + '</td>' +
+      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + (v.phone || '—') + '</td>' +
       '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + times + '</td>' +
       '</tr>';
   }).join('');
+
+  var groupRows = (groups || []).map(function(g) {
+    var names = g.players.map(function(p) { return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name; }).join(', ');
+    return '<tr style="border-bottom:1px solid #f0f0f0;">' +
+      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;font-weight:600;">' + g.letter + '</td>' +
+      '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + names + '</td>' +
+      '</tr>';
+  }).join('');
+
+  var groupsSection = (groups && groups.length)
+    ? '<tr><td colspan="4" style="padding-top:20px;padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;font-weight:600;">Groups playing tomorrow</td></tr>' +
+      '<tr><td colspan="4"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+      '<tr style="border-bottom:2px solid #e5e7eb;">' +
+      '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Group</th>' +
+      '<th style="text-align:left;padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Players</th>' +
+      '</tr>' + groupRows +
+      '</table></td></tr>'
+    : '';
 
   return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
     '<html xmlns="http://www.w3.org/1999/xhtml"><head>' +
@@ -3420,31 +3465,41 @@ function buildLeftoverVolunteersEmailHtml(volunteers) {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:650px;width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">' +
     '<tr><td style="padding:24px;">' +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
-    '<tr><td colspan="3" style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' +
+    '<tr><td colspan="4" style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' +
       introText +
     '</td></tr>' +
-    '<tr><td colspan="3"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
+    '<tr><td colspan="4"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
     '<tr style="border-bottom:2px solid #e5e7eb;">' +
     '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Name</th>' +
     '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Email</th>' +
+    '<th style="text-align:left;padding:6px 12px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Phone</th>' +
     '<th style="text-align:left;padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Available Times</th>' +
     '</tr>' + dataRows +
     '</table></td></tr>' +
-    '<tr><td colspan="3" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
+    groupsSection +
+    '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
     '</table></td></tr>' +
     '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
     'MWF Tennis League &bull; You are receiving this email as a registered player in the league.</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
 
-function buildLeftoverVolunteersEmailText(volunteers) {
+function buildLeftoverVolunteersEmailText(volunteers, groups) {
   var lines = [];
   lines.push('No more sub requests can be filled for tomorrow. The following players are available if needed.');
   lines.push('');
   volunteers.forEach(function(v) {
     var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
-    lines.push(v.name + '  |  ' + v.email + '  |  ' + times);
+    lines.push(v.name + '  |  ' + v.email + '  |  ' + (v.phone || '—') + '  |  ' + times);
   });
+  if (groups && groups.length) {
+    lines.push('');
+    lines.push('Groups playing tomorrow:');
+    groups.forEach(function(g) {
+      var names = g.players.map(function(p) { return p.name; }).join(', ');
+      lines.push('  ' + g.letter + ': ' + names);
+    });
+  }
   lines.push('');
   lines.push('Do not reply to this email.');
   lines.push('');
@@ -3468,14 +3523,23 @@ function sendLeftoverVolunteersEmail(targetDate) {
   var toList = Object.keys(recipients).map(function(k) { return recipients[k]; });
   if (!toList.length) return;
 
+  var allPlayers = getPlayers();
+  var phoneByEmail = {};
+  allPlayers.forEach(function(p) { if (p.email) phoneByEmail[p.email.toLowerCase()] = p.phone || ''; });
+  var volunteersWithPhone = volunteers.map(function(v) {
+    return { name: v.name, email: v.email, times: v.times, phone: phoneByEmail[(v.email || '').toLowerCase()] || '' };
+  });
+
+  var groups = getMatchGroupsForDate(targetDate);
+
   var config  = getConfig();
   var dateStr = formatDate(targetDate);
 
   var emailParams = {
     to:       toList.join(','),
     subject:  'MWF Tennis League — Players available for ' + dateStr + ' if needed',
-    body:     buildLeftoverVolunteersEmailText(volunteers),
-    htmlBody: buildLeftoverVolunteersEmailHtml(volunteers),
+    body:     buildLeftoverVolunteersEmailText(volunteersWithPhone, groups),
+    htmlBody: buildLeftoverVolunteersEmailHtml(volunteersWithPhone, groups),
     name:     'MWF Tennis League'
   };
   if (config.senderEmail) emailParams.cc = config.senderEmail;
