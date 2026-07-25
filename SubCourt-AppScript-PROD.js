@@ -3517,9 +3517,17 @@ function sendLeftoverVolunteersEmail(targetDate) {
   if (!volunteers.length) return;
 
   var scheduledPlayers = getPlayersScheduledForDate(targetDate);
+  // Once a request is filled, updateScheduleForSub swaps the substitute into the
+  // schedule slot — the original requestor drops out of scheduledPlayers entirely and
+  // isn't picked up anywhere else. Add them back explicitly.
+  var filledRequestors = getRequests().filter(function(r) {
+    return r.matchDate === targetDate && r.status === 'filled' &&
+      r.email && !/^anita\.sub\d+@xgmail\.com$/i.test(r.email);
+  });
   var recipients = {};
   volunteers.forEach(function(v) { if (v.email) recipients[v.email.toLowerCase()] = v.email; });
   scheduledPlayers.forEach(function(p) { if (p.email) recipients[p.email.toLowerCase()] = p.email; });
+  filledRequestors.forEach(function(r) { if (r.email) recipients[r.email.toLowerCase()] = r.email; });
   var toList = Object.keys(recipients).map(function(k) { return recipients[k]; });
   if (!toList.length) return;
 
