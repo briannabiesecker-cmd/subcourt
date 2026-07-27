@@ -4182,14 +4182,16 @@ function unlockAdmin(name) {
   document.getElementById('admin-auth-panel').style.display = 'none';
   document.getElementById('admin-content').style.display = 'block';
   document.getElementById('admin-logged-in-as').textContent = name;
-  // Reset inner tabs to default (Dispatch highlighted, no data loaded yet)
+  // Reset inner tabs to default (Player Profiles highlighted, no data loaded yet)
   document.querySelectorAll('#admin-content .inner-tab').forEach(b => b.classList.remove('active'));
-  document.querySelector('#admin-content .inner-tab').classList.add('active');
-  document.getElementById('admin-tab-scheduler').style.display = '';
-  document.getElementById('admin-tab-players').style.display   = 'none';
+  document.querySelector('#admin-content .inner-tab[onclick*="players"]').classList.add('active');
+  document.getElementById('admin-tab-scheduler').style.display = 'none';
+  document.getElementById('admin-tab-players').style.display   = '';
   document.getElementById('admin-tab-dispatch').style.display  = 'none';
   document.getElementById('admin-tab-settings').style.display  = 'none';
-  loadScheduler();
+  checkDuplicateEmails();
+  loadManagePlayers();
+  loadCoordinatorRatings();
 }
 
 function adminSignOut() {
