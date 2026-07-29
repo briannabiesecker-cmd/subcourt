@@ -5264,8 +5264,15 @@ async function exportScheduleExcel() {
 
   // Data rows with alternating shading
   players.forEach(([email, name], i) => {
-    const displayName = name + (isNo8am(email) ? '*' : '');
-    const values = [displayName].concat(dates.map(d => (cellData[email] || {})[d] || ''));
+    // Rich text so only the ** marker is bold, matching the web view — a plain string
+    // can't carry mixed formatting in a single cell.
+    const nameValue = isNo8am(email)
+      ? { richText: [
+          { text: name },
+          { font: { bold: true, color: { argb: 'FFE07A5A' } }, text: '**' }
+        ] }
+      : name;
+    const values = [nameValue].concat(dates.map(d => (cellData[email] || {})[d] || ''));
     const row = ws.addRow(values);
     row.height = 18;
     const bg = i % 2 === 0 ? 'FFFFFFFF' : 'FFF0F5F2';
