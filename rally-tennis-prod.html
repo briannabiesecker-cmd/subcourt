@@ -5019,10 +5019,14 @@ async function runGenerateSchedule() {
   showAlert('scheduler-alert', 'info', 'Running optimizer…');
 
   try {
+    // Always start fresh (empty pairCounts/sitOutCounts) rather than echoing back the
+    // previous result — that accumulated payload can grow large enough on a big roster
+    // to exceed the ~8KB JSONP URL limit, which is why a regenerate could fail right
+    // after a first run succeeded.
     const result = await apiGetWithParams({
       action: 'generateSchedule',
-      pairCounts:   JSON.stringify(scheduleData ? scheduleData.pairCounts   : {}),
-      sitOutCounts: JSON.stringify(scheduleData ? scheduleData.sitOutCounts : {})
+      pairCounts:   JSON.stringify({}),
+      sitOutCounts: JSON.stringify({})
     });
 
     if (result.error) { showAlert('scheduler-alert', 'error', result.error); return; }
