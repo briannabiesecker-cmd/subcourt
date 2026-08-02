@@ -2915,6 +2915,13 @@ async function onReqScheduleCheck(checkbox, key) {
     existing = await getRequests();
   } catch(e) {}
 
+  if (_hasDuplicateRequest(existing, email, slot)) {
+    checkbox.checked  = false;
+    checkbox.disabled = false;
+    showAlert('req-alert', 'error', 'You already have a request for this date. Contact the coordinator to make changes.');
+    return;
+  }
+
   if (findAnitaGroupReq(existing, slot.matchDate, email)) {
     showAnitaCheckModal({
       onProceed: () => _submitScheduleCheckRequest(checkbox, key, slot, name, email, _reqCheckboxHtml(key)),
@@ -2924,6 +2931,18 @@ async function onReqScheduleCheck(checkbox, key) {
   }
 
   await _submitScheduleCheckRequest(checkbox, key, slot, name, email, _reqCheckboxHtml(key));
+}
+
+// Shared with submitRequest()'s inline duplicate check — same email, same date, and
+// either the existing request has no group or shares a partner with this one.
+function _hasDuplicateRequest(existing, email, slot) {
+  const partnerEmails = new Set((slot.partners || []).filter(p => p.name && p.email).map(p => (p.email || '').toLowerCase()));
+  return existing.some(r => {
+    if (r.email.toLowerCase() !== email.toLowerCase()) return false;
+    if (r.matchDate !== slot.matchDate || r.status === 'cancelled') return false;
+    if (!r.groupPlayers || !r.groupPlayers.length) return true;
+    return r.groupPlayers.some(p => partnerEmails.has((p.email || '').toLowerCase()));
+  });
 }
 
 async function onReqScheduleTimeSelect(select, key) {
@@ -2941,6 +2960,13 @@ async function onReqScheduleTimeSelect(select, key) {
     requestCache = null;
     existing = await getRequests();
   } catch(e) {}
+
+  if (_hasDuplicateRequest(existing, email, slot)) {
+    select.value    = '';
+    select.disabled = false;
+    showAlert('req-alert', 'error', 'You already have a request for this date. Contact the coordinator to make changes.');
+    return;
+  }
 
   if (findAnitaGroupReq(existing, slot.matchDate, email)) {
     showAnitaCheckModal({

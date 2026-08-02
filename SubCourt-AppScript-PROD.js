@@ -1625,6 +1625,23 @@ function submitRequest(params) {
     try { groupPlayersArr = typeof params.groupPlayers === 'string' ? JSON.parse(params.groupPlayers) : params.groupPlayers; }
     catch(e) { groupPlayersArr = []; }
   }
+
+  // Guard against duplicate requests (double-click, slow-network retry, two tabs/devices) —
+  // the frontend does a similar pre-submit check, but only on some entry points, so it's
+  // enforced here too where it can't be bypassed.
+  var reqEmail = (params.email || '').toString().toLowerCase();
+  var reqDate  = params.matchDate ? params.matchDate.toString() : '';
+  var partnerEmails = groupPlayersArr.map(function(p) { return (p.email || '').toLowerCase(); });
+  var isDuplicate = getRequests().some(function(r) {
+    if (r.email.toLowerCase() !== reqEmail) return false;
+    if (r.matchDate !== reqDate || r.status === 'cancelled') return false;
+    if (!r.groupPlayers || !r.groupPlayers.length) return true;
+    return r.groupPlayers.some(function(p) { return partnerEmails.indexOf((p.email || '').toLowerCase()) !== -1; });
+  });
+  if (isDuplicate) {
+    return { success: false, error: 'A sub request for this date already exists.' };
+  }
+
   const groupPlayers = JSON.stringify(groupPlayersArr);
   const row = [
     uid(),
