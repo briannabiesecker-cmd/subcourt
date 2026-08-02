@@ -1060,7 +1060,7 @@ function runAutoDispatch() {
   var open      = requests.filter(function(r) { return r.status === 'open'; });
   var logSheet  = getOrCreateDispatchLog();
   var reqSheet  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
-  var timestamp = new Date().toISOString();
+  var timestamp = nowEasternISO();
 
   Logger.log('runAutoDispatch: started at ' + timestamp + ', ' + open.length + ' open request(s).');
   if (!open.length) return { dispatched: 0 };
@@ -3260,7 +3260,7 @@ function runDispatchForDate(targetDate) {
   var requests  = getOpenRequestsForDate(targetDate);
   if (!requests.length) return 0;
   var logSheet  = getOrCreateDispatchLog();
-  var timestamp = new Date().toISOString();
+  var timestamp = nowEasternISO();
   var assigned  = {};
   var matched   = 0;
   requests.forEach(function(req) {
