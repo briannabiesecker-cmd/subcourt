@@ -2988,15 +2988,31 @@ async function onReqScheduleTimeSelect(select, key) {
     return;
   }
 
-  if (findAnitaGroupReq(existing, slot.matchDate, email)) {
-    showAnitaCheckModal({
-      onProceed: () => _submitScheduleCheckRequest(select, key, slot, name, email, _reqTimeSelectHtml(key)),
-      onDone:    () => { select.value = ''; select.disabled = false; }
-    });
-    return;
-  }
+  const proceedToSubmit = () => {
+    if (findAnitaGroupReq(existing, slot.matchDate, email)) {
+      showAnitaCheckModal({
+        onProceed: () => _submitScheduleCheckRequest(select, key, slot, name, email, _reqTimeSelectHtml(key)),
+        onDone:    () => { select.value = ''; select.disabled = false; }
+      });
+      return;
+    }
+    _submitScheduleCheckRequest(select, key, slot, name, email, _reqTimeSelectHtml(key));
+  };
 
-  await _submitScheduleCheckRequest(select, key, slot, name, email, _reqTimeSelectHtml(key));
+  // Picking a time here submits a real sub request — confirm first so a misclick
+  // on this dropdown (easy to do, since it sits right in the schedule table)
+  // doesn't create a request the player didn't mean to make.
+  const timeLabel = TIME_LABELS_SHORT[time] || time;
+  const dateLabel = formatDate(slot.matchDate);
+  showConfirmModal(
+    `Request a sub for ${dateLabel} at ${timeLabel}?`,
+    proceedToSubmit,
+    {
+      confirmLabel: 'Yes, request a sub',
+      cancelLabel:  'No',
+      onCancel:     () => { select.value = ''; select.disabled = false; }
+    }
+  );
 }
 
 async function _submitScheduleCheckRequest(el, key, slot, name, email, retryHtml) {
@@ -4158,8 +4174,8 @@ function showConfirmModal(msg, onConfirm, opts = {}) {
   can.textContent = opts.cancelLabel  || 'Cancel';
   const close = () => { modal.classList.remove('open'); ok.onclick = null; can.onclick = null; };
   ok.onclick  = () => { close(); onConfirm(); };
-  can.onclick = close;
-  modal.onclick = e => { if (e.target === modal) close(); };
+  can.onclick = () => { close(); if (opts.onCancel) opts.onCancel(); };
+  modal.onclick = e => { if (e.target === modal) { close(); if (opts.onCancel) opts.onCancel(); } };
 }
 
 async function refreshAll() {
