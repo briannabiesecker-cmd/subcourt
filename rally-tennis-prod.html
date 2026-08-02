@@ -2239,8 +2239,7 @@ function navigateToView(name, btn) {
     if (existingEmail) {
       // Name already selected — refresh their requests and schedule
       const selName = document.getElementById('req-selected-name')?.textContent?.trim() || '';
-      loadMyRequests(existingEmail, selName);
-      loadReqSchedule(existingEmail, selName);
+      refreshRequestTab(existingEmail, selName);
     } else {
       prefillIdentity('req');
     }
@@ -2420,7 +2419,7 @@ function selectTypeaheadPlayer(prefix, name, email) {
     document.getElementById('my-vol-list').innerHTML = '';
     loadMySubmissions(email);
   }
-  if (prefix === 'req') { loadMyRequests(email, name); loadReqSchedule(email, name); }
+  if (prefix === 'req') refreshRequestTab(email, name);
   if (prefix === 'av')  loadMyAvailability(email);
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email, name);
@@ -2558,6 +2557,27 @@ async function getRequests() {
   if (requestCache) return requestCache;
   requestCache = await apiGet('getRequests');
   return requestCache;
+}
+
+// Landing on the Request a Sub tab needs both "my requests" and the schedule,
+// which used to fire as two separate getRequests calls (one from each loader)
+// plus a getPublishedSchedule call — three concurrent doGet executions for two
+// pieces of data. This fetches both in one round trip and pre-warms the caches
+// so loadMyRequests/loadReqSchedule can skip their own fetch.
+async function refreshRequestTab(email, name) {
+  try {
+    const data = await apiGetWithParams({ action: 'getRequestPageData' });
+    requestCache      = data.requests;
+    publishedSchedule = data.publishedSchedule;
+    await loadMyRequests(email, name, false);
+    await loadReqSchedule(email, name, false);
+  } catch(e) {
+    // Combined fetch failed — fall back to each section fetching independently.
+    requestCache      = null;
+    publishedSchedule = null;
+    await loadMyRequests(email, name, true);
+    await loadReqSchedule(email, name, true);
+  }
 }
 
 async function getVolunteers() {
@@ -2783,7 +2803,7 @@ function clearRequestForm() {
   reqScheduleData = {};
 }
 
-async function loadReqSchedule(email, name) {
+async function loadReqSchedule(email, name, forceRefresh = true) {
   const section   = document.getElementById('req-schedule-section');
   const loading   = document.getElementById('req-schedule-loading');
   const empty     = document.getElementById('req-schedule-empty');
@@ -2808,7 +2828,7 @@ async function loadReqSchedule(email, name) {
       return;
     }
 
-    requestCache = null;
+    if (forceRefresh) requestCache = null;
     const requests = await getRequests();
     const myRequests = requests.filter(r =>
       r.email.toLowerCase() === email.toLowerCase() && r.status !== 'cancelled'
@@ -3001,7 +3021,7 @@ async function _submitScheduleCheckRequest(el, key, slot, name, email, retryHtml
   }
 }
 
-async function loadMyRequests(email, playerName) { // v2
+async function loadMyRequests(email, playerName, forceRefresh = true) { // v2
   const el      = document.getElementById('my-req-list');
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
@@ -3009,7 +3029,7 @@ async function loadMyRequests(email, playerName) { // v2
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
-    requestCache = null;
+    if (forceRefresh) requestCache = null;
     const requests = await getRequests();
 
     // Today's date string for comparison (YYYY-MM-DD)
@@ -3142,11 +3162,9 @@ function showPlayerEditModal(requestId) {
         matchTime: newTime
       });
       close();
-      requestCache = null;
       const { email } = getTypeaheadValue('req');
       const userName  = document.getElementById('req-selected-name')?.textContent?.trim() || '';
-      await loadMyRequests(email, userName);
-      loadReqSchedule(email, userName);
+      await refreshRequestTab(email, userName);
     } catch(e) {
       alert('Failed to save: ' + e.message);
       saveBtn.textContent = 'Save'; saveBtn.disabled = false;
@@ -3215,8 +3233,7 @@ async function deleteRequest(requestId) {
       try {
         const result = await apiPost({ action: 'manuallyAssignSub', requestId, subName: choice.subPlayer.name, subEmail: choice.subPlayer.email });
         if (!result.success) throw new Error(result.error || 'Failed');
-        await loadMyRequests(email, selName);
-        loadReqSchedule(email, selName);
+        await refreshRequestTab(email, selName);
       } catch(e) {
         alert('Could not assign sub: ' + e.message);
       }
@@ -3224,8 +3241,7 @@ async function deleteRequest(requestId) {
       try {
         const result = await apiPost({ action: 'cancelRequest', requestId });
         if (!result.success) throw new Error(result.error || 'Failed');
-        await loadMyRequests(email, selName);
-        loadReqSchedule(email, selName);
+        await refreshRequestTab(email, selName);
       } catch(e) {
         alert('Could not delete request: ' + e.message);
       }
@@ -3236,8 +3252,7 @@ async function deleteRequest(requestId) {
       try {
         const result = await apiPost({ action: 'cancelRequest', requestId });
         if (!result.success) throw new Error(result.error || 'Failed');
-        await loadMyRequests(email, selName);
-        loadReqSchedule(email, selName);
+        await refreshRequestTab(email, selName);
       } catch(e) {
         alert('Could not delete request: ' + e.message);
       }

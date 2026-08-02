@@ -1154,6 +1154,7 @@ function doGet(e) {
 
   try {
     if (action === 'getRequests')          result = getRequests();
+    else if (action === 'getRequestPageData') result = getRequestPageData();
     else if (action === 'getVolunteers')   result = getVolunteers();
     else if (action === 'getPlayers')      result = getPlayers();
     else if (action === 'getHomeData')     result = getHomeData();
@@ -1321,6 +1322,13 @@ function doPost(e) {
 // ──────────────────────────────────────────────────
 // READS
 // ──────────────────────────────────────────────────
+
+// Combined read for the Request a Sub tab — one round trip instead of the page
+// firing getRequests + getPublishedSchedule as separate parallel doGet calls,
+// which was piling up concurrent executions on tab load/refresh.
+function getRequestPageData() {
+  return { requests: getRequests(), publishedSchedule: getPublishedSchedule() };
+}
 
 function getRequests() {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
