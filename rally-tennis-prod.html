@@ -2723,7 +2723,7 @@ async function submitRequest() {
 
   try {
     if (await isTooLateForTomorrow(matchDate)) {
-      showWarningModal("Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Please contact the coordinator directly if you still need a sub for tomorrow.");
+      showWarningModal("Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Consider using phone or email to find a sub.");
       return;
     }
 
@@ -3014,7 +3014,7 @@ async function onReqScheduleTimeSelect(select, key) {
 
   if (await isTooLateForTomorrow(slot.matchDate)) {
     showWarningModal(
-      "Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Please contact the coordinator directly if you still need a sub for tomorrow.",
+      "Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Consider using phone or email to find a sub.",
       () => { select.value = ''; select.disabled = false; }
     );
     return;
