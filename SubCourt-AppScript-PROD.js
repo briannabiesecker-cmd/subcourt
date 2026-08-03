@@ -815,6 +815,9 @@ function getConfig() {
       brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
       urgentSubEmailsEnabled:  (function() { var v = sheet.getRange('B39').getValue(); return v !== 'No' && v !== false; })(),
       preMatchSchedule: preMatchSchedule,
+      // How many of today's Pre-Match Day dispatch runs haven't happened yet — 0 means
+      // today's last scheduled dispatch for tomorrow's matches has already passed.
+      remainingPreMatchRunsToday: _remainingPreMatchRunsToday({ preMatchSchedule: preMatchSchedule }),
       matchDayMinus2Schedule: matchDayMinus2Schedule,
       // Availability window — rows 16–18
       availWindowOpenDate:      (function() { var v = sheet.getRange('B16').getValue(); return v instanceof Date ? formatSheetDate(v) : (v ? v.toString() : ''); })(),

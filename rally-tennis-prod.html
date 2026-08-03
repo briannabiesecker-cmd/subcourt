@@ -2202,6 +2202,25 @@ function isNearTermRequestDate(dateStr) {
   return diffDays === 1 || diffDays === 2;
 }
 
+function isTomorrowRequestDate(dateStr) {
+  if (!dateStr) return false;
+  const today  = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
+  const target = new Date(dateStr + 'T00:00:00');
+  return Math.round((target - today) / 86400000) === 1;
+}
+
+// Fetches a fresh (uncached) Config read, since remainingPreMatchRunsToday changes
+// hour by hour and getAppConfig()'s cache is intentionally never invalidated.
+async function isTooLateForTomorrow(matchDate) {
+  if (!isTomorrowRequestDate(matchDate)) return false;
+  try {
+    const config = await apiGetWithParams({ action: 'getConfig' });
+    return (config.remainingPreMatchRunsToday || 0) <= 0;
+  } catch(e) {
+    return false; // fail open — a config-fetch hiccup shouldn't block a real submission
+  }
+}
+
 // ══════════════════════════════════════════════════
 // CONFIG — paste your Apps Script URL here after deploying
 // ══════════════════════════════════════════════════
@@ -2703,6 +2722,11 @@ async function submitRequest() {
   btn.textContent = 'Submitting…';
 
   try {
+    if (await isTooLateForTomorrow(matchDate)) {
+      showWarningModal("Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Please contact the coordinator directly if you still need a sub for tomorrow.");
+      return;
+    }
+
     requestCache = null; // always fetch fresh data at submit time for accurate duplicate/Anita checks
     const existing = await getRequests();
     const partnerEmails = new Set(partners.map(p => (p.email || '').toLowerCase()));
@@ -2985,6 +3009,14 @@ async function onReqScheduleTimeSelect(select, key) {
     select.value    = '';
     select.disabled = false;
     showAlert('req-alert', 'error', 'You already have a request for this date. Contact the coordinator to make changes.');
+    return;
+  }
+
+  if (await isTooLateForTomorrow(slot.matchDate)) {
+    showWarningModal(
+      "Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Please contact the coordinator directly if you still need a sub for tomorrow.",
+      () => { select.value = ''; select.disabled = false; }
+    );
     return;
   }
 
@@ -4170,12 +4202,19 @@ function showConfirmModal(msg, onConfirm, opts = {}) {
   modal.classList.add('open');
   const ok  = document.getElementById('confirm-modal-ok');
   const can = document.getElementById('confirm-modal-cancel');
-  ok.textContent  = opts.confirmLabel || 'Confirm';
-  can.textContent = opts.cancelLabel  || 'Cancel';
-  const close = () => { modal.classList.remove('open'); ok.onclick = null; can.onclick = null; };
+  ok.textContent    = opts.confirmLabel || 'Confirm';
+  can.textContent    = opts.cancelLabel  || 'Cancel';
+  can.style.display  = opts.singleButton ? 'none' : '';
+  const close = () => { modal.classList.remove('open'); ok.onclick = null; can.onclick = null; can.style.display = ''; };
   ok.onclick  = () => { close(); onConfirm(); };
   can.onclick = () => { close(); if (opts.onCancel) opts.onCancel(); };
   modal.onclick = e => { if (e.target === modal) { close(); if (opts.onCancel) opts.onCancel(); } };
+}
+
+// Player-facing warning dialog with a single acknowledgment button — used where the
+// only real option is "OK, I understand," not a yes/no choice.
+function showWarningModal(msg, onClose) {
+  showConfirmModal(msg, onClose || (() => {}), { confirmLabel: 'OK', singleButton: true });
 }
 
 async function refreshAll() {
