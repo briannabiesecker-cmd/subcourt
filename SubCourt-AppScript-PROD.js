@@ -1161,7 +1161,11 @@ function doGet(e) {
     else if (action === 'getVolunteers')   result = getVolunteers();
     else if (action === 'getPlayers')      result = getPlayers();
     else if (action === 'getHomeData')     result = getHomeData();
-    else if (action === 'getConfig')       result = getConfig();
+    else if (action === 'getConfig') {
+      // Public endpoint — never leak the Brevo API key to callers.
+      result = Object.assign({}, getConfig());
+      delete result.brevoApiKey;
+    }
     else if (action === 'submitRequest')   result = submitRequest(e.parameter);
     else if (action === 'submitVolunteer') result = submitVolunteer(e.parameter);
     else if (action === 'confirmSub')      result = confirmSub(e.parameter);
