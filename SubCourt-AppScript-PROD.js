@@ -10,7 +10,7 @@ var _configCache = null;
 
 // deploy.sh replaces 'rally-tennis-prod.html' with 'rally-tennis-prod.html' when pushing to prod.
 const APP_BASE_URL  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html';
-const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbzssqliq3PAB3NgntccOOSA6hSDrDyIkgQAvciMjs0JgQbK3yuNZqm_e7tXHGxhQQyAQQ/exec';
+const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbzb3EnQsxBt5dLTaQpg7VJjtoBtHTyGpB2VgpfJ9TDuvezk0ihjhn5oW48a9oKiIAyYMg/exec';
 
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
