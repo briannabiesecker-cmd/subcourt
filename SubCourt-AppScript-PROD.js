@@ -886,7 +886,7 @@ function getConfig() {
 
 function setupTriggers() {
   // Remove all managed triggers
-  var managed = ['runAutoDispatch','onConfigEdit','cleanupOldAvailability','checkAvailabilityWindow',
+  var managed = ['runAutoDispatch','onConfigEdit','cleanupOldRecords','checkAvailabilityWindow',
                  'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
                  'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder',
                  '_runQueuedAvailBlast','_runMatchTimeReminderCheck','runMatchDayMinus2Dispatch'];
@@ -899,8 +899,8 @@ function setupTriggers() {
   // onEdit watcher for Config tab
   ScriptApp.newTrigger('onConfigEdit').forSpreadsheet(SHEET_ID).onEdit().create();
 
-  // Monthly cleanup of old availability records
-  ScriptApp.newTrigger('cleanupOldAvailability').timeBased().onMonthDay(1).atHour(4).create();
+  // Monthly cleanup of old records across all data tabs
+  ScriptApp.newTrigger('cleanupOldRecords').timeBased().onMonthDay(1).atHour(4).create();
 
   // Daily check to auto-close availability window
   ScriptApp.newTrigger('checkAvailabilityWindow').timeBased().atHour(4).everyDays(1).create();
@@ -4523,27 +4523,69 @@ function getAvailabilityData(params) {
   return result;
 }
 
-function cleanupOldAvailability() {
-  const sheet   = getOrCreateAvailabilitySheet();
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
+// Deletes records older than the previous month across every data tab, so EmailLog,
+// MatchGroups, DispatchLog, SubRequests, Volunteers, and Availability don't grow
+// unbounded. Runs monthly via the trigger created in setupTriggers().
+function cleanupOldRecords() {
+  var ss  = SpreadsheetApp.openById(SHEET_ID);
+  var tz  = Session.getScriptTimeZone();
+  var now = new Date();
+  var cutoffDate  = new Date(now.getFullYear(), now.getMonth() - 1, 1); // first of previous month
+  var cutoffStr   = Utilities.formatDate(cutoffDate, tz, 'yyyy-MM-dd');
+  var cutoffMonth = Utilities.formatDate(cutoffDate, tz, 'yyyy-MM');
 
-  const now       = new Date();
-  const cutoff    = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
-  const rows      = sheet.getRange(2, 1, lastRow - 1, 1).getValues();   // timestamp column only
-  var   deleted   = 0;
+  var results = {
+    emailLog:     _deleteRowsBeforeDate(ss, TABS.emailLog,      1, cutoffStr),
+    matchGroups:  _deleteRowsBeforeDate(ss, TABS.matchGroups,   3, cutoffStr),
+    dispatchLog:  _deleteRowsBeforeDate(ss, 'DispatchLog',      4, cutoffStr),
+    subRequests:  _deleteRowsBeforeDate(ss, TABS.requests,      5, cutoffStr),
+    volunteers:   _deleteRowsBeforeDate(ss, TABS.volunteers,    5, cutoffStr),
+    availability: _deleteRowsBeforeMonth(ss, TABS.availability, 4, cutoffMonth)
+  };
+  Logger.log('cleanupOldRecords: ' + JSON.stringify(results));
+  return results;
+}
 
-  // Delete bottom-up to avoid row index shifting
-  for (var i = rows.length - 1; i >= 0; i--) {
-    var ts = rows[i][0];
-    if (!ts) continue;
-    var submitted = (ts instanceof Date) ? ts : new Date(ts);
-    if (submitted < cutoff) {
+// Deletes rows (bottom-up, to avoid index shifting as rows are removed) whose date in
+// `colIndex1Based` falls before `cutoffStr` (yyyy-MM-dd). Handles both Date-object and
+// string cells, since Sheets silently converts date-like strings to Date on write.
+function _deleteRowsBeforeDate(ss, tabName, colIndex1Based, cutoffStr) {
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var values  = sheet.getRange(2, colIndex1Based, lastRow - 1, 1).getValues();
+  var deleted = 0;
+  for (var i = values.length - 1; i >= 0; i--) {
+    var raw = values[i][0];
+    if (!raw) continue;
+    var dateStr = raw instanceof Date
+      ? Utilities.formatDate(raw, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : raw.toString().trim().slice(0, 10);
+    if (dateStr && dateStr < cutoffStr) {
       sheet.deleteRow(i + 2);
       deleted++;
     }
   }
-  Logger.log('cleanupOldAvailability: deleted ' + deleted + ' row(s) older than 60 days.');
+  return deleted;
+}
+
+// Same as _deleteRowsBeforeDate but for a "YYYY-MM" Month column (Availability).
+function _deleteRowsBeforeMonth(ss, tabName, colIndex1Based, cutoffMonth) {
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var values  = sheet.getRange(2, colIndex1Based, lastRow - 1, 1).getValues();
+  var deleted = 0;
+  for (var i = values.length - 1; i >= 0; i--) {
+    var monthStr = normalizeMonth(values[i][0]);
+    if (monthStr && monthStr < cutoffMonth) {
+      sheet.deleteRow(i + 2);
+      deleted++;
+    }
+  }
+  return deleted;
 }
 
 // ══════════════════════════════════════════════════
@@ -5357,6 +5399,11 @@ function getPublishedSchedule() {
 
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 16).getValues();
 
+  // Callers only ever use today-forward dates (View Schedule, Request a Sub,
+  // Availability lock-checks) — skip past rows so response size doesn't grow
+  // unbounded as MatchGroups accumulates month over month.
+  var todayStr = getDateStr(0);
+
   // Build dateMap across all months; track latestMonth for the header label only
   var latestMonth = '';
   var dateMap = {};
@@ -5368,6 +5415,7 @@ function getPublishedSchedule() {
     var date = r[2] instanceof Date
       ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
       : (r[2] ? r[2].toString() : '');
+    if (date && date < todayStr) return;
     var letter = r[3] ? r[3].toString() : '';
     var sitOutName   = r[12] ? r[12].toString() : '';
     var sitOutEmail  = r[13] ? r[13].toString() : '';
