@@ -2305,6 +2305,23 @@ async function apiGet(action) {
   return apiGetWithParams({ action });
 }
 
+// Retries a JSONP call on failure (timeout or backend error) before giving up.
+// Apps Script's web app content delivery (script.googleusercontent.com) occasionally
+// hangs or drops a request transiently — a short retry clears most of these without
+// the user ever seeing an error.
+async function apiGetWithRetry(params, retries = 2, delayMs = 1000, timeoutMs = 30000) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await apiGetWithParams(params, timeoutMs);
+    } catch(e) {
+      lastErr = e;
+      if (attempt < retries) await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 async function apiPost(payload, timeoutMs = 30000) {
   const params = { ...payload };
   Object.keys(params).forEach(k => {
@@ -2574,7 +2591,7 @@ let configCache    = null;
 
 async function getRequests() {
   if (requestCache) return requestCache;
-  requestCache = await apiGet('getRequests');
+  requestCache = await apiGetWithRetry({ action: 'getRequests' });
   return requestCache;
 }
 
@@ -2585,7 +2602,7 @@ async function getRequests() {
 // so loadMyRequests/loadReqSchedule can skip their own fetch.
 async function refreshRequestTab(email, name) {
   try {
-    const data = await apiGetWithParams({ action: 'getRequestPageData' });
+    const data = await apiGetWithRetry({ action: 'getRequestPageData' });
     requestCache      = data.requests;
     publishedSchedule = data.publishedSchedule;
     await loadMyRequests(email, name, false);
@@ -2843,7 +2860,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
 
   try {
     if (!publishedSchedule) {
-      publishedSchedule = await apiGetWithParams({ action: 'getPublishedSchedule' });
+      publishedSchedule = await apiGetWithRetry({ action: 'getPublishedSchedule' });
     }
     if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) {
       loading.style.display = 'none';
@@ -5627,7 +5644,7 @@ async function loadScheduleView() {
   document.getElementById('sch-print-btn').style.display = 'none';
 
   try {
-    const result = await apiGetWithParams({ action: 'getPublishedSchedule' });
+    const result = await apiGetWithRetry({ action: 'getPublishedSchedule' });
     publishedSchedule = result;
     loading.style.display = 'none';
     if (!result.month || !result.dates || !result.dates.length) {
