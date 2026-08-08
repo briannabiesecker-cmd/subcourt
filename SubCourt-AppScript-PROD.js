@@ -21,18 +21,6 @@ function isEmailEnabled() {
   } catch(e) { return false; }
 }
 
-function getEmailSettings() {
-  return { emailEnabled: isEmailEnabled() };
-}
-
-function setEmailEnabled(params) {
-  var enabled = params.enabled === 'true' || params.enabled === true;
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-  sheet.getRange('A27').setValue('Email Notifications Enabled');
-  sheet.getRange('B27').setValue(enabled);
-  return { success: true, emailEnabled: enabled };
-}
-
 // Run once from Apps Script editor after deploying the 4-window dispatch update.
 // Updates Config B4-B9 with correct labels and default values for the new system.
 function setupDispatchConfig() {
@@ -51,22 +39,6 @@ function setupDispatchConfig() {
   });
   Logger.log('setupDispatchConfig: Config B4-B9 updated for 4-window dispatch.');
   return { success: true };
-}
-
-function saveSenderEmail(params) {
-  var email = (params.email || '').toString().trim();
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-  sheet.getRange('A30').setValue('Sender Email');
-  sheet.getRange('B30').setValue(email);
-  return { success: true, senderEmail: email };
-}
-
-function saveGroupEmail(params) {
-  var email = (params.email || '').toString().trim().toLowerCase();
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-  sheet.getRange('A33').setValue('Players Email Group');
-  sheet.getRange('B33').setValue(email);
-  return { success: true, playersGroupEmail: email };
 }
 
 // Returns the admin emails (Players sheet isAdmin=true) for internal sync notifications.
@@ -1033,21 +1005,6 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
   Logger.log('Dispatch trigger set for Fridays at ' + timeET + ' ET.');
 }
 
-function scheduleImmediateDispatch() {
-  // Delete any existing runAutoDispatch triggers to avoid stacking
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'runAutoDispatch' &&
-        t.getTriggerSource() === ScriptApp.TriggerSource.CLOCK) {
-      try { ScriptApp.deleteTrigger(t); } catch(e) {}
-    }
-  });
-  // Restore the daily recurring trigger before adding the one-shot,
-  // so "Run Dispatch Now" never accidentally removes the scheduled trigger.
-  updateDispatchTrigger();
-  ScriptApp.newTrigger('runAutoDispatch').timeBased().after(60 * 1000).create();
-  return { success: true, scheduled: true };
-}
-
 function runAutoDispatch() {
   var config = getConfig();
   if (!config.autoDispatchEnabled) {
@@ -1177,9 +1134,9 @@ function doGet(e) {
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
     else if (action === 'cancelRequest')          result = cancelRequest(e.parameter);
     else if (action === 'manuallyAssignSub')      result = manuallyAssignSub(e.parameter);
-    else if (action === 'saveAutoDispatchSettings')      result = saveAutoDispatchSettings(e.parameter);
-    else if (action === 'runAutoDispatchNow')             result = scheduleImmediateDispatch();
-    else if (action === 'runMatchTimeReminderNow')        result = runMatchTimeReminder();
+    else if (action === 'getAdminConfigTables')        result = getAdminConfigTables();
+    else if (action === 'saveDispatchConfigTable')      result = saveDispatchConfigTable(e.parameter);
+    else if (action === 'saveSettingsConfigTable')      result = saveSettingsConfigTable(e.parameter);
     else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
@@ -1192,10 +1149,6 @@ function doGet(e) {
     else if (action === 'propagateEmailChange')    result = propagateEmailChange(e.parameter);
     else if (action === 'deletePlayer')            result = deletePlayer(e.parameter);
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
-    else if (action === 'getEmailSettings')         result = getEmailSettings();
-    else if (action === 'setEmailEnabled')          result = setEmailEnabled(e.parameter);
-    else if (action === 'saveSenderEmail')          result = saveSenderEmail(e.parameter);
-    else if (action === 'saveGroupEmail')           result = saveGroupEmail(e.parameter);
     else if (action === 'getAvailabilityConfig')   result = getAvailabilityConfig();
     else if (action === 'openAvailabilityWindow')  result = openAvailabilityWindow(e.parameter);
     else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
@@ -1217,7 +1170,6 @@ function doGet(e) {
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
     else if (action === 'createScheduleDraft')         result = createScheduleDraft(e.parameter);
-    else if (action === 'sendTestEmail')             result = sendTestEmail();
     else if (action === 'getRecentEmailLog')         result = getRecentEmailLog(e.parameter);
     else if (action === 'resendUrgentSubBroadcast')  result = resendUrgentSubBroadcast(e.parameter);
     else if (action === 'checkEmailQuotaNow')        result = { remaining: MailApp.getRemainingDailyQuota() };
@@ -3024,8 +2976,7 @@ function setupSubReminderTrigger() {
 }
 
 // Fires from runMatchDayMinus2Dispatch() when the matched run's Config column E
-// (rows 51–55) is Yes. "Run Now" (runMatchTimeReminderNow) calls this directly,
-// bypassing that gate.
+// (rows 51–55) is Yes.
 function runMatchTimeReminder() {
   var now       = new Date();
   var FOUR_HOURS = 4 * 60 * 60 * 1000;
@@ -3102,20 +3053,128 @@ function runMatchTimeReminder() {
   return { success: true, notified: notified };
 }
 
-function saveAutoDispatchSettings(params) {
-  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-  var enabled = params.enabled === 'true' || params.enabled === true;
-  var time    = (params.time || '08:00').trim();
+// ──────────────────────────────────────────────────
+// ADMIN CONFIG TABLES — Dispatch screen + Settings screen
+// Lets admins edit Config-sheet values from the web app instead of the Sheet directly.
+// ──────────────────────────────────────────────────
 
+function getAdminConfigTables() {
+  var config = getConfig();
+  var sched  = getSchedulerSettings();
+  return {
+    autoDispatchEnabled:      config.autoDispatchEnabled,
+    autoDispatchTimeET:       config.autoDispatchTimeET,
+    calendarLookaheadDays:    config.calendarLookaheadDays,
+    allowPlayerNameChangeOnDelete: config.allowPlayerNameChangeOnDelete,
+    preScheduleThresholdHrs:  config.preScheduleThresholdHrs,
+    skillWindowFarOut:        config.skillWindowFarOut,
+    urgentThresholdHrs:       config.urgentThresholdHrs,
+    skillWindowMid:           config.skillWindowMid,
+    lastMinuteThresholdHrs:   config.lastMinuteThresholdHrs,
+    skillWindowUrgent:        config.skillWindowUrgent,
+    skillWindowLastMinute:    config.skillWindowLastMinute,
+    preMatchSchedule:         config.preMatchSchedule,
+    matchDayMinus2Schedule:   config.matchDayMinus2Schedule,
+    availWindowOpenDate:      config.availWindowOpenDate,
+    availWindowCloseDate:     config.availWindowCloseDate,
+    availWindowActive:        config.availWindowActive,
+    weightTeamVariance:       sched.weightTeamVariance,
+    weightGroupVariance:      sched.weightGroupVariance,
+    weightSocialVariety:      sched.weightSocialVariety,
+    weightRecency:            sched.weightRecency,
+    solverIterations:         sched.solverIterations,
+    solverRestarts:           sched.solverRestarts,
+    ratingRangeLimit:         sched.ratingRangeLimit,
+    weightMaxRatingRange:     sched.weightMaxRatingRange,
+    emailEnabled:             isEmailEnabled(),
+    senderEmail:              config.senderEmail,
+    brevoApiKey:              config.brevoApiKey,
+    brevoAvailNotification:   config.brevoAvailNotification,
+    brevoScheduleEmail:       config.brevoScheduleEmail,
+    urgentSubEmailsEnabled:   config.urgentSubEmailsEnabled
+  };
+}
+
+// Saves every value on the Dispatch screen's config table, then re-installs the
+// triggers that depend on the schedule/time values so changes take effect immediately.
+function saveDispatchConfigTable(params) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+
+  var enabled = params.autoDispatchEnabled === 'true' || params.autoDispatchEnabled === true;
+  var time    = (params.autoDispatchTimeET || '13:00').trim();
   sheet.getRange('B58').setValue(enabled);
   var timeCell = sheet.getRange('B59');
   timeCell.setNumberFormat('@');
   timeCell.setValue(time);
+
+  sheet.getRange('B10').setValue(parseInt(params.calendarLookaheadDays) || 30);
+
+  var allowNameChange = params.allowPlayerNameChangeOnDelete === 'true' || params.allowPlayerNameChangeOnDelete === true;
+  sheet.getRange('B61').setValue(allowNameChange ? 'Yes' : 'No');
+
+  sheet.getRange('B4').setValue(parseInt(params.preScheduleThresholdHrs)   || 72);
+  sheet.getRange('C4').setValue(parseFloat(params.skillWindowFarOut)       || 0.5);
+  sheet.getRange('B5').setValue(parseInt(params.urgentThresholdHrs)       || 48);
+  sheet.getRange('C5').setValue(parseFloat(params.skillWindowMid)         || 1.0);
+  sheet.getRange('B6').setValue(parseInt(params.lastMinuteThresholdHrs)   || 24);
+  sheet.getRange('C6').setValue(parseFloat(params.skillWindowUrgent)      || 2.0);
+  sheet.getRange('C7').setValue(parseFloat(params.skillWindowLastMinute)  || 2.8);
+
+  var preMatch = JSON.parse(params.preMatchSchedule || '[]');
+  if (preMatch.length === 5) {
+    sheet.getRange('A43:E47').setValues(preMatch.map(function(r, i) {
+      return [String(i + 1), r.time || '', r.dispatch ? 'Yes' : 'No', r.broadcast ? 'Yes' : 'No', r.cancel ? 'Yes' : 'No'];
+    }));
+  }
+
+  var md2 = JSON.parse(params.matchDayMinus2Schedule || '[]');
+  if (md2.length === 5) {
+    sheet.getRange('A51:F55').setValues(md2.map(function(r, i) {
+      return [String(i + 1), r.time || '', r.dispatch ? 'Yes' : 'No', r.broadcast ? 'Yes' : 'No',
+              r.matchTimeReminder ? 'Yes' : 'No', r.overflowDetect ? 'Yes' : 'No'];
+    }));
+  }
+
   SpreadsheetApp.flush();
+  _configCache = null;
 
   try { updateDispatchTrigger(enabled, time); } catch(e) { Logger.log('updateDispatchTrigger error: ' + e.message); }
+  try { updatePreMatchDayTriggers(); } catch(e) { Logger.log('updatePreMatchDayTriggers error: ' + e.message); }
+  try { updateMatchDayMinus2Triggers(); } catch(e) { Logger.log('updateMatchDayMinus2Triggers error: ' + e.message); }
 
-  return { success: true, autoDispatchEnabled: enabled, autoDispatchTimeET: time };
+  return { success: true };
+}
+
+// Saves every value on the Settings screen's config table.
+function saveSettingsConfigTable(params) {
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+
+  var openCell = sheet.getRange('B16'); openCell.setNumberFormat('@'); openCell.setValue(params.availWindowOpenDate || '');
+  var closeCell = sheet.getRange('B17'); closeCell.setNumberFormat('@'); closeCell.setValue(params.availWindowCloseDate || '');
+  sheet.getRange('B18').setValue(params.availWindowActive === 'true' || params.availWindowActive === true);
+
+  sheet.getRange('B20').setValue(parseFloat(params.weightTeamVariance)  || 0);
+  sheet.getRange('B21').setValue(parseFloat(params.weightGroupVariance) || 0);
+  sheet.getRange('B22').setValue(parseFloat(params.weightSocialVariety) || 0);
+  sheet.getRange('B23').setValue(parseFloat(params.weightRecency)       || 0);
+  sheet.getRange('B24').setValue(parseInt(params.solverIterations)      || 800);
+  sheet.getRange('B25').setValue(parseInt(params.solverRestarts)        || 10);
+
+  sheet.getRange('B31').setValue(parseFloat(params.ratingRangeLimit)     || 2.0);
+  sheet.getRange('B32').setValue(parseFloat(params.weightMaxRatingRange) || 0.0);
+
+  sheet.getRange('B27').setValue(params.emailEnabled === 'true' || params.emailEnabled === true);
+  sheet.getRange('B30').setValue((params.senderEmail || '').toString().trim());
+
+  sheet.getRange('B35').setValue((params.brevoApiKey || '').toString().trim());
+  sheet.getRange('B36').setValue((params.brevoAvailNotification === 'true' || params.brevoAvailNotification === true) ? 'Yes' : 'No');
+  sheet.getRange('B37').setValue((params.brevoScheduleEmail    === 'true' || params.brevoScheduleEmail    === true) ? 'Yes' : 'No');
+  sheet.getRange('B39').setValue((params.urgentSubEmailsEnabled === 'true' || params.urgentSubEmailsEnabled === true) ? 'Yes' : 'No');
+
+  SpreadsheetApp.flush();
+  _configCache = null;
+
+  return { success: true };
 }
 
 function sendRetirementEmail(req) {
@@ -5483,41 +5542,6 @@ function buildScheduleAttachments(schedule, monthLabel) {
 
   // BOM (﻿) ensures Excel reads UTF-8 correctly on Windows
   return [Utilities.newBlob('﻿' + csvLines.join('\r\n'), 'text/csv', safe + '_Schedule.csv')];
-}
-
-// Diagnostic: sends a test email to the admin and returns full diagnostic info.
-function sendTestEmail() {
-  var diag = { emailEnabled: false, playerCount: 0, senderEmail: '', scheduleFound: false };
-  try {
-    diag.emailEnabled = isEmailEnabled();
-    diag.senderEmail  = getConfig().senderEmail || '';
-    var players = getPlayersWithRatings();
-    diag.playerCount  = players.length;
-    var sched = getPublishedSchedule();
-    diag.scheduleFound = !!(sched && sched.month);
-    diag.scheduleMonth = sched ? sched.month : '';
-
-    if (!diag.emailEnabled) {
-      return { success: false, error: 'Email is disabled — turn on the Email Enabled toggle in Admin settings (Config B27).', diag: diag };
-    }
-    if (!players.length) {
-      return { success: false, error: 'No players found in the Players sheet.', diag: diag };
-    }
-
-    var adminEmail = Session.getActiveUser().getEmail() || 'marobria@gmail.com';
-    var body = 'Rally test email.\n\nDiagnostics:\n' +
-      'Email enabled: ' + diag.emailEnabled + '\n' +
-      'Player count: ' + diag.playerCount + '\n' +
-      'Sender email: ' + (diag.senderEmail || '(none — will send from script account)') + '\n' +
-      'Schedule found: ' + diag.scheduleFound + ' (' + diag.scheduleMonth + ')';
-
-    var mailOpts = { to: adminEmail, subject: 'Rally — Test Email', body: body, name: 'MWF Tennis League' };
-    if (diag.senderEmail) mailOpts.replyTo = diag.senderEmail;
-    MailApp.sendEmail(mailOpts);
-    return { success: true, sentTo: adminEmail, sentFrom: 'MailApp', diag: diag };
-  } catch(e) {
-    return { success: false, error: e.message, diag: diag };
-  }
 }
 
 // Sends the published schedule to ALL players in one email (all addresses on To line) with CSV attachment.

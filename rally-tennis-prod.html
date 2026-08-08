@@ -2070,65 +2070,17 @@
       <div id="admin-tab-settings" style="display:none;">
         <div id="settings-alert" class="hidden" style="margin-top:1rem;"></div>
 
-        <div class="card mt8" style="max-width:560px;">
-          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Sender Email</div>
-          <div style="font-size:14px;color:var(--ink-mid);margin-bottom:12px;">Email address that appears as the "From" on all outbound player emails. Must be set up as a Gmail "Send as" alias on the account running this script. Leave blank to use the default script account.</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="email" id="sender-email-input" placeholder="e.g. coordinator@gmail.com"
-              style="flex:1;min-width:220px;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;">
-            <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="saveSenderEmail()">Save</button>
-          </div>
-          <div id="sender-email-status" style="font-size:13px;color:var(--ink-light);margin-top:8px;"></div>
-          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;margin-top:10px;" onclick="runTestEmail()">Send Test Email</button>
-          <div id="test-email-result" style="font-size:13px;margin-top:8px;"></div>
-        </div>
-
-        <div class="card mt8" style="max-width:560px;margin-top:1rem;">
-          <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Players Email Group</div>
-          <div style="font-size:14px;color:var(--ink-mid);margin-bottom:12px;">
-            A Google Group address (e.g. mwf-players@googlegroups.com) used to email all players at once.
-            Set this after creating the group. Whenever a player is added, removed, or has their email changed,
-            Rally will email the admins a reminder of who to add/remove from the group, with a link to manage members.
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="email" id="group-email-input" placeholder="e.g. mwf-players@googlegroups.com"
-              style="flex:1;min-width:220px;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;">
-            <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="saveGroupEmail()">Save</button>
-          </div>
-          <div id="group-email-status" style="font-size:13px;color:var(--ink-light);margin-top:8px;"></div>
-          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;margin-top:10px;" onclick="copyPlayerEmailList()">Copy Player Email List</button>
-          <div id="group-email-copy-result" style="font-size:13px;margin-top:8px;"></div>
-        </div>
-
-        <div class="card mt8" style="max-width:560px;margin-top:1rem;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
-            <div style="flex:1;">
-              <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Email Notifications</div>
-              <div style="font-size:14px;color:var(--ink-mid);margin-bottom:12px;">Master on/off switch for all outbound player emails. Admin login codes always send regardless of this setting.</div>
-              <div style="font-size:13px;color:var(--ink-light);line-height:1.7;">
-                <div style="font-weight:600;color:var(--ink-mid);margin-bottom:4px;">Emails included:</div>
-                <div>📬 <strong>Availability window opens</strong> — sent to all players when you click Open Window</div>
-                <div>⏰ <strong>T-2 day reminder</strong> — sent to players who haven't submitted yet, 2 days before the window closes</div>
-                <div>🔔 <strong>T-1 day reminder</strong> — sent to players who still haven't submitted, 1 day before close</div>
-                <div>✅ <strong>Submission confirmation</strong> — sent to each player after they submit their availability</div>
-              </div>
-            </div>
-            <div id="email-toggle-wrap" style="flex-shrink:0;padding-top:4px;">
-              <div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
-            </div>
+        <div class="card mt8" id="settings-config-card">
+          <div id="settings-config-content">
+            <div class="loading"><div class="spinner"></div>Loading settings…</div>
           </div>
         </div>
       </div>
 
       <div id="admin-tab-dispatch" style="display:none;">
-        <div class="card mt8" id="dispatch-status-card">
-          <div id="dispatch-status-content">
-            <div class="loading"><div class="spinner"></div>Loading status…</div>
-          </div>
-        </div>
-        <div class="card mt8" id="reminder-status-card">
-          <div id="reminder-status-content">
-            <div class="loading"><div class="spinner"></div>Loading…</div>
+        <div class="card mt8" id="dispatch-config-card">
+          <div id="dispatch-config-content">
+            <div class="loading"><div class="spinner"></div>Loading settings…</div>
           </div>
         </div>
         <div id="dispatch-filled-section" style="display:none;margin-top:1.5rem;">
@@ -3837,153 +3789,144 @@ async function retireRequest(requestId) {
 }
 
 async function loadDispatch() {
-  document.getElementById('dispatch-status-content').innerHTML =
-    '<div class="loading"><div class="spinner"></div>Loading status…</div>';
+  document.getElementById('dispatch-config-content').innerHTML =
+    '<div class="loading"><div class="spinner"></div>Loading settings…</div>';
   document.getElementById('dispatch-loading').classList.remove('hidden');
   document.getElementById('dispatch-list').innerHTML = '';
   document.getElementById('dispatch-filled-section').style.display = 'none';
   document.getElementById('dispatch-filled-list').innerHTML = '';
 
-  let config, log, requests;
+  let cfgTable, log, requests;
   try {
-    [config, log, requests] = await Promise.all([
-      getAppConfig(),
+    [cfgTable, log, requests] = await Promise.all([
+      apiPost({ action: 'getAdminConfigTables' }),
       apiGet('getDispatchLog'),
       getRequests()
     ]);
   } catch(e) {
-    document.getElementById('dispatch-status-content').innerHTML =
+    document.getElementById('dispatch-config-content').innerHTML =
       `<div class="alert alert-error">Failed to load dispatch data: ${e.message}</div>`;
     document.getElementById('dispatch-loading').classList.add('hidden');
     return;
   }
 
   document.getElementById('dispatch-loading').classList.add('hidden');
-  renderDispatchStatus(config, log);
-  renderReminderStatus(config);
+  renderDispatchConfigTable(cfgTable);
   renderDispatchFilled(log);
   renderDispatchOpen(requests, log);
 }
 
-function renderDispatchStatus(config, log) {
-  const enabled   = config && config.autoDispatchEnabled;
-  const time      = config && config.autoDispatchTimeET ? config.autoDispatchTimeET : '08:00';
-  const lastEntry = log && log.length ? log[0] : null;
-  const lastRun   = lastEntry ? formatTS(lastEntry.timestamp) : 'Never';
-  const lastResult = lastEntry
-    ? (lastEntry.result === 'matched'
-        ? `<span style="color:#2E7D32;">matched ${lastEntry.subName}</span>`
-        : lastEntry.result === 'no_candidates'
-          ? '<span style="color:#B45309;">no candidates</span>'
-          : `<span style="color:#A32D2D;">${lastEntry.result}</span>`)
-    : '—';
+function renderDispatchConfigTable(cfg) {
+  const chk  = (id, checked) => `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">`;
+  const time = (id, val) => `<input type="time" id="${id}" value="${val || ''}" style="font-size:12px;padding:2px 4px;width:88px;border:1px solid var(--line);border-radius:4px;">`;
+  const num  = (id, val, w) => `<input type="number" id="${id}" value="${val ?? ''}" step="any" style="font-size:12px;padding:2px 4px;width:${w || 55}px;border:1px solid var(--line);border-radius:4px;">`;
 
-  document.getElementById('dispatch-status-content').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span style="width:10px;height:10px;border-radius:50%;background:${enabled ? '#2E7D32' : '#9E9E9E'};display:inline-block;flex-shrink:0;"></span>
-          <span style="font-weight:600;font-size:15px;">Auto-Dispatch ${enabled ? 'Enabled' : 'Disabled'}</span>
-        </div>
-        <div style="font-size:13px;color:#666;display:flex;gap:20px;flex-wrap:wrap;">
-          <span>Last run: <strong>${lastRun}</strong></span>
-          <span>Last result: <strong>${lastResult}</strong></span>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <label style="font-size:13px;font-weight:600;white-space:nowrap;">Daily time (ET):</label>
-          <input type="time" id="autodispatch-time" value="${time}"
-            style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:110px;">
-        </div>
-        <button class="btn btn-sm ${enabled ? 'btn-secondary' : 'btn-primary'}" id="autodispatch-toggle-btn"
-          onclick="saveAutoDispatchSettings(${!enabled})">
-          ${enabled ? 'Disable' : 'Enable'}
-        </button>
-        <button class="btn btn-sm btn-primary" id="autodispatch-save-btn"
-          onclick="saveAutoDispatchSettings(${enabled})">
-          Save time
-        </button>
-        <button class="btn btn-sm btn-secondary" id="autodispatch-runnow-btn"
-          onclick="runAutoDispatchNow()" title="Run dispatch immediately">
-          Run Now
-        </button>
-      </div>
-    </div>
-    <div id="autodispatch-alert" style="margin-top:8px;"></div>
+  const pm  = cfg.preMatchSchedule || [];
+  const md2 = cfg.matchDayMinus2Schedule || [];
+
+  document.getElementById('dispatch-config-content').innerHTML = `
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Dispatch Settings</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Auto-dispatch enabled</td><td>${chk('cfgd-autodispatch-enabled', cfg.autoDispatchEnabled)}</td>
+            <td>Time (ET)</td><td>${time('cfgd-autodispatch-time', cfg.autoDispatchTimeET)}</td></tr>
+        <tr><td>Days to show in volunteer calendar</td><td>${num('cfgd-calendar-lookahead', cfg.calendarLookaheadDays)}</td>
+            <td>Allow name change on delete</td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
+      </tbody>
+    </table>
+
+    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Matching Engine</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <thead><tr><th></th><th>Timing (hrs)</th><th>Skill Window</th></tr></thead>
+      <tbody>
+        <tr><td>Pre-schedule</td><td>${num('cfgd-match-hrs-0', cfg.preScheduleThresholdHrs, 45)}</td><td>${num('cfgd-match-win-0', cfg.skillWindowFarOut, 45)}</td></tr>
+        <tr><td>A little urgent</td><td>${num('cfgd-match-hrs-1', cfg.urgentThresholdHrs, 45)}</td><td>${num('cfgd-match-win-1', cfg.skillWindowMid, 45)}</td></tr>
+        <tr><td>Urgent</td><td>${num('cfgd-match-hrs-2', cfg.lastMinuteThresholdHrs, 45)}</td><td>${num('cfgd-match-win-2', cfg.skillWindowUrgent, 45)}</td></tr>
+        <tr><td>Last minute</td><td style="color:var(--ink-light);">—</td><td>${num('cfgd-match-win-3', cfg.skillWindowLastMinute, 45)}</td></tr>
+      </tbody>
+    </table>
+
+    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Pre-Match Day Dispatch (Sun, Tue, Thu)</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Cancel if open</th></tr></thead>
+      <tbody>
+        ${pm.map((r, i) => `<tr>
+          <td>${i + 1}</td>
+          <td>${time('cfgd-pmd-time-' + i, r.time)}</td>
+          <td>${chk('cfgd-pmd-dispatch-' + i, r.dispatch)}</td>
+          <td>${chk('cfgd-pmd-broadcast-' + i, r.broadcast)}</td>
+          <td>${chk('cfgd-pmd-cancel-' + i, r.cancel)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Match Day -2 Dispatch (Sat, Mon, Wed)</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Time Reminder</th><th>Move to Overflow</th></tr></thead>
+      <tbody>
+        ${md2.map((r, i) => `<tr>
+          <td>${i + 1}</td>
+          <td>${time('cfgd-md2-time-' + i, r.time)}</td>
+          <td>${chk('cfgd-md2-dispatch-' + i, r.dispatch)}</td>
+          <td>${chk('cfgd-md2-broadcast-' + i, r.broadcast)}</td>
+          <td>${chk('cfgd-md2-reminder-' + i, r.matchTimeReminder)}</td>
+          <td>${chk('cfgd-md2-overflow-' + i, r.overflowDetect)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <button class="btn btn-primary btn-sm" id="dispatch-config-save-btn" onclick="saveDispatchConfig()">Save Dispatch Settings</button>
+    <div id="dispatch-config-alert" style="margin-top:8px;"></div>
   `;
 }
 
-async function runAutoDispatchNow() {
-  const btn     = document.getElementById('autodispatch-runnow-btn');
-  const alertEl = document.getElementById('autodispatch-alert');
-  if (btn) { btn.disabled = true; btn.textContent = 'Scheduling…'; }
-  if (alertEl) alertEl.innerHTML = '';
-  try {
-    const result = await apiPost({ action: 'runAutoDispatchNow' });
-    const msg = result.scheduled
-      ? 'Dispatch scheduled — it will run within the next minute. Reload the page after a moment to see results.'
-      : 'Skipped — auto-dispatch is disabled.';
-    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
-    loadDispatch();
-  } catch(e) {
-    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
-  }
-}
+async function saveDispatchConfig() {
+  const btn     = document.getElementById('dispatch-config-save-btn');
+  const alertEl = document.getElementById('dispatch-config-alert');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  alertEl.innerHTML = '';
 
-async function saveAutoDispatchSettings(enabled) {
-  const timeInput = document.getElementById('autodispatch-time');
-  const alertEl   = document.getElementById('autodispatch-alert');
-  const toggleBtn = document.getElementById('autodispatch-toggle-btn');
-  const saveBtn   = document.getElementById('autodispatch-save-btn');
-  const time = timeInput ? timeInput.value || '08:00' : '08:00';
+  const chkVal = id => document.getElementById(id).checked;
+  const val    = id => document.getElementById(id).value;
 
-  [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = true; });
-  if (alertEl) alertEl.innerHTML = '';
+  const preMatchSchedule = [0, 1, 2, 3, 4].map(i => ({
+    time: val('cfgd-pmd-time-' + i),
+    dispatch: chkVal('cfgd-pmd-dispatch-' + i),
+    broadcast: chkVal('cfgd-pmd-broadcast-' + i),
+    cancel: chkVal('cfgd-pmd-cancel-' + i)
+  }));
+  const matchDayMinus2Schedule = [0, 1, 2, 3, 4].map(i => ({
+    time: val('cfgd-md2-time-' + i),
+    dispatch: chkVal('cfgd-md2-dispatch-' + i),
+    broadcast: chkVal('cfgd-md2-broadcast-' + i),
+    matchTimeReminder: chkVal('cfgd-md2-reminder-' + i),
+    overflowDetect: chkVal('cfgd-md2-overflow-' + i)
+  }));
 
   try {
-    const result = await apiPost({ action: 'saveAutoDispatchSettings', enabled: String(enabled), time });
+    const result = await apiPost({
+      action: 'saveDispatchConfigTable',
+      autoDispatchEnabled: chkVal('cfgd-autodispatch-enabled'),
+      autoDispatchTimeET: val('cfgd-autodispatch-time'),
+      calendarLookaheadDays: val('cfgd-calendar-lookahead'),
+      allowPlayerNameChangeOnDelete: chkVal('cfgd-allow-name-change'),
+      preScheduleThresholdHrs: val('cfgd-match-hrs-0'),
+      skillWindowFarOut: val('cfgd-match-win-0'),
+      urgentThresholdHrs: val('cfgd-match-hrs-1'),
+      skillWindowMid: val('cfgd-match-win-1'),
+      lastMinuteThresholdHrs: val('cfgd-match-hrs-2'),
+      skillWindowUrgent: val('cfgd-match-win-2'),
+      skillWindowLastMinute: val('cfgd-match-win-3'),
+      preMatchSchedule,
+      matchDayMinus2Schedule
+    });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;
-    await loadDispatch();
+    alertEl.innerHTML = '<span style="font-size:13px;color:var(--success);">Saved.</span>';
   } catch(e) {
-    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
-    [toggleBtn, saveBtn].forEach(b => { if (b) b.disabled = false; });
-  }
-}
-
-function renderReminderStatus(config) {
-  document.getElementById('reminder-status-content').innerHTML = `
-    <div style="font-size:13px;font-weight:600;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">Court Time Reminder</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-      <div style="font-size:13px;color:#666;max-width:520px;">
-        Emails requestors of open TBD sub requests within 60 hours to add a court time.
-        Fires on Match Day -2 runs (Config sheet rows 51–55) whose column E is Yes.
-      </div>
-      <button class="btn btn-sm btn-secondary" id="reminder-runnow-btn"
-        onclick="runMatchTimeReminderNow()" title="Send reminders now">
-        Run Now
-      </button>
-    </div>
-    <div id="reminder-alert" style="margin-top:8px;"></div>
-  `;
-}
-
-async function runMatchTimeReminderNow() {
-  const btn     = document.getElementById('reminder-runnow-btn');
-  const alertEl = document.getElementById('reminder-alert');
-  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
-  if (alertEl) alertEl.innerHTML = '';
-  try {
-    const result = await apiPost({ action: 'runMatchTimeReminderNow' });
-    const msg = `Sent reminders to ${result.notified ?? 0} requestor(s).`;
-    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--ink-mid);">${msg}</span>`;
-  } catch(e) {
-    if (alertEl) alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+    alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
+    btn.disabled = false; btn.textContent = 'Save Dispatch Settings';
   }
 }
 
@@ -4336,7 +4279,7 @@ function showAdminTab(tab, btn) {
   if (tab === 'dispatch')  loadDispatch();
   if (tab === 'players')   { checkDuplicateEmails(); loadManagePlayers(); loadCoordinatorRatings(); }
   if (tab === 'scheduler') loadScheduler();
-  if (tab === 'settings')  { loadSenderEmail(); loadGroupEmail(); loadEmailToggle(); }
+  if (tab === 'settings')  loadSettingsConfig();
 }
 
 // ══════════════════════════════════════════════════
@@ -4921,132 +4864,102 @@ function formatDateAbbrev(str) {
 // ══════════════════════════════════════════════════
 let scheduleData = null; // last generated result
 
-async function loadSenderEmail() {
-  const input  = document.getElementById('sender-email-input');
-  const status = document.getElementById('sender-email-status');
+async function loadSettingsConfig() {
+  document.getElementById('settings-config-content').innerHTML =
+    '<div class="loading"><div class="spinner"></div>Loading settings…</div>';
   try {
-    const config = await getAppConfig();
-    if (input && config.senderEmail) input.value = config.senderEmail;
-    if (status) status.textContent = config.senderEmail
-      ? 'Currently sending as: ' + config.senderEmail
-      : 'Using default script account.';
-  } catch(e) {}
+    const cfg = await apiPost({ action: 'getAdminConfigTables' });
+    renderSettingsConfigTable(cfg);
+  } catch(e) {
+    document.getElementById('settings-config-content').innerHTML =
+      `<div class="alert alert-error">Failed to load settings: ${e.message}</div>`;
+  }
 }
 
-async function saveSenderEmail() {
-  const input  = document.getElementById('sender-email-input');
-  const status = document.getElementById('sender-email-status');
-  const email  = input ? input.value.trim() : '';
-  if (status) status.textContent = 'Saving…';
+function renderSettingsConfigTable(cfg) {
+  const chk = (id, checked) => `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">`;
+  const num = (id, val, w) => `<input type="number" id="${id}" value="${val ?? ''}" step="any" style="font-size:12px;padding:2px 4px;width:${w || 55}px;border:1px solid var(--line);border-radius:4px;">`;
+  const txt = (id, val, w) => `<input type="text" id="${id}" value="${(val ?? '').toString().replace(/"/g, '&quot;')}" style="font-size:12px;padding:3px 6px;width:${w || 200}px;border:1px solid var(--line);border-radius:4px;">`;
+  const date = (id, val) => `<input type="date" id="${id}" value="${val || ''}" style="font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;">`;
+
+  document.getElementById('settings-config-content').innerHTML = `
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Monthly Scheduling</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Availability Window Open Date</td><td>${date('cfgs-avail-open', cfg.availWindowOpenDate)}</td>
+            <td>Close Date</td><td>${date('cfgs-avail-close', cfg.availWindowCloseDate)}</td>
+            <td>Active</td><td>${chk('cfgs-avail-active', cfg.availWindowActive)}</td></tr>
+      </tbody>
+    </table>
+
+    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Scheduler Engine Settings</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Weight Team Skill Balance</td><td>${num('cfgs-weight-team', cfg.weightTeamVariance)}</td>
+            <td>Weight Social Variety</td><td>${num('cfgs-weight-social', cfg.weightGroupVariance)}</td></tr>
+        <tr><td>Weight Back-to-Back Repeat Penalty</td><td>${num('cfgs-weight-repeat', cfg.weightSocialVariety)}</td>
+            <td>Weight Partner Balance (new)</td><td>${num('cfgs-weight-partner', cfg.weightRecency)}</td></tr>
+        <tr><td>Solver Attempts Per Restart</td><td>${num('cfgs-solver-iters', cfg.solverIterations, 65)}</td>
+            <td>Solver Number of Restarts</td><td>${num('cfgs-solver-restarts', cfg.solverRestarts, 65)}</td></tr>
+        <tr><td>Rating Range Limit</td><td>${num('cfgs-rating-range-limit', cfg.ratingRangeLimit)}</td>
+            <td>Weight Maximum Rating Range</td><td>${num('cfgs-weight-max-rating-range', cfg.weightMaxRatingRange)}</td></tr>
+      </tbody>
+    </table>
+
+    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Email Notification Settings</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Email Notifications Enabled</td><td>${chk('cfgs-email-enabled', cfg.emailEnabled)}</td>
+            <td>Sender Email</td><td>${txt('cfgs-sender-email', cfg.senderEmail, 200)}</td></tr>
+        <tr><td>Brevo API Key</td><td colspan="3">${txt('cfgs-brevo-key', cfg.brevoApiKey, 420)}</td></tr>
+        <tr><td>Use Brevo: Availability Notification</td><td>${chk('cfgs-brevo-avail', cfg.brevoAvailNotification)}</td>
+            <td>Use Brevo: Schedule Email</td><td>${chk('cfgs-brevo-schedule', cfg.brevoScheduleEmail)}</td></tr>
+        <tr><td>Send Urgent Sub Emails</td><td>${chk('cfgs-urgent-sub-emails', cfg.urgentSubEmailsEnabled)}</td><td></td><td></td></tr>
+      </tbody>
+    </table>
+
+    <button class="btn btn-primary btn-sm" id="settings-config-save-btn" onclick="saveSettingsConfig()">Save Settings</button>
+    <div id="settings-config-alert" style="margin-top:8px;"></div>
+  `;
+}
+
+async function saveSettingsConfig() {
+  const btn     = document.getElementById('settings-config-save-btn');
+  const alertEl = document.getElementById('settings-config-alert');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  alertEl.innerHTML = '';
+
+  const chkVal = id => document.getElementById(id).checked;
+  const val    = id => document.getElementById(id).value;
+
   try {
-    const result = await apiPost({ action: 'saveSenderEmail', email });
+    const result = await apiPost({
+      action: 'saveSettingsConfigTable',
+      availWindowOpenDate: val('cfgs-avail-open'),
+      availWindowCloseDate: val('cfgs-avail-close'),
+      availWindowActive: chkVal('cfgs-avail-active'),
+      weightTeamVariance: val('cfgs-weight-team'),
+      weightGroupVariance: val('cfgs-weight-social'),
+      weightSocialVariety: val('cfgs-weight-repeat'),
+      weightRecency: val('cfgs-weight-partner'),
+      solverIterations: val('cfgs-solver-iters'),
+      solverRestarts: val('cfgs-solver-restarts'),
+      ratingRangeLimit: val('cfgs-rating-range-limit'),
+      weightMaxRatingRange: val('cfgs-weight-max-rating-range'),
+      emailEnabled: chkVal('cfgs-email-enabled'),
+      senderEmail: val('cfgs-sender-email'),
+      brevoApiKey: val('cfgs-brevo-key'),
+      brevoAvailNotification: chkVal('cfgs-brevo-avail'),
+      brevoScheduleEmail: chkVal('cfgs-brevo-schedule'),
+      urgentSubEmailsEnabled: chkVal('cfgs-urgent-sub-emails')
+    });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;
-    if (status) status.textContent = email
-      ? 'Saved. Emails will send as: ' + email + ' (requires Gmail alias setup).'
-      : 'Cleared. Using default script account.';
+    alertEl.innerHTML = '<span style="font-size:13px;color:var(--success);">Saved.</span>';
   } catch(e) {
-    if (status) status.textContent = 'Error: ' + e.message;
-  }
-}
-
-async function loadGroupEmail() {
-  const input  = document.getElementById('group-email-input');
-  const status = document.getElementById('group-email-status');
-  try {
-    const config = await getAppConfig();
-    if (input && config.playersGroupEmail) input.value = config.playersGroupEmail;
-    if (status) status.textContent = config.playersGroupEmail
-      ? 'Currently set to: ' + config.playersGroupEmail
-      : 'Not set — roster-change emails won\'t include a manage-members link.';
-  } catch(e) {}
-}
-
-async function saveGroupEmail() {
-  const input  = document.getElementById('group-email-input');
-  const status = document.getElementById('group-email-status');
-  const email  = input ? input.value.trim() : '';
-  if (status) status.textContent = 'Saving…';
-  try {
-    const result = await apiPost({ action: 'saveGroupEmail', email });
-    if (!result.success) throw new Error(result.error || 'Failed');
-    configCache = null;
-    if (status) status.textContent = email
-      ? 'Saved. Roster-change emails will link to: ' + email
-      : 'Cleared.';
-  } catch(e) {
-    if (status) status.textContent = 'Error: ' + e.message;
-  }
-}
-
-async function copyPlayerEmailList() {
-  const out = document.getElementById('group-email-copy-result');
-  out.textContent = 'Loading…';
-  try {
-    await loadPlayerList();
-    const emails = playerList.map(p => p.email).join(', ');
-    await navigator.clipboard.writeText(emails);
-    out.style.color = 'var(--success)';
-    out.textContent = `Copied ${playerList.length} player emails to clipboard — paste into the Google Group's "Add members" field.`;
-  } catch(e) {
-    out.style.color = 'var(--danger)';
-    out.textContent = 'Could not copy: ' + e.message;
-  }
-}
-
-async function runTestEmail() {
-  const out = document.getElementById('test-email-result');
-  out.textContent = 'Sending test…';
-  try {
-    const r = await apiPost({ action: 'sendTestEmail' });
-    if (r.success) {
-      out.style.color = 'var(--success)';
-      out.textContent = 'Test email sent to ' + r.sentTo + ' from ' + r.sentFrom + '.';
-    } else {
-      out.style.color = 'var(--danger)';
-      out.textContent = 'Failed: ' + r.error +
-        (r.diag ? ' | Players: ' + r.diag.playerCount + ', Email enabled: ' + r.diag.emailEnabled +
-          (r.diag.gmailError ? ', GmailApp error: ' + r.diag.gmailError : '') : '');
-    }
-  } catch(e) {
-    out.style.color = 'var(--danger)';
-    out.textContent = 'Error: ' + e.message;
-  }
-}
-
-async function loadEmailToggle() {
-  const wrap = document.getElementById('email-toggle-wrap');
-  try {
-    const s = await apiGetWithParams({ action: 'getEmailSettings' });
-    renderEmailToggle(s.emailEnabled);
-  } catch(e) {
-    wrap.innerHTML = '<span style="font-size:13px;color:var(--danger);">Error: ' + e.message + '</span>';
-  }
-}
-
-function renderEmailToggle(enabled) {
-  const wrap = document.getElementById('email-toggle-wrap');
-  const color  = enabled ? 'var(--success)' : 'var(--ink-light)';
-  const label  = enabled ? 'Enabled' : 'Disabled';
-  const btnTxt = enabled ? 'Disable' : 'Enable';
-  const btnCls = enabled ? 'btn btn-secondary' : 'btn btn-primary';
-  wrap.innerHTML = `
-    <div style="text-align:center;">
-      <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:6px;">${label}</div>
-      <button class="${btnCls}" style="font-size:13px;padding:6px 14px;" onclick="toggleEmail(${!enabled})">${btnTxt}</button>
-    </div>`;
-}
-
-async function toggleEmail(enable) {
-  const wrap = document.getElementById('email-toggle-wrap');
-  wrap.innerHTML = '<div class="loading" style="font-size:13px;"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>';
-  try {
-    const result = await apiPost({ action: 'setEmailEnabled', enabled: enable });
-    if (result.success) renderEmailToggle(result.emailEnabled);
-    else throw new Error(result.error || 'Failed');
-  } catch(e) {
-    showAlert('scheduler-alert', 'error', 'Could not update email setting. Please try again.');
-    loadEmailToggle();
+    alertEl.innerHTML = `<span style="font-size:13px;color:var(--warn);">Error: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Settings';
   }
 }
 
