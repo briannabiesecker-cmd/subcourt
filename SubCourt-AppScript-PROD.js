@@ -3320,8 +3320,12 @@ function getOpenRequestsForDate(targetDate) {
   });
 }
 
-function runDispatchForDate(targetDate) {
-  var requests  = getOpenRequestsForDate(targetDate);
+// Reviews every open request, regardless of match date — not just the one date a
+// given trigger run happens to target. A request 3 weeks out gets the same shot at
+// being filled as one due tomorrow; getDispatchPhase()/runMatch() already size the
+// skill window per-request based on hours-until-match, so this works at any distance.
+function runDispatchAllOpen() {
+  var requests  = getRequests().filter(function(r) { return r.status === 'open'; });
   if (!requests.length) return 0;
   var logSheet  = getOrCreateDispatchLog();
   var timestamp = nowEasternISO();
@@ -3701,7 +3705,7 @@ function runPreMatchDayDispatch() {
   Logger.log('runPreMatchDayDispatch: ' + targetDate + ' hour=' + currentHour +
     ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' cancel=' + row.cancel);
 
-  if (row.dispatch) runDispatchForDate(targetDate);
+  if (row.dispatch) runDispatchAllOpen();
 
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
@@ -3762,7 +3766,7 @@ function runMatchDayMinus2Dispatch() {
     try { markOverflowRequests(targetDate); } catch(e) { Logger.log('markOverflowRequests failed: ' + e.message); }
   }
 
-  if (row.dispatch) runDispatchForDate(targetDate);
+  if (row.dispatch) runDispatchAllOpen();
 
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
@@ -3780,7 +3784,7 @@ function runMatchDayMinus2Dispatch() {
 function runPreMatchDayDispatchNow() {
   var targetDate = getDateStr(1);
   Logger.log('runPreMatchDayDispatchNow: ' + targetDate);
-  runDispatchForDate(targetDate);
+  runDispatchAllOpen();
   var openReqs = getOpenRequestsForDate(targetDate);
   var broadcastQueued = false;
   if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
