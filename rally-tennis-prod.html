@@ -3828,8 +3828,6 @@ function renderDispatchConfigTable(cfg) {
     <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Dispatch Settings</div>
     <table class="dispatch-table compact" style="margin-bottom:14px;">
       <tbody>
-        <tr><td>Auto-dispatch enabled</td><td>${chk('cfgd-autodispatch-enabled', cfg.autoDispatchEnabled)}</td>
-            <td>Time (ET)</td><td>${time('cfgd-autodispatch-time', cfg.autoDispatchTimeET)}</td></tr>
         <tr><td>Days to show in volunteer calendar</td><td>${num('cfgd-calendar-lookahead', cfg.calendarLookaheadDays)}</td>
             <td>Allow name change on delete</td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
       </tbody>
@@ -3839,10 +3837,10 @@ function renderDispatchConfigTable(cfg) {
     <table class="dispatch-table compact" style="margin-bottom:14px;">
       <thead><tr><th></th><th>Timing (hrs)</th><th>Skill Window</th></tr></thead>
       <tbody>
-        <tr><td>Pre-schedule</td><td>${num('cfgd-match-hrs-0', cfg.preScheduleThresholdHrs, 45)}</td><td>${num('cfgd-match-win-0', cfg.skillWindowFarOut, 45)}</td></tr>
-        <tr><td>A little urgent</td><td>${num('cfgd-match-hrs-1', cfg.urgentThresholdHrs, 45)}</td><td>${num('cfgd-match-win-1', cfg.skillWindowMid, 45)}</td></tr>
-        <tr><td>Urgent</td><td>${num('cfgd-match-hrs-2', cfg.lastMinuteThresholdHrs, 45)}</td><td>${num('cfgd-match-win-2', cfg.skillWindowUrgent, 45)}</td></tr>
-        <tr><td>Last minute</td><td style="color:var(--ink-light);">—</td><td>${num('cfgd-match-win-3', cfg.skillWindowLastMinute, 45)}</td></tr>
+        <tr><td>Pre-schedule</td><td>${num('cfgd-match-hrs-0', cfg.preScheduleThresholdHrs, 45)}</td><td>${num('cfgd-match-win-0', cfg.skillWindowFarOut, 65)}</td></tr>
+        <tr><td>A little urgent</td><td>${num('cfgd-match-hrs-1', cfg.urgentThresholdHrs, 45)}</td><td>${num('cfgd-match-win-1', cfg.skillWindowMid, 65)}</td></tr>
+        <tr><td>Urgent</td><td>${num('cfgd-match-hrs-2', cfg.lastMinuteThresholdHrs, 45)}</td><td>${num('cfgd-match-win-2', cfg.skillWindowUrgent, 65)}</td></tr>
+        <tr><td>Last minute</td><td style="color:var(--ink-light);">—</td><td>${num('cfgd-match-win-3', cfg.skillWindowLastMinute, 65)}</td></tr>
       </tbody>
     </table>
 
@@ -3872,6 +3870,13 @@ function renderDispatchConfigTable(cfg) {
           <td>${chk('cfgd-md2-reminder-' + i, r.matchTimeReminder)}</td>
           <td>${chk('cfgd-md2-overflow-' + i, r.overflowDetect)}</td>
         </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Friday Dispatch</td><td>Enabled</td><td>${chk('cfgd-autodispatch-enabled', cfg.autoDispatchEnabled)}</td>
+            <td>Time (ET)</td><td>${time('cfgd-autodispatch-time', cfg.autoDispatchTimeET)}</td></tr>
       </tbody>
     </table>
 
@@ -4880,29 +4885,24 @@ function renderSettingsConfigTable(cfg) {
   const chk = (id, checked) => `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">`;
   const num = (id, val, w) => `<input type="number" id="${id}" value="${val ?? ''}" step="any" style="font-size:12px;padding:2px 4px;width:${w || 55}px;border:1px solid var(--line);border-radius:4px;">`;
   const txt = (id, val, w) => `<input type="text" id="${id}" value="${(val ?? '').toString().replace(/"/g, '&quot;')}" style="font-size:12px;padding:3px 6px;width:${w || 200}px;border:1px solid var(--line);border-radius:4px;">`;
-  const date = (id, val) => `<input type="date" id="${id}" value="${val || ''}" style="font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;">`;
 
   document.getElementById('settings-config-content').innerHTML = `
-    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Monthly Scheduling</div>
-    <table class="dispatch-table compact" style="margin-bottom:14px;">
-      <tbody>
-        <tr><td>Availability Window Open Date</td><td>${date('cfgs-avail-open', cfg.availWindowOpenDate)}</td>
-            <td>Close Date</td><td>${date('cfgs-avail-close', cfg.availWindowCloseDate)}</td>
-            <td>Active</td><td>${chk('cfgs-avail-active', cfg.availWindowActive)}</td></tr>
-      </tbody>
-    </table>
-
-    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Scheduler Engine Settings</div>
-    <table class="dispatch-table compact" style="margin-bottom:14px;">
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Scheduler Engine Settings</div>
+    <table class="dispatch-table compact" style="margin-bottom:6px;">
       <tbody>
         <tr><td>Weight Team Skill Balance</td><td>${num('cfgs-weight-team', cfg.weightTeamVariance)}</td>
             <td>Weight Social Variety</td><td>${num('cfgs-weight-social', cfg.weightGroupVariance)}</td></tr>
         <tr><td>Weight Back-to-Back Repeat Penalty</td><td>${num('cfgs-weight-repeat', cfg.weightSocialVariety)}</td>
             <td>Weight Partner Balance (new)</td><td>${num('cfgs-weight-partner', cfg.weightRecency)}</td></tr>
-        <tr><td>Solver Attempts Per Restart</td><td>${num('cfgs-solver-iters', cfg.solverIterations, 65)}</td>
-            <td>Solver Number of Restarts</td><td>${num('cfgs-solver-restarts', cfg.solverRestarts, 65)}</td></tr>
         <tr><td>Rating Range Limit</td><td>${num('cfgs-rating-range-limit', cfg.ratingRangeLimit)}</td>
             <td>Weight Maximum Rating Range</td><td>${num('cfgs-weight-max-rating-range', cfg.weightMaxRatingRange)}</td></tr>
+      </tbody>
+    </table>
+
+    <table class="dispatch-table compact" style="margin-top:12px;margin-bottom:14px;">
+      <tbody>
+        <tr><td>Solver Attempts Per Restart</td><td>${num('cfgs-solver-iters', cfg.solverIterations, 65)}</td>
+            <td>Solver Number of Restarts</td><td>${num('cfgs-solver-restarts', cfg.solverRestarts, 65)}</td></tr>
       </tbody>
     </table>
 
@@ -4912,9 +4912,8 @@ function renderSettingsConfigTable(cfg) {
         <tr><td>Email Notifications Enabled</td><td>${chk('cfgs-email-enabled', cfg.emailEnabled)}</td>
             <td>Sender Email</td><td>${txt('cfgs-sender-email', cfg.senderEmail, 200)}</td></tr>
         <tr><td>Brevo API Key</td><td colspan="3">${txt('cfgs-brevo-key', cfg.brevoApiKey, 420)}</td></tr>
-        <tr><td>Use Brevo: Availability Notification</td><td>${chk('cfgs-brevo-avail', cfg.brevoAvailNotification)}</td>
-            <td>Use Brevo: Schedule Email</td><td>${chk('cfgs-brevo-schedule', cfg.brevoScheduleEmail)}</td></tr>
-        <tr><td>Send Urgent Sub Emails</td><td>${chk('cfgs-urgent-sub-emails', cfg.urgentSubEmailsEnabled)}</td><td></td><td></td></tr>
+        <tr><td>Address Schedule Email on To: vs BCC:</td><td>${chk('cfgs-brevo-schedule', cfg.brevoScheduleEmail)}</td>
+            <td>Send Urgent Sub Emails</td><td>${chk('cfgs-urgent-sub-emails', cfg.urgentSubEmailsEnabled)}</td></tr>
       </tbody>
     </table>
 
@@ -4935,9 +4934,6 @@ async function saveSettingsConfig() {
   try {
     const result = await apiPost({
       action: 'saveSettingsConfigTable',
-      availWindowOpenDate: val('cfgs-avail-open'),
-      availWindowCloseDate: val('cfgs-avail-close'),
-      availWindowActive: chkVal('cfgs-avail-active'),
       weightTeamVariance: val('cfgs-weight-team'),
       weightGroupVariance: val('cfgs-weight-social'),
       weightSocialVariety: val('cfgs-weight-repeat'),
@@ -4949,7 +4945,6 @@ async function saveSettingsConfig() {
       emailEnabled: chkVal('cfgs-email-enabled'),
       senderEmail: val('cfgs-sender-email'),
       brevoApiKey: val('cfgs-brevo-key'),
-      brevoAvailNotification: chkVal('cfgs-brevo-avail'),
       brevoScheduleEmail: chkVal('cfgs-brevo-schedule'),
       urgentSubEmailsEnabled: chkVal('cfgs-urgent-sub-emails')
     });

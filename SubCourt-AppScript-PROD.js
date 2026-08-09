@@ -663,14 +663,22 @@ function getConfig() {
     if (b31 === '' || b31 === null) { sheet.getRange('A31').setValue('Rating Range Limit');      sheet.getRange('B31').setValue(2.0); }
     if (b32 === '' || b32 === null) { sheet.getRange('A32').setValue('Weight Maximum Rating Range'); sheet.getRange('B32').setValue(0.0); }
     // Brevo email section — auto-init on first use
-    var b36 = sheet.getRange('B36').getValue();
-    if (b36 === '' || b36 === null) {
+    var b37 = sheet.getRange('B37').getValue();
+    if (b37 === '' || b37 === null) {
       sheet.getRange('A34').setValue('── Brevo Email ──');
       sheet.getRange('A35').setValue('Brevo API Key');
-      sheet.getRange('A36').setValue('Use Brevo: Availability Notification');
-      sheet.getRange('B36').setValue('No');
-      sheet.getRange('A37').setValue('Use Brevo: Schedule Email');
+      sheet.getRange('A37').setValue('Address Schedule Email on To: vs BCC:');
       sheet.getRange('B37').setValue('No');
+    }
+    // One-time migration: relabel A37 for sheets already past the block above.
+    if (sheet.getRange('A37').getValue() === 'Use Brevo: Schedule Email') {
+      sheet.getRange('A37').setValue('Address Schedule Email on To: vs BCC:');
+    }
+    // One-time migration: retired field, no longer used anywhere — clear it rather
+    // than delete the row (deleting would shift every hardcoded cell reference below it).
+    if (sheet.getRange('A36').getValue() === 'Use Brevo: Availability Notification') {
+      sheet.getRange('A36').setValue('');
+      sheet.getRange('B36').setValue('');
     }
     // Urgent sub emails section — auto-init on first use
     var b39 = sheet.getRange('B39').getValue();
@@ -781,9 +789,8 @@ function getConfig() {
       senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
       // Players Email Group — row 33
       playersGroupEmail: (sheet.getRange('B33').getValue() || '').toString().trim(),
-      // Brevo — rows 35–37
+      // Brevo — rows 35, 37
       brevoApiKey:            (sheet.getRange('B35').getValue() || '').toString().trim(),
-      brevoAvailNotification:  (function() { var v = sheet.getRange('B36').getValue(); return v === 'Yes' || v === true; })(),
       brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
       urgentSubEmailsEnabled:  (function() { var v = sheet.getRange('B39').getValue(); return v !== 'No' && v !== false; })(),
       preMatchSchedule: preMatchSchedule,
@@ -816,7 +823,6 @@ function getConfig() {
       senderEmail: '',
       playersGroupEmail: '',
       brevoApiKey: '',
-      brevoAvailNotification: false,
       brevoScheduleEmail: false,
       urgentSubEmailsEnabled: true,
       preMatchSchedule: [
@@ -3075,9 +3081,6 @@ function getAdminConfigTables() {
     skillWindowLastMinute:    config.skillWindowLastMinute,
     preMatchSchedule:         config.preMatchSchedule,
     matchDayMinus2Schedule:   config.matchDayMinus2Schedule,
-    availWindowOpenDate:      config.availWindowOpenDate,
-    availWindowCloseDate:     config.availWindowCloseDate,
-    availWindowActive:        config.availWindowActive,
     weightTeamVariance:       sched.weightTeamVariance,
     weightGroupVariance:      sched.weightGroupVariance,
     weightSocialVariety:      sched.weightSocialVariety,
@@ -3089,7 +3092,6 @@ function getAdminConfigTables() {
     emailEnabled:             isEmailEnabled(),
     senderEmail:              config.senderEmail,
     brevoApiKey:              config.brevoApiKey,
-    brevoAvailNotification:   config.brevoAvailNotification,
     brevoScheduleEmail:       config.brevoScheduleEmail,
     urgentSubEmailsEnabled:   config.urgentSubEmailsEnabled
   };
@@ -3146,12 +3148,9 @@ function saveDispatchConfigTable(params) {
 }
 
 // Saves every value on the Settings screen's config table.
+// Availability window dates/active flag are managed on the Scheduler screen, not here.
 function saveSettingsConfigTable(params) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
-
-  var openCell = sheet.getRange('B16'); openCell.setNumberFormat('@'); openCell.setValue(params.availWindowOpenDate || '');
-  var closeCell = sheet.getRange('B17'); closeCell.setNumberFormat('@'); closeCell.setValue(params.availWindowCloseDate || '');
-  sheet.getRange('B18').setValue(params.availWindowActive === 'true' || params.availWindowActive === true);
 
   sheet.getRange('B20').setValue(parseFloat(params.weightTeamVariance)  || 0);
   sheet.getRange('B21').setValue(parseFloat(params.weightGroupVariance) || 0);
@@ -3167,7 +3166,6 @@ function saveSettingsConfigTable(params) {
   sheet.getRange('B30').setValue((params.senderEmail || '').toString().trim());
 
   sheet.getRange('B35').setValue((params.brevoApiKey || '').toString().trim());
-  sheet.getRange('B36').setValue((params.brevoAvailNotification === 'true' || params.brevoAvailNotification === true) ? 'Yes' : 'No');
   sheet.getRange('B37').setValue((params.brevoScheduleEmail    === 'true' || params.brevoScheduleEmail    === true) ? 'Yes' : 'No');
   sheet.getRange('B39').setValue((params.urgentSubEmailsEnabled === 'true' || params.urgentSubEmailsEnabled === true) ? 'Yes' : 'No');
 
