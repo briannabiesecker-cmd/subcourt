@@ -353,6 +353,19 @@ function _isTomorrowOrDayAfterTomorrow(matchDate) {
   }
 }
 
+// Calendar-day difference between today and matchDate (negative/0 = today or past).
+// Used to split the Substitute Confirmed email into Future/Urgent variants.
+function _daysUntilMatch(matchDate) {
+  try {
+    var tz = Session.getScriptTimeZone();
+    var today = new Date(Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd') + 'T00:00:00');
+    var target = new Date(matchDate + 'T00:00:00');
+    return Math.round((target.getTime() - today.getTime()) / 86400000);
+  } catch (e) {
+    return 99; // unparseable date — default to the Future variant
+  }
+}
+
 function _getVolunteerCcEmailsForMatch(matchDate, matchTime, players) {
   if (!matchDate || !players || !players.length) return [];
   var effectiveTime = (matchTime || '08:00').trim();
@@ -770,6 +783,13 @@ function getConfig() {
       sheet.getRange('A61').setValue('Allow Player Name Change on Delete Sub Request');
       sheet.getRange('B61').setValue('Yes');
     }
+    // MTC contact — auto-init labels only on first use (rows 62–64). B63/B64 are left
+    // blank on purpose: an empty MTC email address is the normal, expected default.
+    if (sheet.getRange('A63').getValue() !== 'MTC Email Address 1') {
+      sheet.getRange('A62').setValue('── MTC Contact ──');
+      sheet.getRange('A63').setValue('MTC Email Address 1');
+      sheet.getRange('A64').setValue('MTC Email Address 2');
+    }
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -804,6 +824,9 @@ function getConfig() {
       availWindowActive:        (function() { var v = sheet.getRange('B18').getValue(); return v === true || v.toString().toUpperCase() === 'TRUE'; })(),
       // Delete-request name change — row 61
       allowPlayerNameChangeOnDelete: (function() { var v = sheet.getRange('B61').getValue(); return v !== 'No' && v !== false; })(),
+      // MTC contact — rows 63–64
+      mtcEmail1: (sheet.getRange('B63').getValue() || '').toString().trim(),
+      mtcEmail2: (sheet.getRange('B64').getValue() || '').toString().trim(),
     };
     _configCache = cfg;
     return cfg;
@@ -843,6 +866,8 @@ function getConfig() {
       availWindowCloseDate:    '',
       availWindowActive:       false,
       allowPlayerNameChangeOnDelete: true,
+      mtcEmail1: '',
+      mtcEmail2: '',
     };
   }
 }
@@ -2877,6 +2902,11 @@ function runMatch(params) {
 // EMAIL
 // ──────────────────────────────────────────────────
 
+// isReminder=true is the Sub Reminder email (runSubReminder) — its content is untouched
+// below. Otherwise this splits into two variants based on how far out the match is:
+//   Future Substitute Confirm (>2 days out): adds the Chelsea "Confirm #" instruction line.
+//   Urgent Substitute Confirm (<=2 days out): CCs MTC contacts if any are set, and swaps
+//   the Chelsea instruction line for a manual-update prompt.
 function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   groupPlayers = groupPlayers || [];
   const players    = getPlayers();
@@ -2895,7 +2925,31 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   if (_isTomorrowOrDayAfterTomorrow(data.matchDate)) {
     volunteerCcList = _getVolunteerCcEmailsForMatch(data.matchDate, data.matchTime, players);
   }
-  const ccList = groupCcList.concat(volunteerCcList).filter(function(email, index, arr) {
+
+  var chelseaLine     = 'Make updates in Chelsea as required.';
+  var chelseaLineHtml = 'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.';
+  var mtcCcList     = [];
+  var extraLine     = null;
+  var extraLineHtml = null;
+
+  if (!isReminder) {
+    if (_daysUntilMatch(data.matchDate) <= 2) {
+      var config = getConfig();
+      mtcCcList = [config.mtcEmail1, config.mtcEmail2].filter(Boolean);
+      if (mtcCcList.length) {
+        chelseaLine     = 'MTC Admin: please update Chelsea per the information above';
+        chelseaLineHtml = chelseaLine;
+      } else {
+        chelseaLine     = 'Call MTC to change the player name in Chelsea';
+        chelseaLineHtml = chelseaLine;
+      }
+    } else {
+      extraLine     = "Chelsea > Request > Edit A Request > Click on 'Confirm #'";
+      extraLineHtml = "Chelsea &gt; Request &gt; Edit A Request &gt; Click on 'Confirm #'";
+    }
+  }
+
+  const ccList = groupCcList.concat(volunteerCcList).concat(mtcCcList).filter(function(email, index, arr) {
     return email && arr.map(function(item) { return String(item).toLowerCase(); }).indexOf(String(email).toLowerCase()) === index;
   });
   const ccAddresses = ccList.join(', ');
@@ -2910,7 +2964,7 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     greetingText + '\n\n' +
     data.subName + ' will be substituting for ' + data.requestorName +
     ' on ' + dateStr + ' at ' + timeStr + '.\n\n' +
-    'Make updates in Chelsea as required.\n\n' +
+    chelseaLine + (extraLine ? '\n' + extraLine : '') + '\n\n' +
     'See you on the court!\n\n' +
     'MWF Tennis League';
 
@@ -2918,7 +2972,7 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     greetingHtml + '<br><br>' +
     data.subName + ' will be substituting for ' + data.requestorName +
     ' on ' + dateStr + ' at ' + timeStr + '.<br><br>' +
-    'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.<br><br>' +
+    chelseaLineHtml + (extraLineHtml ? '<br>' + extraLineHtml : '') + '<br><br>' +
     'See you on the court!<br><br>' +
     'MWF Tennis League';
 
@@ -3093,7 +3147,9 @@ function getAdminConfigTables() {
     senderEmail:              config.senderEmail,
     brevoApiKey:              config.brevoApiKey,
     brevoScheduleEmail:       config.brevoScheduleEmail,
-    urgentSubEmailsEnabled:   config.urgentSubEmailsEnabled
+    urgentSubEmailsEnabled:   config.urgentSubEmailsEnabled,
+    mtcEmail1:                config.mtcEmail1,
+    mtcEmail2:                config.mtcEmail2
   };
 }
 
@@ -3113,6 +3169,9 @@ function saveDispatchConfigTable(params) {
 
   var allowNameChange = params.allowPlayerNameChangeOnDelete === 'true' || params.allowPlayerNameChangeOnDelete === true;
   sheet.getRange('B61').setValue(allowNameChange ? 'Yes' : 'No');
+
+  sheet.getRange('B63').setValue((params.mtcEmail1 || '').toString().trim());
+  sheet.getRange('B64').setValue((params.mtcEmail2 || '').toString().trim());
 
   sheet.getRange('B4').setValue(parseInt(params.preScheduleThresholdHrs)   || 72);
   sheet.getRange('C4').setValue(parseFloat(params.skillWindowFarOut)       || 0.5);

@@ -3820,6 +3820,7 @@ function renderDispatchConfigTable(cfg) {
   const chk  = (id, checked) => `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">`;
   const time = (id, val) => `<input type="time" id="${id}" value="${val || ''}" style="font-size:12px;padding:2px 4px;width:88px;border:1px solid var(--line);border-radius:4px;">`;
   const num  = (id, val, w) => `<input type="number" id="${id}" value="${val ?? ''}" step="any" style="font-size:12px;padding:2px 4px;width:${w || 55}px;border:1px solid var(--line);border-radius:4px;">`;
+  const txt  = (id, val, w) => `<input type="text" id="${id}" value="${(val ?? '').toString().replace(/"/g, '&quot;')}" style="font-size:12px;padding:3px 6px;width:${w || 170}px;border:1px solid var(--line);border-radius:4px;">`;
 
   const pm  = cfg.preMatchSchedule || [];
   const md2 = cfg.matchDayMinus2Schedule || [];
@@ -3830,6 +3831,8 @@ function renderDispatchConfigTable(cfg) {
       <tbody>
         <tr><td>Days to show in volunteer calendar</td><td>${num('cfgd-calendar-lookahead', cfg.calendarLookaheadDays)}</td>
             <td>Allow name change on delete</td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
+        <tr><td>MTC email addresses</td><td>${txt('cfgd-mtc-email-1', cfg.mtcEmail1)}</td>
+            <td></td><td>${txt('cfgd-mtc-email-2', cfg.mtcEmail2)}</td></tr>
       </tbody>
     </table>
 
@@ -3915,6 +3918,8 @@ async function saveDispatchConfig() {
       autoDispatchTimeET: val('cfgd-autodispatch-time'),
       calendarLookaheadDays: val('cfgd-calendar-lookahead'),
       allowPlayerNameChangeOnDelete: chkVal('cfgd-allow-name-change'),
+      mtcEmail1: val('cfgd-mtc-email-1'),
+      mtcEmail2: val('cfgd-mtc-email-2'),
       preScheduleThresholdHrs: val('cfgd-match-hrs-0'),
       skillWindowFarOut: val('cfgd-match-win-0'),
       urgentThresholdHrs: val('cfgd-match-hrs-1'),
