@@ -1229,7 +1229,6 @@ function doGet(e) {
     else if (action === 'updateVolunteer')  result = updateVolunteer(e.parameter);
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
-    else if (action === 'expireToday')       result = expireToday();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
     else if (action === 'cancelRequest')          result = cancelRequest(e.parameter);
     else if (action === 'manuallyAssignSub')      result = manuallyAssignSub(e.parameter);
@@ -1570,41 +1569,6 @@ function getDispatchLog() {
   });
 }
 
-function expireToday() {
-  var ss    = SpreadsheetApp.openById(SHEET_ID);
-  var today = formatSheetDate(new Date());
-  var expired = { requests: 0, volunteers: 0 };
-
-  // Expire open sub requests on or before today
-  var reqSheet = ss.getSheetByName(TABS.requests);
-  if (reqSheet && reqSheet.getLastRow() >= 2) {
-    var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 7).getValues();
-    for (var i = 0; i < reqRows.length; i++) {
-      var matchDate = formatSheetDate(reqRows[i][4]);
-      var status    = (reqRows[i][6] || '').toString();
-      if (matchDate && matchDate <= today && status === 'open') {
-        reqSheet.getRange(i + 2, 7).setValue('expired');
-        expired.requests++;
-      }
-    }
-  }
-
-  // Expire pending volunteer records on or before today
-  var volSheet = ss.getSheetByName(TABS.volunteers);
-  if (volSheet && volSheet.getLastRow() >= 2) {
-    var volRows = volSheet.getRange(2, 1, volSheet.getLastRow() - 1, 7).getValues();
-    for (var i = 0; i < volRows.length; i++) {
-      var volDate = formatSheetDate(volRows[i][4]);
-      var status  = (volRows[i][6] || '').toString();
-      if (volDate && volDate <= today && status === 'pending') {
-        volSheet.getRange(i + 2, 7).setValue('expired');
-        expired.volunteers++;
-      }
-    }
-  }
-
-  return { success: true, expired: expired };
-}
 
 function getPlayersWithRatings() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
@@ -3816,6 +3780,7 @@ function runPreMatchDayDispatch() {
   var targetDate = _preMatchDayTargetDate();
   if (!targetDate) { Logger.log('runPreMatchDayDispatch: not a pre-match day'); return; }
   _recordDispatchRun('Pre-Match Day Dispatch');
+  try { expireUpToToday(); } catch(e) { Logger.log('expireUpToToday failed: ' + e.message); }
 
   var config      = getConfig();
   var tz          = Session.getScriptTimeZone();
@@ -3871,6 +3836,7 @@ function runMatchDayMinus2Dispatch() {
   var targetDate = _matchDayMinus2TargetDate();
   if (!targetDate) { Logger.log('runMatchDayMinus2Dispatch: not a match day -2'); return; }
   _recordDispatchRun('Match Day -2 Dispatch');
+  try { expireUpToToday(); } catch(e) { Logger.log('expireUpToToday failed: ' + e.message); }
 
   var config      = getConfig();
   var tz          = Session.getScriptTimeZone();
