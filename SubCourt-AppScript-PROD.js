@@ -387,6 +387,14 @@ function _getVolunteerCcEmailsForMatch(matchDate, matchTime, players) {
   return emails;
 }
 
+// Drops toEmail out of a BCC list — used wherever an admin address is both the To:
+// and, since the admin is also a real player, would otherwise also land in a
+// roster-wide BCC list, causing the admin to get every broadcast twice.
+function _excludeFromBcc(emails, toEmail) {
+  var skip = (toEmail || '').toLowerCase();
+  return (emails || []).filter(function(e) { return e && e.toLowerCase() !== skip; });
+}
+
 // Unified email sender for every real Rally email — routes through Brevo when
 // configured (own quota, unaffected by MailApp's), falling back to MailApp otherwise
 // or if Brevo itself fails.
@@ -2610,7 +2618,7 @@ function createScheduleDraft(params) {
   try {
     sendLeagueEmail({
       to:          adminEmail,
-      bcc:         sd.playerEmails.join(','),
+      bcc:         _excludeFromBcc(sd.playerEmails, adminEmail).join(','),
       subject:     subject,
       body:        '',
       htmlBody:    htmlBody,
@@ -3503,8 +3511,8 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
   if (!players.length) return;
-  var bccList   = players.map(function(p) { return p.email; }).join(',');
   var adminEmail = 'marobria@gmail.com';
+  var bccList   = _excludeFromBcc(players.map(function(p) { return p.email; }), adminEmail).join(',');
   sendLeagueEmail({
     to:       adminEmail,
     bcc:      bccList,
@@ -4256,7 +4264,7 @@ function checkAvailabilityWindow() {
   var adminEmail = 'marobria@gmail.com';
   sendLeagueEmail({
     to:       adminEmail,
-    bcc:      missing.map(function(p) { return p.email; }).join(','),
+    bcc:      _excludeFromBcc(missing.map(function(p) { return p.email; }), adminEmail).join(','),
     subject:  subject,
     body:     body,
     htmlBody: htmlBody,
@@ -4473,7 +4481,7 @@ function _runQueuedAvailBlast() {
   const adminEmail = 'marobria@gmail.com';
   sendLeagueEmail({
     to:       adminEmail,
-    bcc:      allPlayers.map(function(p) { return p.email; }).join(','),
+    bcc:      _excludeFromBcc(allPlayers.map(function(p) { return p.email; }), adminEmail).join(','),
     subject:  subject,
     body:     body,
     htmlBody: htmlBody,
@@ -5678,7 +5686,7 @@ function sendScheduleEmails(params) {
       var adminEmail2 = 'marobria@gmail.com';
       sendLeagueEmail({
         to:       adminEmail2,
-        bcc:      allPlayers.map(function(p) { return p.email; }).join(','),
+        bcc:      _excludeFromBcc(allPlayers.map(function(p) { return p.email; }), adminEmail2).join(','),
         subject:  emailParts.subject,
         body:     emailParts.body,
         htmlBody: emailParts.htmlBody,
