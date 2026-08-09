@@ -1044,12 +1044,72 @@ function updateDispatchTrigger(enabledOverride, timeOverride) {
   Logger.log('Dispatch trigger set for Fridays at ' + timeET + ' ET.');
 }
 
+// Records that a scheduled dispatch trigger actually ran (past its own day/enabled
+// check, not just that the trigger fired) — backs the "Last dispatch ran" admin display.
+function _recordDispatchRun(label) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty('lastDispatchRun', nowEasternISO());
+    props.setProperty('lastDispatchRunLabel', label);
+  } catch(e) { Logger.log('_recordDispatchRun failed: ' + e.message); }
+}
+
+function getDispatchStatus() {
+  var props = PropertiesService.getScriptProperties();
+  var next  = _computeNextDispatchRun();
+  return {
+    lastRun:      props.getProperty('lastDispatchRun') || '',
+    lastRunLabel: props.getProperty('lastDispatchRunLabel') || '',
+    nextRun:      next ? next.time : '',
+    nextRunLabel: next ? next.label : ''
+  };
+}
+
+// Scans up to 8 days ahead against all three dispatch schedules (Pre-Match Day,
+// Match Day -2, Friday auto-dispatch) and returns the single earliest upcoming run.
+// Apps Script's Trigger API doesn't expose a "next fire time" for time-based
+// triggers, so this is computed directly from the same Config-driven schedules
+// the triggers themselves use.
+function _computeNextDispatchRun() {
+  var config = getConfig();
+  var tz     = Session.getScriptTimeZone();
+  var now    = new Date();
+  var best   = null;
+
+  function consider(dowSet, hours, label) {
+    hours.forEach(function(h) {
+      if (isNaN(h) || h < 0) return;
+      for (var add = 0; add <= 8; add++) {
+        var d = new Date(now.getTime() + add * 86400000);
+        var dow = parseInt(Utilities.formatDate(d, tz, 'u'));
+        if (dowSet.indexOf(dow) === -1) continue;
+        var dateStr   = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+        var candidate = new Date(dateStr + 'T' + (h < 10 ? '0' + h : h) + ':00:00');
+        if (candidate.getTime() <= now.getTime()) continue;
+        if (!best || candidate.getTime() < best.time.getTime()) best = { time: candidate, label: label };
+        break;
+      }
+    });
+  }
+
+  consider([7, 2, 4], (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); }), 'Pre-Match Day Dispatch'); // Sun/Tue/Thu
+  consider([6, 1, 3], (config.matchDayMinus2Schedule || []).map(function(r) { return _parseConfigHour(r.time); }), 'Match Day -2 Dispatch'); // Sat/Mon/Wed
+  if (config.autoDispatchEnabled) {
+    var hourET = parseInt((config.autoDispatchTimeET || '13:00').split(':')[0]);
+    consider([5], [hourET], 'Friday Auto-Dispatch'); // Fri
+  }
+
+  if (!best) return null;
+  return { time: Utilities.formatDate(best.time, tz, "yyyy-MM-dd'T'HH:mm:ssXXX"), label: best.label };
+}
+
 function runAutoDispatch() {
   var config = getConfig();
   if (!config.autoDispatchEnabled) {
     Logger.log('runAutoDispatch: disabled, exiting.');
     return { skipped: 'disabled' };
   }
+  _recordDispatchRun('Friday Auto-Dispatch');
 
   // Step 1: expire all sub requests and volunteer records on or before today
   expireUpToToday();
@@ -1203,8 +1263,7 @@ function doGet(e) {
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
     else if (action === 'sendTestScheduleEmail')     result = sendTestScheduleEmail();
     else if (action === 'sendTestSubAlertEmail')        result = sendTestSubAlertEmail();
-    else if (action === 'runPreMatchDayDispatchNow')    result = runPreMatchDayDispatchNow();
-    else if (action === 'getBroadcastLog')              result = { log: PropertiesService.getScriptProperties().getProperty('broadcastLog') };
+    else if (action === 'getDispatchStatus')            result = getDispatchStatus();
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
     else if (action === 'getMatchSlot')               result = getMatchSlot(e.parameter);
@@ -3756,6 +3815,7 @@ function _parseConfigHour(timeStr) {
 function runPreMatchDayDispatch() {
   var targetDate = _preMatchDayTargetDate();
   if (!targetDate) { Logger.log('runPreMatchDayDispatch: not a pre-match day'); return; }
+  _recordDispatchRun('Pre-Match Day Dispatch');
 
   var config      = getConfig();
   var tz          = Session.getScriptTimeZone();
@@ -3810,6 +3870,7 @@ function _matchDayMinus2TargetDate() {
 function runMatchDayMinus2Dispatch() {
   var targetDate = _matchDayMinus2TargetDate();
   if (!targetDate) { Logger.log('runMatchDayMinus2Dispatch: not a match day -2'); return; }
+  _recordDispatchRun('Match Day -2 Dispatch');
 
   var config      = getConfig();
   var tz          = Session.getScriptTimeZone();
@@ -3846,25 +3907,8 @@ function runMatchDayMinus2Dispatch() {
   }
 }
 
-// Manual launch from Admin screen — runs dispatch synchronously, then queues broadcast
-// via a one-shot trigger so the HTTP response returns before the slow email loop starts.
-function runPreMatchDayDispatchNow() {
-  var targetDate = getDateStr(1);
-  Logger.log('runPreMatchDayDispatchNow: ' + targetDate);
-  runDispatchAllOpen();
-  var openReqs = getOpenRequestsForDate(targetDate);
-  var broadcastQueued = false;
-  if (openReqs.length && isEmailEnabled() && getConfig().urgentSubEmailsEnabled) {
-    ScriptApp.getProjectTriggers().forEach(function(t) {
-      if (t.getHandlerFunction() === '_runQueuedBroadcast') ScriptApp.deleteTrigger(t);
-    });
-    ScriptApp.newTrigger('_runQueuedBroadcast').timeBased().after(60000).create();
-    broadcastQueued = true;
-  }
-  return { success: true, targetDate: targetDate, openRequests: openReqs.length, broadcastQueued: broadcastQueued };
-}
-
-// One-shot trigger handler — fires ~1 min after runPreMatchDayDispatchNow queues it.
+// One-shot trigger handler — fires ~1 min after being queued by submitRequest()'s
+// immediate-broadcast-resend check.
 function _runQueuedBroadcast() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === '_runQueuedBroadcast') ScriptApp.deleteTrigger(t);

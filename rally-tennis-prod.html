@@ -2095,15 +2095,9 @@
           <div id="expire-today-alert"></div>
         </div>
 
-        <div class="card mt8">
-          <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Pre-Match Day Dispatch</div>
-          <div style="font-size:13px;color:var(--ink-mid);margin-bottom:12px;">
-            Runs dispatch + broadcast for tomorrow's match date. Schedule (Sun/Tue/Thu) is configured in the Config sheet rows 43–47.
-          </div>
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <button class="btn btn-secondary" id="pre-match-dispatch-btn" onclick="runPreMatchDayNow()">Run Now</button>
-            <button class="btn btn-secondary" onclick="checkBroadcastLog()" style="margin-left:4px;">Check Broadcast Log</button>
-            <div id="pre-match-dispatch-result" style="font-size:13px;"></div>
+        <div class="card mt8" id="dispatch-run-status-card">
+          <div id="dispatch-run-status-content">
+            <div class="loading"><div class="spinner"></div>Loading…</div>
           </div>
         </div>
 
@@ -3698,52 +3692,6 @@ let currentFilter = 'all';
 // ══════════════════════════════════════════════════
 // DISPATCH (matching engine)
 // ══════════════════════════════════════════════════
-async function runPreMatchDayNow() {
-  const btn    = document.getElementById('pre-match-dispatch-btn');
-  const result = document.getElementById('pre-match-dispatch-result');
-  btn.disabled = true;
-  btn.textContent = 'Running…';
-  result.textContent = '';
-  try {
-    const r = await apiPost({ action: 'runPreMatchDayDispatchNow' }, 45000);
-    if (!r.success) throw new Error(r.error || 'Failed');
-    result.style.color = 'var(--ink-mid)';
-    result.textContent = r.openRequests === 0
-      ? 'No open requests for ' + r.targetDate + '.'
-      : r.broadcastQueued
-        ? r.openRequests + ' open request(s) — broadcast emails sending in background (~1 min).'
-        : r.openRequests + ' open request(s) — broadcast disabled.';
-  } catch(e) {
-    result.style.color = 'var(--danger)';
-    result.textContent = 'Error: ' + e.message;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Run Now';
-  }
-}
-
-async function checkBroadcastLog() {
-  const result = document.getElementById('pre-match-dispatch-result');
-  result.style.color = 'var(--ink-mid)';
-  result.textContent = 'Checking…';
-  try {
-    const r = await apiGet('getBroadcastLog');
-    if (!r.log) { result.textContent = 'No broadcast log found yet.'; return; }
-    const log = JSON.parse(r.log);
-    const t = new Date(log.time).toLocaleTimeString();
-    if (log.firstError) {
-      result.style.color = 'var(--danger)';
-      result.textContent = t + ' — sent ' + log.sent + '/' + log.total + '. First error (' + log.firstError.email + '): ' + log.firstError.error;
-    } else {
-      result.style.color = 'var(--ink-mid)';
-      result.textContent = t + ' — sent ' + log.sent + '/' + log.total + ' successfully.';
-    }
-  } catch(e) {
-    result.style.color = 'var(--danger)';
-    result.textContent = 'Error reading log: ' + e.message;
-  }
-}
-
 async function expireTodayRecords() {
   const btn = document.getElementById('expire-today-btn');
   const alertEl = document.getElementById('expire-today-alert');
@@ -3796,12 +3744,13 @@ async function loadDispatch() {
   document.getElementById('dispatch-filled-section').style.display = 'none';
   document.getElementById('dispatch-filled-list').innerHTML = '';
 
-  let cfgTable, log, requests;
+  let cfgTable, log, requests, runStatus;
   try {
-    [cfgTable, log, requests] = await Promise.all([
+    [cfgTable, log, requests, runStatus] = await Promise.all([
       apiPost({ action: 'getAdminConfigTables' }),
       apiGet('getDispatchLog'),
-      getRequests()
+      getRequests(),
+      apiPost({ action: 'getDispatchStatus' })
     ]);
   } catch(e) {
     document.getElementById('dispatch-config-content').innerHTML =
@@ -3812,8 +3761,31 @@ async function loadDispatch() {
 
   document.getElementById('dispatch-loading').classList.add('hidden');
   renderDispatchConfigTable(cfgTable);
+  renderDispatchRunStatus(runStatus);
   renderDispatchFilled(log);
   renderDispatchOpen(requests, log);
+}
+
+function renderDispatchRunStatus(s) {
+  const fmt = iso => {
+    if (!iso) return 'Never';
+    const d = new Date(iso);
+    return isNaN(d) ? iso : d.toLocaleString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+  };
+  document.getElementById('dispatch-run-status-content').innerHTML = `
+    <div style="display:flex;gap:32px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Last Dispatch Ran</div>
+        <div style="font-size:14px;">${fmt(s.lastRun)}${s.lastRunLabel ? ' — ' + s.lastRunLabel : ''}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Next Scheduled Run</div>
+        <div style="font-size:14px;">${fmt(s.nextRun)}${s.nextRunLabel ? ' — ' + s.nextRunLabel : ''}</div>
+      </div>
+    </div>
+  `;
 }
 
 function renderDispatchConfigTable(cfg) {
