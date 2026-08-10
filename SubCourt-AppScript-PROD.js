@@ -1084,7 +1084,11 @@ function _computeNextDispatchRun() {
         var dow = parseInt(Utilities.formatDate(d, tz, 'u'));
         if (dowSet.indexOf(dow) === -1) continue;
         var dateStr   = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-        var candidate = new Date(dateStr + 'T' + (h < 10 ? '0' + h : h) + ':00:00');
+        // Utilities.parseDate (not the bare Date constructor) is required here: Apps
+        // Script's V8 runtime resolves an offset-less date-time string against
+        // America/Los_Angeles regardless of the script's configured time zone, which
+        // silently shifted every candidate run time off from real Eastern time.
+        var candidate = Utilities.parseDate(dateStr + ' ' + (h < 10 ? '0' + h : h) + ':00:00', tz, 'yyyy-MM-dd HH:mm:ss');
         if (candidate.getTime() <= now.getTime()) continue;
         if (!best || candidate.getTime() < best.time.getTime()) best = { time: candidate, label: label };
         break;
