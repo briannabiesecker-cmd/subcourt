@@ -3527,8 +3527,32 @@ function buildSubNeededEmailText(requests, targetDate) {
   return lines.join('\n');
 }
 
+// Guards against the same broadcast going out twice in quick succession from two
+// independent trigger paths (the regularly scheduled Pre-Match Day / Match Day -2
+// dispatch runs, and the one-shot _runQueuedBroadcast trigger submitRequest() queues
+// for 60s later on a late-arriving request). sendLeagueEmail()'s own throttle only
+// catches byte-identical resends, so it misses this case whenever a request's field
+// (e.g. matchTime getting confirmed) changes between the two sends. Keyed on target
+// date + the open request IDs, not full content, so a genuinely new/changed situation
+// later in the day still sends.
+function _alreadyBroadcastRecently(targetDate, openRequests) {
+  var props = PropertiesService.getScriptProperties();
+  var sig   = targetDate + '|' + openRequests.map(function(r) { return r.id; }).sort().join(',');
+  var key   = 'urgentBroadcastSig';
+  var last  = props.getProperty(key);
+  var lastTime = parseInt(props.getProperty(key + 'Time') || '0', 10);
+  var recent   = (Date.now() - lastTime) < 60 * 60 * 1000; // 1 hour cooldown
+  props.setProperty(key, sig);
+  props.setProperty(key + 'Time', String(Date.now()));
+  return last === sig && recent;
+}
+
 function sendUrgentSubBroadcast(openRequests, targetDate) {
   if (!openRequests.length || !isEmailEnabled()) return;
+  if (_alreadyBroadcastRecently(targetDate, openRequests)) {
+    Logger.log('sendUrgentSubBroadcast: skipped — same open requests for ' + targetDate + ' already broadcast within the last hour');
+    return;
+  }
   var config    = getConfig();
   var d         = new Date(targetDate + 'T12:00:00');
   var monthDay  = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
