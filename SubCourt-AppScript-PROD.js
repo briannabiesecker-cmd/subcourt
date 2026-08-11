@@ -147,15 +147,20 @@ function processVolunteerFromEmail(requestId, playerEmail) {
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
   var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  // Prevent duplicate: skip if a non-cancelled record already exists for this email + date
+  // Prevent duplicate: skip only if a non-cancelled record already exists for this
+  // exact email + date + time slot. Keyed on time too (not just date) so a player who
+  // clicks "I CAN Sub" for two different time slots on the same date gets a volunteer
+  // record for each one, instead of the second click being silently dropped as a
+  // "duplicate" of the first.
   var lastRow = volSheet.getLastRow();
   if (lastRow >= 2) {
     var existing = volSheet.getRange(2, 1, lastRow - 1, 7).getValues();
     for (var k = 0; k < existing.length; k++) {
       if ((existing[k][3] || '').toLowerCase() === playerEmail &&
           formatSheetDate(existing[k][4]) === req.matchDate &&
+          (existing[k][5] || '') === timeCode &&
           (existing[k][6] || '').toLowerCase() !== 'cancelled') {
-        Logger.log('processVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate);
+        Logger.log('processVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate + ' at ' + timeCode);
         return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
       }
     }
@@ -285,8 +290,9 @@ function handleVolunteerFromEmail(e) {
     for (var k2 = 0; k2 < existing2.length; k2++) {
       if ((existing2[k2][3] || '').toLowerCase() === playerEmail &&
           formatSheetDate(existing2[k2][4]) === req.matchDate &&
+          (existing2[k2][5] || '') === timeCode &&
           (existing2[k2][6] || '').toLowerCase() !== 'cancelled') {
-        Logger.log('handleVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate);
+        Logger.log('handleVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate + ' at ' + timeCode);
         isDuplicate = true;
         break;
       }
