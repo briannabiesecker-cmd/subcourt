@@ -1758,13 +1758,31 @@ function submitVolunteer(params) {
   const lastRow0   = sheet.getLastRow();
   const existing0  = lastRow0 >= 2 ? sheet.getRange(2, 1, lastRow0 - 1, 7).getValues() : [];
   entries.forEach(entry => {
-    // Skip if a non-cancelled record already exists for this email + date
-    const isDup = existing0.some(r =>
+    // If a non-cancelled record already exists for this email + date, merge the
+    // newly submitted times into it (instead of dropping this whole resubmission)
+    // as long as it's still 'pending' — an already-matched/expired record represents
+    // a finalized outcome, so leave those alone rather than reopening them.
+    const existingIdx = existing0.findIndex(r =>
       (r[3] || '').toLowerCase() === emailLower &&
       formatSheetDate(r[4]) === entry.date &&
       (r[6] || '').toLowerCase() !== 'cancelled'
     );
-    if (isDup) { Logger.log('submitVolunteer: duplicate skipped for ' + emailLower + ' on ' + entry.date); return; }
+    if (existingIdx !== -1) {
+      const existingRow = existing0[existingIdx];
+      const status = (existingRow[6] || '').toLowerCase();
+      if (status !== 'pending') {
+        Logger.log('submitVolunteer: skipped merge for ' + emailLower + ' on ' + entry.date + ' — existing record is ' + status);
+        return;
+      }
+      const existingTimes = (existingRow[5] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
+      const mergedTimes   = existingTimes.slice();
+      entry.times.forEach(t => { if (mergedTimes.indexOf(t) === -1) mergedTimes.push(t); });
+      if (mergedTimes.length === existingTimes.length) return; // nothing new to add
+      const rowNum = existingIdx + 2; // +1 for header row, +1 for 1-based sheet rows
+      sheet.getRange(rowNum, 6).setNumberFormat('@').setValue(mergedTimes.join(','));
+      Logger.log('submitVolunteer: merged times for ' + emailLower + ' on ' + entry.date + ' -> ' + mergedTimes.join(','));
+      return;
+    }
     const nextRow = sheet.getLastRow() + 1;
     const range   = sheet.getRange(nextRow, 1, 1, 7);
     // Set number format first to prevent auto-conversion
