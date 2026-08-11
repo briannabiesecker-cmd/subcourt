@@ -450,17 +450,24 @@ function sendLeagueEmail(params) {
       throw e;
     }
   } else {
-    // Split BCC into chunks to stay under per-message recipient limit
+    // Split BCC into chunks to stay under per-message recipient limit. Only the first
+    // chunk uses params.to (the visible admin address) as the "To" — MailApp requires
+    // a non-empty "to" on every call, so later chunks borrow one of their own bcc
+    // addresses for that slot instead of reusing params.to, which previously sent the
+    // admin one full duplicate email per extra chunk.
     for (var i = 0; i < bccAddrs.length; i += BCC_CHUNK_SIZE) {
-      var chunk = bccAddrs.slice(i, i + BCC_CHUNK_SIZE);
-      var chunkOpts = { name: baseOpts.name, bcc: chunk.join(',') };
+      var chunk    = bccAddrs.slice(i, i + BCC_CHUNK_SIZE);
+      var chunkTo  = i === 0 ? params.to : chunk[0];
+      var chunkBcc = i === 0 ? chunk : chunk.slice(1);
+      var chunkOpts = { name: baseOpts.name };
+      if (chunkBcc.length)      chunkOpts.bcc    = chunkBcc.join(',');
       if (baseOpts.htmlBody)    chunkOpts.htmlBody    = baseOpts.htmlBody;
       if (baseOpts.cc)          chunkOpts.cc          = baseOpts.cc;
       if (baseOpts.replyTo)     chunkOpts.replyTo     = baseOpts.replyTo;
       if (baseOpts.attachments) chunkOpts.attachments = baseOpts.attachments;
       if (i > 0) Utilities.sleep(500);
       try {
-        MailApp.sendEmail(params.to, params.subject, params.body, chunkOpts);
+        MailApp.sendEmail(chunkTo, params.subject, params.body, chunkOpts);
         _logEmail(params.to, params.subject, 'sent via MailApp (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ')');
       } catch(e) {
         _logEmail(params.to, params.subject, 'failed chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ': ' + e.message);
@@ -484,10 +491,10 @@ function _sendLeagueEmailViaBrevo(params, config) {
 
   function toRecipients(list) { return list.map(function(e) { return { email: e }; }); }
 
-  function buildParams(bccChunk) {
+  function buildParams(bccChunk, toOverride) {
     var p = {
       apiKey:      config.brevoApiKey,
-      recipients:  toRecipients(toAddrs),
+      recipients:  toRecipients(toOverride || toAddrs),
       subject:     params.subject,
       textContent: params.body
     };
@@ -502,9 +509,14 @@ function _sendLeagueEmailViaBrevo(params, config) {
   if (bccAddrs.length <= BCC_CHUNK_SIZE) {
     sendBrevoEmail(buildParams(bccAddrs));
   } else {
+    // Only the first chunk uses toAddrs (the visible admin address) as "recipients" —
+    // later chunks borrow one of their own bcc addresses instead, so toAddrs doesn't
+    // get a duplicate copy per chunk.
     for (var i = 0; i < bccAddrs.length; i += BCC_CHUNK_SIZE) {
       if (i > 0) Utilities.sleep(300);
-      sendBrevoEmail(buildParams(bccAddrs.slice(i, i + BCC_CHUNK_SIZE)));
+      var chunk = bccAddrs.slice(i, i + BCC_CHUNK_SIZE);
+      if (i === 0) { sendBrevoEmail(buildParams(chunk)); continue; }
+      sendBrevoEmail(buildParams(chunk.slice(1), [chunk[0]]));
     }
   }
 }
