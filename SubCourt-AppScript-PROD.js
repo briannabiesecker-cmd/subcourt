@@ -412,6 +412,13 @@ function _excludeFromBcc(emails, toEmail) {
 // Unified email sender for every real Rally email — routes through Brevo when
 // configured (own quota, unaffected by MailApp's), falling back to MailApp otherwise
 // or if Brevo itself fails.
+//
+// comcast.net recipients are routed around Brevo entirely, straight through MailApp.
+// Measured via getBrevoBounceSummary: every comcast.net address in the roster soft-
+// bounces through Brevo's shared sending IP at a ~16% rate (554 "server not available"
+// from Comcast's resimta MTA), while every other domain bounces at 0% — a domain-level
+// rejection Brevo's own automatic retries never recover from. MailApp (Google's own
+// sending infrastructure) is a separate reputation path that isn't affected by it.
 function sendLeagueEmail(params) {
   var props = PropertiesService.getScriptProperties();
   var throttleKey = 'emailThrottle:' + _getEmailThrottleDateKey(new Date()) + ':' + _buildEmailContentSignature(params);
@@ -421,21 +428,70 @@ function sendLeagueEmail(params) {
   }
 
   var config = getConfig();
+  var split  = _splitOffComcastRecipients(params);
 
-  // Brevo is the primary path — it has its own quota, independent of MailApp's daily
-  // recipient cap. Falls through to MailApp below if Brevo isn't configured or fails.
-  if (config.brevoApiKey) {
-    try {
-      _sendLeagueEmailViaBrevo(params, config);
-      _logEmail(params.to, params.subject, 'sent via Brevo');
-      props.setProperty(throttleKey, 'sent');
-      return;
-    } catch(e) {
-      Logger.log('Brevo send failed for "' + params.subject + '", falling back to MailApp: ' + e.message);
-      _logEmail(params.to, params.subject, 'Brevo failed (' + e.message + '), trying MailApp');
+  if (split.comcast) _sendLeagueEmailViaMailApp(split.comcast, config);
+
+  if (split.rest) {
+    // Brevo is the primary path for everyone else — it has its own quota, independent of
+    // MailApp's daily recipient cap. Falls through to MailApp below if Brevo isn't
+    // configured or fails.
+    var sentViaBrevo = false;
+    if (config.brevoApiKey) {
+      try {
+        _sendLeagueEmailViaBrevo(split.rest, config);
+        _logEmail(split.rest.to, split.rest.subject, 'sent via Brevo');
+        sentViaBrevo = true;
+      } catch(e) {
+        Logger.log('Brevo send failed for "' + split.rest.subject + '", falling back to MailApp: ' + e.message);
+        _logEmail(split.rest.to, split.rest.subject, 'Brevo failed (' + e.message + '), trying MailApp');
+      }
     }
+    if (!sentViaBrevo) _sendLeagueEmailViaMailApp(split.rest, config);
   }
 
+  props.setProperty(throttleKey, 'sent');
+}
+
+function _splitAddrList(str) {
+  return (str || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+}
+
+// Partitions an email's to/cc/bcc into a comcast.net-only params object and an
+// everyone-else params object (either may be null if that group has no recipients),
+// each carrying the rest of the original params (subject/body/htmlBody/name/etc.)
+// unchanged. Borrows a recipient into "to" if a group's own To list is empty — MailApp
+// and Brevo both require a non-empty "to" on every send.
+function _splitOffComcastRecipients(params) {
+  var toList  = _splitAddrList(params.to);
+  var ccList  = _splitAddrList(params.cc);
+  var bccList = _splitAddrList(params.bcc);
+  var isComcast = function(a) { return /@comcast\.net$/i.test(a); };
+
+  var comcastTo = [], comcastCc = [], comcastBcc = [];
+  var restTo    = [], restCc    = [], restBcc    = [];
+  toList.forEach(function(a)  { (isComcast(a) ? comcastTo  : restTo).push(a); });
+  ccList.forEach(function(a)  { (isComcast(a) ? comcastCc  : restCc).push(a); });
+  bccList.forEach(function(a) { (isComcast(a) ? comcastBcc : restBcc).push(a); });
+
+  function build(to, cc, bcc) {
+    if (!to.length && !cc.length && !bcc.length) return null;
+    if (!to.length) to = bcc.length ? [bcc.shift()] : [cc.shift()];
+    var p = {};
+    for (var k in params) p[k] = params[k];
+    p.to  = to.join(', ');
+    p.cc  = cc.length  ? cc.join(', ')  : undefined;
+    p.bcc = bcc.length ? bcc.join(', ') : undefined;
+    return p;
+  }
+
+  return {
+    comcast: build(comcastTo, comcastCc, comcastBcc),
+    rest:    build(restTo, restCc, restBcc)
+  };
+}
+
+function _sendLeagueEmailViaMailApp(params, config) {
   var senderEmail = config.senderEmail || '';
   var baseOpts = { name: params.name || 'MWF Tennis League' };
   if (params.htmlBody)     baseOpts.htmlBody = params.htmlBody;
@@ -490,7 +546,6 @@ function sendLeagueEmail(params) {
       }
     }
   }
-  props.setProperty(throttleKey, 'sent');
 }
 
 // Recipient-count chunking mirrors the MailApp path above — kept conservative since
