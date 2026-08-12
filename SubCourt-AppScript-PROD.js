@@ -1318,6 +1318,7 @@ function doGet(e) {
     else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
     else if (action === 'updateMatchGroupTime')       result = updateMatchGroupTime(e.parameter);
     else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport(e.parameter);
+    else if (action === 'getBrevoBounceSummary')      result = getBrevoBounceSummary(e.parameter);
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -3871,6 +3872,64 @@ function debugRunChelseaImport(params) {
     overrideTargetDate: params.overrideTargetDate || '',
     dryRun:            params.dryRun === '1'
   });
+}
+
+// Debug/admin tool — pulls bounce events from Brevo's Events API and summarizes
+// counts per recipient address, so repeat-offender addresses (vs. one-off/broad
+// provider throttling) are easy to spot without exporting Brevo's Logs page by hand.
+function getBrevoBounceSummary(params) {
+  params = params || {};
+  var config = getConfig();
+  if (!config.brevoApiKey) return { success: false, error: 'Brevo API key not set (Config B35).' };
+
+  var days = parseInt(params.days) || 90;
+  if (days > 90) days = 90;
+
+  var url = 'https://api.brevo.com/v3/smtp/statistics/events?event=bounces&days=' + days + '&limit=2500&sort=desc';
+  var response = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: { 'api-key': config.brevoApiKey },
+    muteHttpExceptions: true
+  });
+  var code = response.getResponseCode();
+  if (code < 200 || code >= 300) {
+    return { success: false, error: 'Brevo error ' + code + ': ' + response.getContentText().substring(0, 300) };
+  }
+  var events = (JSON.parse(response.getContentText()).events || []);
+
+  var byEmail = {};
+  events.forEach(function(ev) {
+    var email = (ev.email || '').toLowerCase();
+    if (!email) return;
+    if (!byEmail[email]) byEmail[email] = { email: email, hardCount: 0, softCount: 0, lastDate: '', lastEvent: '', lastReason: '' };
+    var rec = byEmail[email];
+    if (ev.event === 'hardBounces') rec.hardCount++;
+    else if (ev.event === 'softBounces') rec.softCount++;
+    if (!rec.lastDate || ev.date > rec.lastDate) {
+      rec.lastDate   = ev.date   || '';
+      rec.lastEvent  = ev.event  || '';
+      rec.lastReason = ev.reason || '';
+    }
+  });
+
+  var summary = Object.keys(byEmail).map(function(k) {
+    var r = byEmail[k];
+    r.totalCount = r.hardCount + r.softCount;
+    r.domain = r.email.split('@')[1] || '';
+    return r;
+  }).sort(function(a, b) { return b.totalCount - a.totalCount; });
+
+  var domainCounts = {};
+  summary.forEach(function(r) { domainCounts[r.domain] = (domainCounts[r.domain] || 0) + r.totalCount; });
+
+  return {
+    success: true,
+    days: days,
+    totalEvents: events.length,
+    uniqueAddresses: summary.length,
+    byDomain: domainCounts,
+    summary: summary
+  };
 }
 
 // Marks still-TBD sub requests for targetDate as 'Overflow' (Match Day -2 Dispatch,
