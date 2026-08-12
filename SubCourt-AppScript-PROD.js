@@ -3333,10 +3333,10 @@ function runMatchTimeReminder() {
     if (req.status !== 'open') return;
     if (req.matchTime) return;
 
-    // Check if match date is within 60 hours (use 8:00 AM for TBD times)
+    // Only remind for matches 2 or fewer days out (use 8:00 AM for TBD times)
     var matchDT = new Date(req.matchDate + 'T08:00:00');
     var diffHrs = (matchDT - now) / 36e5;
-    if (diffHrs <= 0 || diffHrs > 60) return;
+    if (diffHrs <= 0 || diffHrs > 48) return;
 
     activeIds[req.id] = true;
 
