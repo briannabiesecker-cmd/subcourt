@@ -3844,62 +3844,79 @@ function _chelseaLongDate(dateStr) {
 function _escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 // Extracts { time, players: [name,...] } rows from the extracted PDF text, keeping
-// only rows at 8:00/9:30/11:00/12:30.
+// only rows at 8:00/9:30/11:00/12:30. Report format (as of 2026-08): "Epic-Padel"
+// court listing, one row per "<Facility>\n<Court#>\n<slot1>\n<slot2>\n<slot3>\n<slot4>",
+// where each slot is blank, "999999 * Unavailable"/"Instructional", or "<ID> <NAME>".
 //
-// Google's OCR conversion does NOT keep a row's Time value adjacent to it — the
-// source PDF's merged/spanning Time cells apparently confuse the OCR reading-order
-// heuristic, so most Time values end up shifted into one run of text near the end
-// of the document, disconnected from their row (verified against a real sample:
-// court/player content stays in the correct top-to-bottom order, and the Time
-// values — wherever they end up — also stay in the correct relative order, just
-// not adjacent to their row). So rows and times are extracted independently, in
-// document order, and zipped by position. If the counts don't match exactly, the
-// whole import aborts — better to import nothing than to misassign a time to the
-// wrong group.
+// Google's OCR conversion does NOT reliably keep a row's Time value adjacent to it,
+// so rows and times are extracted independently and zipped by position — but only
+// within each page (split on the repeating "Time Facility Court Player 1-4" header),
+// not across the whole document. A page's counts not lining up (seen in practice: the
+// last page, once down to a single remaining time slot, sometimes runs
+// "<time> <Facility> <Court>" inline instead of one-per-line) only costs that page
+// instead of aborting the whole import — better to skip one page's rows than
+// misassign a time to the wrong group, but no reason a single page's OCR quirk should
+// block every other page's valid data too.
 function _parseChelseaRows(text) {
-  var headerMatch = text.match(/Player\s*4/i);
-  var body = headerMatch ? text.slice(headerMatch.index + headerMatch[0].length) : text;
+  // Strip the "M/D/YYYY H:MM:SS AM/PM" print-timestamp — its H:MM:SS otherwise
+  // produces a spurious time-fragment match (e.g. "31:10 PM" out of "12:31:10 PM").
+  var body = text.replace(/\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(AM|PM)/gi, '');
 
-  var facilityMatch = text.match(/Facility\s+([A-Za-z][A-Za-z ]*?)\s*(?:\n|Time\s+Facility)/);
+  var facilityMatch = body.match(/Facility\s+([A-Za-z][A-Za-z ]*?)\s*(?:\n|Time\s+Facility)/);
   var facilityName = facilityMatch ? facilityMatch[1].trim() : '';
   if (!facilityName) return { rows: [], error: 'could not determine facility name from PDF header' };
   var esc = _escapeRegex(facilityName);
 
-  var rowRe  = new RegExp(esc + '\\s*\\n\\s*(\\d{1,2})\\s*\\n([\\s\\S]*?)(?=' + esc + '\\s*\\n\\s*\\d{1,2}\\s*\\n|$)', 'g');
-  var nameRe = /([A-Za-z][A-Za-z .'\-]*?)-\s*#\d+/g;
-  var rowBlocks = [];
-  var m;
-  while ((m = rowRe.exec(body)) !== null) {
-    var chunk = m[2];
-    var names = [];
-    var nm;
-    nameRe.lastIndex = 0;
-    while ((nm = nameRe.exec(chunk)) !== null) {
-      var n = nm[1].trim();
-      if (n) names.push(n);
-    }
-    if (names.length) rowBlocks.push(names);
-  }
+  var pages = body.split(/Time\s+Facility\s+Court\s+Player\s*1\s+Player\s*2\s+Player\s*3\s+Player\s*4/i).slice(1);
+  if (!pages.length) return { rows: [], error: 'could not find any "Time Facility Court..." page headers in PDF text' };
 
+  var nameRe = /\d{4,6}\s+([A-Za-z][A-Za-z .'\-]+)/g;
   var timeRe = /(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
-  var times = [];
-  var tm;
-  while ((tm = timeRe.exec(body)) !== null) {
-    var h = parseInt(tm[1]);
-    var ap = tm[3].toUpperCase();
-    if (ap === 'PM' && h !== 12) h += 12;
-    if (ap === 'AM' && h === 12) h = 0;
-    times.push((h < 10 ? '0' + h : h) + ':' + tm[2]);
-  }
-
-  if (times.length !== rowBlocks.length) {
-    return { rows: [], error: 'row/time count mismatch (' + rowBlocks.length + ' rows, ' + times.length + ' times) — aborting' };
-  }
-
   var rows = [];
-  for (var i = 0; i < rowBlocks.length; i++) {
-    if (CHELSEA_TIMES.indexOf(times[i]) === -1) continue; // not one of the MWF slots
-    rows.push({ time: times[i], players: rowBlocks[i] });
+  var mismatchedPages = 0;
+
+  pages.forEach(function(page, pageIndex) {
+    var rowRe = new RegExp(esc + '\\s*\\n\\s*(\\d{1,2})\\s*\\n([\\s\\S]*?)(?=' + esc + '\\s*\\n\\s*\\d{1,2}\\s*\\n|$)', 'g');
+    var rowBlocks = [];
+    var m;
+    while ((m = rowRe.exec(page)) !== null) {
+      var chunk = m[2];
+      var names = [];
+      var nm;
+      nameRe.lastIndex = 0;
+      while ((nm = nameRe.exec(chunk)) !== null) {
+        var n = nm[1].trim();
+        if (n) names.push(n);
+      }
+      rowBlocks.push(names); // keep even empty/unavailable rows — needed to stay aligned with times below
+    }
+
+    var times = [];
+    var tm;
+    timeRe.lastIndex = 0;
+    while ((tm = timeRe.exec(page)) !== null) {
+      var h = parseInt(tm[1]);
+      var ap = tm[3].toUpperCase();
+      if (ap === 'PM' && h !== 12) h += 12;
+      if (ap === 'AM' && h === 12) h = 0;
+      times.push((h < 10 ? '0' + h : h) + ':' + tm[2]);
+    }
+
+    if (times.length !== rowBlocks.length) {
+      mismatchedPages++;
+      Logger.log('_parseChelseaRows: page ' + (pageIndex + 1) + ' row/time count mismatch (' +
+        rowBlocks.length + ' rows, ' + times.length + ' times) — skipping this page.');
+      return;
+    }
+    for (var i = 0; i < rowBlocks.length; i++) {
+      if (CHELSEA_TIMES.indexOf(times[i]) === -1) continue; // not one of the MWF slots
+      if (!rowBlocks[i].length) continue; // no real players in this slot
+      rows.push({ time: times[i], players: rowBlocks[i] });
+    }
+  });
+
+  if (mismatchedPages === pages.length) {
+    return { rows: [], error: 'row/time count mismatch on all ' + pages.length + ' page(s) — aborting' };
   }
   return { rows: rows, error: '' };
 }
