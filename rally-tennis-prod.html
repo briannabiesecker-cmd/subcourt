@@ -2894,7 +2894,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
         const key     = d.date + '|' + g.letter;
         reqScheduleData[key] = {
           matchDate: d.date,
-          matchTime: '',
+          matchTime: g.time || '',
           players:   g.players,
           partners:  g.players.filter(p => !p.email || p.email.toLowerCase() !== emailLower)
         };
@@ -2904,12 +2904,19 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
           const reqEmails = new Set(r.groupPlayers.map(p => (p.email || '').toLowerCase()));
           return g.players.some(p => p.email && reqEmails.has(p.email.toLowerCase()));
         });
+        // A known time (already assigned via Chelsea or a manual schedule edit) needs
+        // no forced picker — one-click request at that time, same as the TBD-allowed
+        // checkbox flow. Only fall back to the required picker when the time is
+        // genuinely still unknown and this close to match day.
         const cbHtml = alreadyRequested
           ? `<span style="font-size:12px;color:var(--ink-light);">Requested</span>`
-          : (isNearTermRequestDate(d.date) ? _reqTimeSelectHtml(key) : _reqCheckboxHtml(key));
+          : (g.time || !isNearTermRequestDate(d.date)) ? _reqCheckboxHtml(key) : _reqTimeSelectHtml(key);
+        const timeBadge = g.time
+          ? `<br><span style="font-size:11px;color:var(--clay);font-weight:600;">${TIME_LABELS_SHORT[g.time] || g.time}</span>`
+          : '';
         rows += `<tr>
           <td style="text-align:center;">${cbHtml}</td>
-          <td class="date-cell" style="white-space:nowrap;line-height:1.4;">${dow}<br><span style="font-size:12px;color:var(--ink-mid);">${mdd}</span></td>
+          <td class="date-cell" style="white-space:nowrap;line-height:1.4;">${dow}<br><span style="font-size:12px;color:var(--ink-mid);">${mdd}</span>${timeBadge}</td>
           <td><span class="captain-badge">C</span>${mkName(captain)}</td>
           <td style="text-align:center;">${mkName(others[0])}</td>
           <td style="text-align:center;">${mkName(others[1])}</td>
@@ -2951,9 +2958,10 @@ async function onReqScheduleCheck(checkbox, key) {
   if (!slot) { checkbox.checked = false; return; }
 
   // Safety net: this table's checkbox-vs-time-picker choice was decided when the page
-  // was last loaded. If enough time has passed that this date is now within 2 days,
-  // re-check here rather than silently submitting a TBD time for a near-term match.
-  if (isNearTermRequestDate(slot.matchDate)) {
+  // was last loaded. If enough time has passed that this date is now within 2 days and
+  // we still don't have a match time, re-check here rather than silently submitting a
+  // TBD time for a near-term match.
+  if (isNearTermRequestDate(slot.matchDate) && !slot.matchTime) {
     checkbox.checked = false;
     showAlert('req-alert', 'error', 'This date is now within 2 days and requires a match time — please refresh the page and try again.');
     return;
@@ -2973,6 +2981,15 @@ async function onReqScheduleCheck(checkbox, key) {
     checkbox.checked  = false;
     checkbox.disabled = false;
     showAlert('req-alert', 'error', 'You already have a request for this date. Contact the coordinator to make changes.');
+    return;
+  }
+
+  if (await isTooLateForTomorrow(slot.matchDate)) {
+    checkbox.disabled = false;
+    showWarningModal(
+      "Today's last dispatch run for tomorrow's matches has already passed, so Rally can no longer automatically look for a sub in time. Consider using phone or email to find a sub.",
+      () => { checkbox.checked = false; }
+    );
     return;
   }
 
