@@ -2620,19 +2620,30 @@ async function onReqDateChange() {
     reqAutoFill = {
       found:     true,
       matchTime: result.matchTime || '',
+      overflow:  !!result.overflow,
       players:   result.players,
       partners:  result.players.filter(p => (p.email || '').toLowerCase() !== email.toLowerCase())
     };
-
-    const needsTimePick = isNearTermRequestDate(matchDate) && !reqAutoFill.matchTime;
-    const timeLabel = reqAutoFill.matchTime
-      ? (TIME_LABELS[reqAutoFill.matchTime] || reqAutoFill.matchTime)
-      : (needsTimePick ? 'Required below' : 'TBD');
 
     const playerTags = result.players.map(p => {
       const isMe = (p.email || '').toLowerCase() === email.toLowerCase();
       return `<span style="font-weight:${isMe ? '700' : '500'};color:${isMe ? 'var(--clay)' : 'var(--ink)'};white-space:nowrap;">${p.name}${isMe ? ' ★' : ''}</span>`;
     }).join('<span style="color:var(--line);margin:0 5px;">|</span>');
+
+    if (reqAutoFill.overflow) {
+      wrap.innerHTML = `<div style="background:var(--chalk);border-radius:var(--radius);padding:0.75rem 1rem;">
+        <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:6px;">Match from schedule</div>
+        <div style="font-size:14px;line-height:1.6;margin-bottom:10px;">${playerTags}</div>
+        <div class="alert alert-error" style="margin:0;">This match is in Overflow status — sub requests can't be submitted. Contact your coordinator.</div>
+      </div>`;
+      return;
+    }
+
+    const needsTimePick = isNearTermRequestDate(matchDate) && !reqAutoFill.matchTime;
+    const canChangeKnownTime = isNearTermRequestDate(matchDate) && !!reqAutoFill.matchTime;
+    const timeLabel = reqAutoFill.matchTime
+      ? (TIME_LABELS[reqAutoFill.matchTime] || reqAutoFill.matchTime)
+      : (needsTimePick ? 'Required below' : 'TBD');
 
     const timePickerHtml = needsTimePick
       ? `<div style="margin-top:8px;">
@@ -2644,18 +2655,36 @@ async function onReqDateChange() {
          </div>`
       : '';
 
+    // Court times sometimes change — a known time can be accepted as-is (default,
+    // no interaction needed) or changed via this small reveal-on-click control.
+    const changeTimeHtml = canChangeKnownTime
+      ? `<button type="button" onclick="_showReqTimeOverride()" id="req-time-change-btn" style="background:none;border:none;color:var(--clay);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;padding:0;margin-top:6px;">Change time</button>
+         <div id="req-time-override-wrap" style="display:none;margin-top:8px;">
+           <label style="font-size:12px;font-weight:600;color:var(--ink-light);">Change match time</label>
+           <select id="req-time-override" style="width:100%;margin-top:3px;font-size:14px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;box-sizing:border-box;">
+             ${TIMES.map(t => `<option value="${t}" ${t === reqAutoFill.matchTime ? 'selected' : ''}>${TIME_LABELS[t]}</option>`).join('')}
+           </select>
+         </div>`
+      : '';
+
     wrap.innerHTML = `<div style="background:var(--chalk);border-radius:var(--radius);padding:0.75rem 1rem;">
       <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:6px;">Match from schedule</div>
       <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
         <div><span style="font-size:12px;color:var(--ink-light);">Time</span><br><span style="font-weight:600;font-size:14px;">${timeLabel}</span></div>
         <div><span style="font-size:12px;color:var(--ink-light);">Group</span><br><span style="font-size:14px;line-height:1.6;">${playerTags}</span></div>
       </div>
+      ${changeTimeHtml}
       ${timePickerHtml}
     </div>`;
   } catch(e) {
     if (seq !== reqLookupSeq) return;
     wrap.innerHTML = `<div class="alert alert-error" style="margin:0;">Could not look up match. Please try again.</div>`;
   }
+}
+
+function _showReqTimeOverride() {
+  document.getElementById('req-time-change-btn').style.display = 'none';
+  document.getElementById('req-time-override-wrap').style.display = 'block';
 }
 
 async function submitRequest() {
@@ -2674,6 +2703,10 @@ async function submitRequest() {
     showAlert('req-alert', 'error', 'No match found for this date — please select a scheduled match date.');
     return;
   }
+  if (reqAutoFill.overflow) {
+    showAlert('req-alert', 'error', "This match is in Overflow status — sub requests can't be submitted. Contact your coordinator.");
+    return;
+  }
 
   let matchTime = reqAutoFill.matchTime || '';
   if (!matchTime && isNearTermRequestDate(matchDate)) {
@@ -2682,6 +2715,14 @@ async function submitRequest() {
     if (!matchTime) {
       showAlert('req-alert', 'error', 'Please select a match time — TBD is not allowed for requests within the next two days.');
       return;
+    }
+  } else if (matchTime && isNearTermRequestDate(matchDate)) {
+    // A known time was shown — if the player opened "Change time" and picked
+    // something else, use that instead of what was originally shown.
+    const overrideWrap = document.getElementById('req-time-override-wrap');
+    const overrideSel  = document.getElementById('req-time-override');
+    if (overrideWrap && overrideWrap.style.display !== 'none' && overrideSel && overrideSel.value) {
+      matchTime = overrideSel.value;
     }
   }
   const partners  = reqAutoFill.partners.filter(p => p.name && p.email);
@@ -5682,6 +5723,42 @@ async function dirSaveMyInfo() {
   }
 }
 
+// Group-letter column becomes an editable court-time dropdown once a match is
+// within 2 days (the only window a real court time ever exists in) — matches
+// isNearTermRequestDate exactly, same as the Request a Sub form. Further-out
+// dates keep showing the plain Group letter, since there's nothing to edit yet.
+function _schedTimeCellHtml(date, group) {
+  if (!isNearTermRequestDate(date)) {
+    return `<td style="font-weight:600;color:var(--court);">${group.letter}</td>`;
+  }
+  const time = group.time || '';
+  const opts = ['<option value="">TBD</option>']
+    .concat(TIMES.map(t => `<option value="${t}" ${t === time ? 'selected' : ''}>${TIME_LABELS_SHORT[t]}</option>`))
+    .concat([`<option value="Overflow" ${time === 'Overflow' ? 'selected' : ''}>Overflow</option>`])
+    .join('');
+  const borderColor = time ? 'var(--court)' : 'var(--line)';
+  return `<td><select onchange="onSchedTimeChange(this,'${date}','${group.letter}')" style="font-size:12px;padding:3px 4px;border:1.5px solid ${borderColor};border-radius:6px;font-weight:600;color:var(--court);">${opts}</select></td>`;
+}
+
+async function onSchedTimeChange(select, date, groupLetter) {
+  const newTime = select.value;
+  select.disabled = true;
+  try {
+    const result = await apiPost({ action: 'updateMatchGroupTime', matchDate: date, groupLetter, matchTime: newTime });
+    if (!result.success) {
+      alert('Could not update court time: ' + (result.error || 'unknown error'));
+    } else {
+      const d = publishedSchedule?.dates?.find(dd => dd.date === date);
+      const g = d?.groups?.find(gg => gg.letter === groupLetter);
+      if (g) g.time = newTime;
+      select.style.borderColor = newTime ? 'var(--court)' : 'var(--line)';
+    }
+  } catch(e) {
+    alert('Could not update court time. Please try again.');
+  }
+  select.disabled = false;
+}
+
 function renderPublishedSchedule(filterEmail, filterName) {
   const wrap  = document.getElementById('sch-table-wrap');
   const empty = document.getElementById('sch-empty');
@@ -5761,7 +5838,7 @@ function renderPublishedSchedule(filterEmail, filterName) {
       if (gi === 0) {
         html += `<td rowspan="${d.groups.length}" class="date-cell" style="white-space:nowrap;line-height:1.4;">${dateStr}</td>`;
       }
-      html += `<td style="font-weight:600;color:var(--court);">${g.letter}</td>`;
+      html += _schedTimeCellHtml(d.date, g);
       html += `<td><span class="captain-badge">C</span>${mkName(captain)}</td>`;
       html += `<td style="text-align:center;">${mkName(others[0])}</td>`;
       html += `<td style="text-align:center;">${mkName(others[1])}</td>`;

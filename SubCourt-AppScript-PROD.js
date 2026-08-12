@@ -918,7 +918,8 @@ function setupTriggers() {
   var managed = ['runAutoDispatch','onConfigEdit','cleanupOldRecords','checkAvailabilityWindow',
                  'runPreMatchDayDispatch','runPreMatchDayDispatchFinal',
                  'runFollowupDispatchT1','runFollowupDispatchT2','runMatchTimeReminder',
-                 '_runQueuedAvailBlast','_runMatchTimeReminderCheck','runMatchDayMinus2Dispatch'];
+                 '_runQueuedAvailBlast','_runMatchTimeReminderCheck','runMatchDayMinus2Dispatch',
+                 'checkChelseaCourtTimes'];
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (managed.indexOf(t.getHandlerFunction()) !== -1) {
       try { ScriptApp.deleteTrigger(t); } catch(e) {}
@@ -933,6 +934,12 @@ function setupTriggers() {
 
   // Daily check to auto-close availability window
   ScriptApp.newTrigger('checkAvailabilityWindow').timeBased().atHour(4).everyDays(1).create();
+
+  // Chelsea court-time email check — every 15 min, self-guards to Sat/Mon/Wed
+  // 7:45-9:30am ET inside the handler (Apps Script triggers can't be restricted to
+  // specific weekdays at 15-minute granularity, so this follows the same pattern as
+  // the daily dispatch triggers below: install unconditionally, guard in the handler).
+  ScriptApp.newTrigger('checkChelseaCourtTimes').timeBased().everyMinutes(15).create();
 
   // Daily dispatch (handles T+2 broadcast; T+1 is handled by pre-match-day triggers below)
   updateDispatchTrigger();
@@ -1258,6 +1265,8 @@ function doGet(e) {
     else if (action === 'saveDispatchConfigTable')      result = saveDispatchConfigTable(e.parameter);
     else if (action === 'saveSettingsConfigTable')      result = saveSettingsConfigTable(e.parameter);
     else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
+    else if (action === 'updateMatchGroupTime')       result = updateMatchGroupTime(e.parameter);
+    else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport();
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -1693,6 +1702,17 @@ function submitRequest(params) {
     return { success: false, error: 'A sub request for this date already exists.' };
   }
 
+  // Court times only ever exist within 2 days of the match, and MatchGroups is
+  // authoritative in that window. If this group is already marked Overflow, block
+  // the request outright — server-side, not just a hidden frontend control.
+  var nearTermGroup = null;
+  if (reqDate && _isTomorrowOrDayAfterTomorrow(reqDate)) {
+    nearTermGroup = _findMatchGroupRow(SpreadsheetApp.openById(SHEET_ID), reqDate, [reqEmail].concat(partnerEmails));
+    if (nearTermGroup && nearTermGroup.time === 'Overflow') {
+      return { success: false, error: "This match is in Overflow status — sub requests can't be submitted. Contact your coordinator." };
+    }
+  }
+
   const groupPlayers = JSON.stringify(groupPlayersArr);
   const row = [
     uid(),
@@ -1711,6 +1731,19 @@ function submitRequest(params) {
   sheet.getRange(lastRow, 6).setNumberFormat('@');
   sheet.getRange(lastRow, 9).setNumberFormat('@');
   _flagNo8amOnRequestRow(sheet, lastRow, [params.email].concat(groupPlayersArr.map(function(p) { return p.email; })));
+
+  // If the player supplied or changed a time within the 2-day window, reconcile it
+  // back into MatchGroups (and any other open request for the group) — only when
+  // it's actually new/different, not when they just accepted what was already shown.
+  try {
+    var submittedTime = params.matchTime ? params.matchTime.toString().trim() : '';
+    if (submittedTime && nearTermGroup && nearTermGroup.time !== submittedTime) {
+      var setResult = _setMatchGroupTime(reqDate, nearTermGroup.letter, submittedTime);
+      if (setResult.success) _syncGroupTimeToOpenRequests(reqDate, setResult.emails, submittedTime);
+    }
+  } catch(e) {
+    Logger.log('submitRequest: MatchGroups time reconcile failed: ' + e.message);
+  }
 
   // Confirmation email to requester
   if (params.email && isEmailEnabled()) {
@@ -2292,6 +2325,23 @@ function updateRequestTime(params) {
   return { success: true };
 }
 
+// View Schedule's editable time cell — same 2-day rule as everywhere else: court
+// times never exist more than 2 days before a match, so this rejects the write
+// outright rather than just relying on the frontend not offering the control.
+function updateMatchGroupTime(params) {
+  var matchDate    = (params.matchDate || '').toString().trim();
+  var groupLetter  = (params.groupLetter || '').toString().trim();
+  var matchTime    = (params.matchTime || '').toString().trim();
+  if (!matchDate || !groupLetter) return { success: false, error: 'Missing matchDate or groupLetter.' };
+  if (!_isTomorrowOrDayAfterTomorrow(matchDate)) {
+    return { success: false, error: 'Court times can only be set within 2 days of the match.' };
+  }
+  var setResult = _setMatchGroupTime(matchDate, groupLetter, matchTime);
+  if (!setResult.success) return { success: false, error: 'No matching MatchGroups row found.' };
+  var updatedRequests = _syncGroupTimeToOpenRequests(matchDate, setResult.emails, matchTime);
+  return { success: true, updatedRequests: updatedRequests };
+}
+
 function confirmSub(params) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
 
@@ -2437,6 +2487,94 @@ function replaceSchedulePlayer(ss, matchDate, oldEmail, newName, newEmail) {
 
 // Looks up a player's scheduled match group for a given date.
 // Returns all 4 players in the group plus any known match time.
+// ──────────────────────────────────────────────────
+// MATCHGROUPS TIME — shared helpers
+// ──────────────────────────────────────────────────
+// Court times only ever exist within 2 days of the match (Chelsea assigns them
+// 2 days out; nothing writes a time any earlier than that). Column 17 (Q) holds
+// it — added alongside the original 16 MatchGroups columns rather than reshuffling
+// existing ones.
+
+// Scans MatchGroups for the row on matchDate containing any of the given emails.
+// Returns { letter, time, emails, rowIndex } (emails = all 4 slots in that group)
+// or null if no row matches.
+function _findMatchGroupRow(ss, matchDate, emails) {
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var lookFor = {};
+  (emails || []).forEach(function(e) { if (e) lookFor[e.toLowerCase().trim()] = true; });
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== matchDate) continue;
+    var groupEmails = [];
+    var isMatch = false;
+    for (var pi = 0; pi < 4; pi++) {
+      var em = (r[5 + pi * 2] || '').toString().trim();
+      if (em) { groupEmails.push(em); if (lookFor[em.toLowerCase()]) isMatch = true; }
+    }
+    if (isMatch) {
+      return { letter: r[3] ? r[3].toString() : '', time: (r[16] || '').toString().trim(), emails: groupEmails, rowIndex: i + 2 };
+    }
+  }
+  return null;
+}
+
+// Writes a MatchGroups row's time by date + group letter (not by email — used by
+// the Chelsea import and the View Schedule dropdown, which both already know the
+// letter). Returns { success, emails } so callers can cascade to SubRequests
+// without a second scan.
+function _setMatchGroupTime(matchDate, groupLetter, timeValue) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return { success: false, emails: [] };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    var letter = r[3] ? r[3].toString() : '';
+    if (rowDate === matchDate && letter === groupLetter) {
+      sheet.getRange(i + 2, 17).setNumberFormat('@').setValue(timeValue);
+      var emails = [];
+      for (var pi = 0; pi < 4; pi++) {
+        var em = (r[5 + pi * 2] || '').toString().trim();
+        if (em) emails.push(em);
+      }
+      return { success: true, emails: emails };
+    }
+  }
+  return { success: false, emails: [] };
+}
+
+// Pushes a group's time onto every still-open SubRequests row for that date whose
+// requester is one of the group's players.
+function _syncGroupTimeToOpenRequests(matchDate, groupEmails, timeValue) {
+  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  if (!reqSheet || reqSheet.getLastRow() < 2) return 0;
+  var emailSet = {};
+  (groupEmails || []).forEach(function(e) { if (e) emailSet[e.toLowerCase().trim()] = true; });
+  var rows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 9).getValues();
+  var updated = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var status  = (r[6] || '').toString();
+    var reqDate = formatSheetDate(r[4]);
+    var reqEmail = (r[3] || '').toString().toLowerCase().trim();
+    if (status === 'open' && reqDate === matchDate && emailSet[reqEmail]) {
+      var cell = reqSheet.getRange(i + 2, 6);
+      cell.setNumberFormat('@');
+      cell.setValue(timeValue);
+      updated++;
+    }
+  }
+  return updated;
+}
+
 function getMatchSlot(params) {
   var playerEmail = (params.playerEmail || '').toLowerCase().trim();
   var matchDate   = (params.matchDate   || '').toString().trim();
@@ -2446,7 +2584,7 @@ function getMatchSlot(params) {
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { found: false };
 
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     var rowDate = r[2] instanceof Date
@@ -2466,26 +2604,42 @@ function getMatchSlot(params) {
         if (nm) players.push({ name: nm, email: ev });
       }
 
-      // Try to find a match time from any existing sub request on this date
-      // by any player in this group who already submitted with a known time.
       var matchTime = '';
-      var groupEmails = players.map(function(p) { return p.email; });
-      var reqSheet = ss.getSheetByName(TABS.requests);
-      if (reqSheet && reqSheet.getLastRow() >= 2) {
-        var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 6).getValues();
-        for (var j = 0; j < reqRows.length; j++) {
-          var rr = reqRows[j];
-          var reqDate  = formatSheetDate(rr[4]);
-          var reqTime  = (rr[5] ? rr[5].toString().trim() : '');
-          var reqEmail = (rr[3] || '').toString().toLowerCase().trim();
-          if (reqDate === matchDate && reqTime && groupEmails.indexOf(reqEmail) !== -1) {
-            matchTime = reqTime;
-            break;
+      var overflow  = false;
+
+      // Court times only ever exist within 2 days of the match. Within that
+      // window, MatchGroups (populated by the Chelsea import or a manual View
+      // Schedule edit) is authoritative.
+      if (_isTomorrowOrDayAfterTomorrow(matchDate)) {
+        var mgTime = (r[16] || '').toString().trim();
+        if (mgTime === 'Overflow') {
+          overflow = true;
+        } else if (mgTime) {
+          matchTime = mgTime;
+        }
+
+        // Fall back to the old cross-request lookup only if MatchGroups doesn't
+        // have a time yet (e.g. Chelsea hasn't sent it yet this cycle).
+        if (!matchTime && !overflow) {
+          var groupEmails = players.map(function(p) { return p.email; });
+          var reqSheet = ss.getSheetByName(TABS.requests);
+          if (reqSheet && reqSheet.getLastRow() >= 2) {
+            var reqRows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 6).getValues();
+            for (var j = 0; j < reqRows.length; j++) {
+              var rr = reqRows[j];
+              var reqDate  = formatSheetDate(rr[4]);
+              var reqTime  = (rr[5] ? rr[5].toString().trim() : '');
+              var reqEmail = (rr[3] || '').toString().toLowerCase().trim();
+              if (reqDate === matchDate && reqTime && reqTime !== 'Overflow' && groupEmails.indexOf(reqEmail) !== -1) {
+                matchTime = reqTime;
+                break;
+              }
+            }
           }
         }
       }
 
-      return { found: true, matchTime: matchTime, players: players };
+      return { found: true, matchTime: matchTime, overflow: overflow, players: players };
     }
   }
 
@@ -3381,12 +3535,184 @@ function sendSubNeededTomorrowEmail(req) {
   sendLeagueEmail(emailParams);
 }
 
+// ──────────────────────────────────────────────────
+// CHELSEA COURT-TIME IMPORT
+// ──────────────────────────────────────────────────
+// Chelsea (via MTC) emails a PDF "Court Sheet" to mwfmtctennis@gmail.com with real
+// court times, always exactly 2 days before the match day it covers. This reads
+// that email, extracts the table, and writes matching group times into MatchGroups.
+
+var CHELSEA_TIMES = ['08:00', '09:30', '11:00', '12:30']; // must match frontend TIMES
+
+// Trigger handler — installed every 15 min (see setupTriggers), self-guards to
+// Sat/Mon/Wed 7:45-9:30am ET so it only actually does anything in that window.
+function checkChelseaCourtTimes() {
+  var tz  = Session.getScriptTimeZone();
+  var now = new Date();
+  var dow = parseInt(Utilities.formatDate(now, tz, 'u')); // 1=Mon...7=Sun
+  if ([6, 1, 3].indexOf(dow) === -1) return; // Sat=6, Mon=1, Wed=3
+
+  var minutesOfDay = parseInt(Utilities.formatDate(now, tz, 'H')) * 60 + parseInt(Utilities.formatDate(now, tz, 'm'));
+  if (minutesOfDay < (7 * 60 + 45) || minutesOfDay > (9 * 60 + 30)) return;
+
+  var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  if (PropertiesService.getScriptProperties().getProperty('chelseaProcessedDate') === todayStr) return;
+
+  _runChelseaImport();
+}
+
+// Core import — split from the trigger guard above so it can also be run on demand
+// (manual test / admin retry via debugRunChelseaImport) without waiting for the
+// schedule window.
+function _runChelseaImport() {
+  var tz = Session.getScriptTimeZone();
+  var targetDate = getDateStr(2); // Chelsea always assigns times exactly 2 days out
+  var result = { targetDate: targetDate, applied: [], skipped: [], dateMismatch: false, error: '' };
+  var props = PropertiesService.getScriptProperties();
+
+  try {
+    var threads = GmailApp.search('to:mwfmtctennis@gmail.com subject:"Upcoming Court Sheet" has:attachment newer_than:2d');
+    if (!threads.length) { result.error = 'no matching email found'; Logger.log('_runChelseaImport: ' + result.error); return result; }
+
+    // Most recent matching message with a PDF attachment.
+    var pdfBlob = null;
+    for (var ti = threads.length - 1; ti >= 0 && !pdfBlob; ti--) {
+      var msgs = threads[ti].getMessages();
+      for (var mi = msgs.length - 1; mi >= 0 && !pdfBlob; mi--) {
+        var atts = msgs[mi].getAttachments();
+        for (var ai = 0; ai < atts.length; ai++) {
+          if (atts[ai].getContentType() === 'application/pdf') { pdfBlob = atts[ai]; break; }
+        }
+      }
+    }
+    if (!pdfBlob) { result.error = 'no PDF attachment found'; Logger.log('_runChelseaImport: ' + result.error); return result; }
+
+    var text = _extractPdfText(pdfBlob);
+    result.extractedChars = text.length;
+
+    // Found and read a real PDF — done for today regardless of what's inside it.
+    // A stuck/wrong file won't resolve itself by retrying every 15 minutes.
+    props.setProperty('chelseaProcessedDate', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+
+    if (text.indexOf(_chelseaLongDate(targetDate)) === -1) {
+      result.dateMismatch = true;
+      Logger.log('_runChelseaImport: PDF date text did not match expected target date ' + targetDate + ' — aborting.');
+      return result;
+    }
+
+    var rows    = _parseChelseaRows(text);
+    var players = getPlayers();
+    var ss      = SpreadsheetApp.openById(SHEET_ID);
+
+    rows.forEach(function(row) {
+      var matched = _matchChelseaRowPlayers(row.players, players);
+      if (matched.length === 0) return; // no real players in this row — ignore silently
+      if (matched.length === 1) {
+        result.skipped.push({ time: row.time, reason: '1 match', names: matched[0].name });
+        Logger.log('_runChelseaImport: 1-match skip — ' + matched[0].name + ' at ' + row.time);
+        return;
+      }
+      var matchedEmails = matched.map(function(p) { return p.email; });
+      var group = _findMatchGroupRow(ss, targetDate, matchedEmails);
+      if (!group) {
+        result.skipped.push({ time: row.time, reason: 'no matching group', names: matched.map(function(p){return p.name;}).join(', ') });
+        Logger.log('_runChelseaImport: 2+ matches but no MatchGroups row found for ' + targetDate + ' — ' + matched.map(function(p){return p.name;}).join(', '));
+        return;
+      }
+      var setResult = _setMatchGroupTime(targetDate, group.letter, row.time);
+      if (setResult.success) {
+        _syncGroupTimeToOpenRequests(targetDate, setResult.emails, row.time);
+        result.applied.push({ group: group.letter, time: row.time, names: matched.map(function(p){return p.name;}).join(', ') });
+      }
+    });
+
+    Logger.log('_runChelseaImport: applied ' + result.applied.length + ', skipped ' + result.skipped.length + ' for ' + targetDate);
+  } catch (e) {
+    result.error = e.message;
+    Logger.log('_runChelseaImport error: ' + e.message);
+  }
+  return result;
+}
+
+// Converts a PDF blob to text via the Advanced Drive Service (Apps Script has no
+// built-in PDF text extraction) — uploads as a temp Google Doc with OCR conversion,
+// reads it, then deletes the temp file.
+function _extractPdfText(pdfBlob) {
+  var resource = { title: 'chelsea-court-sheet-temp', mimeType: MimeType.GOOGLE_DOCS };
+  var file = Drive.Files.insert(resource, pdfBlob, { ocr: true, ocrLanguage: 'en' });
+  try {
+    return DocumentApp.openById(file.id).getBody().getText();
+  } finally {
+    try { Drive.Files.remove(file.id); } catch (e) { Logger.log('_extractPdfText cleanup failed: ' + e.message); }
+  }
+}
+
+// Builds the "Wednesday - August 12, 2026" style string Chelsea's PDF states its
+// date as, to sanity-check the email actually covers the expected target date.
+function _chelseaLongDate(dateStr) {
+  var d = new Date(dateStr + 'T12:00:00'); // noon anchor avoids timezone edge cases
+  var weekday  = d.toLocaleDateString('en-US', { weekday: 'long' });
+  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  return weekday + ' - ' + monthDay + ', ' + d.getFullYear();
+}
+
+// Extracts { time, players: [name,...] } rows from the extracted PDF text, keeping
+// only rows at 8:00/9:30/11:00/12:30. Player names are matched by the repeating
+// "NAME- #12345" pattern; the "* Instructional- #999999" rows fall out naturally
+// (they never match a real player name) rather than needing special-casing.
+function _parseChelseaRows(text) {
+  var timeRe = /^(\d{1,2}):(\d{2})\s*(AM|PM)/i;
+  var nameRe = /([A-Za-z][A-Za-z .'\-]*?)-\s*#\d+/g;
+  var rows = [];
+  text.split('\n').forEach(function(line) {
+    var tm = line.match(timeRe);
+    if (!tm) return;
+    var h = parseInt(tm[1]);
+    var ap = tm[3].toUpperCase();
+    if (ap === 'PM' && h !== 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    var hhmm = (h < 10 ? '0' + h : h) + ':' + tm[2];
+    if (CHELSEA_TIMES.indexOf(hhmm) === -1) return;
+
+    var names = [];
+    var m;
+    nameRe.lastIndex = 0;
+    while ((m = nameRe.exec(line)) !== null) {
+      var nm = m[1].trim();
+      if (nm) names.push(nm);
+    }
+    if (names.length) rows.push({ time: hhmm, players: names });
+  });
+  return rows;
+}
+
+// Matches PDF player-name fragments against the Players sheet, case-insensitively.
+// A name matching more than one player is treated as no match for that slot —
+// safer than guessing which one was meant.
+function _matchChelseaRowPlayers(names, players) {
+  var matched = [];
+  names.forEach(function(rawName) {
+    var norm = rawName.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!norm) return;
+    var hits = players.filter(function(p) { return (p.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === norm; });
+    if (hits.length === 1) matched.push(hits[0]);
+  });
+  return matched;
+}
+
+// Manual/on-demand run for testing — same import the schedule would run, without
+// waiting for Sat/Mon/Wed 7:45-9:30am or the "already ran today" guard.
+function debugRunChelseaImport() {
+  return _runChelseaImport();
+}
+
 // Marks still-TBD sub requests for targetDate as 'Overflow' (Match Day -2 Dispatch,
 // Config column F) before dispatch runs. A TBD request this close to match day likely
 // means the group has no Chelsea court time yet — runMatch() skips 'Overflow' requests
 // so dispatch never assigns a volunteer to one.
 function markOverflowRequests(targetDate) {
-  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var reqSheet = ss.getSheetByName(TABS.requests);
   var requests = getRequests().filter(function(r) {
     return r.status === 'open' && r.matchDate === targetDate && !r.matchTime;
   });
@@ -3394,6 +3720,16 @@ function markOverflowRequests(targetDate) {
     var cell = reqSheet.getRange(req.rowIndex, 6);
     cell.setNumberFormat('@');
     cell.setValue('Overflow');
+
+    // Keep MatchGroups in sync — the request's group should show Overflow too.
+    try {
+      var emails = [req.email].concat((req.groupPlayers || []).map(function(p) { return p.email; }));
+      var group = _findMatchGroupRow(ss, targetDate, emails);
+      if (group) _setMatchGroupTime(targetDate, group.letter, 'Overflow');
+    } catch(e) {
+      Logger.log('markOverflowRequests: MatchGroups sync failed for ' + req.id + ': ' + e.message);
+    }
+
     try { sendOverflowNotification(req); } catch(e) {
       Logger.log('sendOverflowNotification failed for ' + req.id + ': ' + e.message);
     }
@@ -5508,7 +5844,8 @@ function publishScheduleSlot(params) {
       p[0].name, p[0].email, p[1].name, p[1].email,
       p[2].name, p[2].email, p[3].name, p[3].email,
       sitOutName, sitOutEmail,
-      sitOut2Name, sitOut2Email
+      sitOut2Name, sitOut2Email,
+      '' // Time — populated later by the Chelsea import or a manual View Schedule edit
     ]);
     saved++;
   });
@@ -5599,7 +5936,7 @@ function getPublishedSchedule() {
     });
   }
 
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 16).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
 
   // Callers only ever use today-forward dates (View Schedule, Request a Sub,
   // Availability lock-checks) — skip past rows so response size doesn't grow
@@ -5623,6 +5960,7 @@ function getPublishedSchedule() {
     var sitOutEmail  = r[13] ? r[13].toString() : '';
     var sitOut2Name  = r[14] ? r[14].toString() : '';
     var sitOut2Email = r[15] ? r[15].toString() : '';
+    var time         = r[16] ? r[16].toString().trim() : '';
 
     if (!date) return;
     if (!dateMap[date]) dateMap[date] = {};
@@ -5635,7 +5973,8 @@ function getPublishedSchedule() {
     dateMap[date][letter] = {
       players: players,
       sitOut:  sitOutName  ? { name: sitOutName,  email: sitOutEmail  } : null,
-      sitOut2: sitOut2Name ? { name: sitOut2Name, email: sitOut2Email } : null
+      sitOut2: sitOut2Name ? { name: sitOut2Name, email: sitOut2Email } : null,
+      time:    time
     };
   });
 
@@ -5651,7 +5990,8 @@ function getPublishedSchedule() {
           letter: letter,
           players: dateMap[date][letter].players,
           sitOut:  dateMap[date][letter].sitOut,
-          sitOut2: dateMap[date][letter].sitOut2
+          sitOut2: dateMap[date][letter].sitOut2,
+          time:    dateMap[date][letter].time
         };
       })
     };
@@ -5825,13 +6165,17 @@ function getOrCreateMatchGroupsSheet() {
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet) {
     sheet = ss.insertSheet(TABS.matchGroups);
-    sheet.getRange(1, 1, 1, 14).setValues([[
+    sheet.getRange(1, 1, 1, 17).setValues([[
       'Timestamp','Month','Date','Group',
       'P1 Name','P1 Email','P2 Name','P2 Email',
       'P3 Name','P3 Email','P4 Name','P4 Email',
-      'SitOut Name','SitOut Email'
+      'SitOut Name','SitOut Email','SitOut2 Name','SitOut2 Email',
+      'Time'
     ]]);
     sheet.setFrozenRows(1);
+  } else if (!sheet.getRange(1, 17).getValue()) {
+    // Existing sheets predate the Time column (col 17) — backfill just the header.
+    sheet.getRange(1, 17).setValue('Time');
   }
   return sheet;
 }
