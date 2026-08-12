@@ -4923,7 +4923,7 @@ function renderSettingsConfigTable(cfg) {
       </tbody>
     </table>
 
-    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Email Notification Settings</div>
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Email Notification Settings</div>
     <table class="dispatch-table compact" style="margin-bottom:14px;">
       <tbody>
         <tr><td>Email Notifications Enabled</td><td>${chk('cfgs-email-enabled', cfg.emailEnabled)}</td>
@@ -4936,6 +4936,11 @@ function renderSettingsConfigTable(cfg) {
 
     <button class="btn btn-primary btn-sm" id="settings-config-save-btn" onclick="saveSettingsConfig()">Save Settings</button>
     <div id="settings-config-alert" style="margin-top:8px;"></div>
+
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-top:24px;margin-bottom:10px;">Manual Triggers</div>
+    <div style="font-size:13px;color:var(--ink-mid);margin:0 0 10px;">Check for the Chelsea "Upcoming Court Sheet" email now and apply any court times found in its PDF attachment, without waiting for the next scheduled check.</div>
+    <button class="btn btn-secondary btn-sm" id="chelsea-check-now-btn" onclick="runChelseaCheckNow()">Check Court Sheet Now</button>
+    <div id="chelsea-check-now-result" style="font-size:13px;margin-top:8px;"></div>
   `;
 }
 
@@ -5531,6 +5536,35 @@ async function sendTestSubAlertEmail() {
   } catch(e) {
     result.style.color = 'var(--danger)';
     result.textContent = e.message || 'Error sending test email.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runChelseaCheckNow() {
+  const btn    = document.getElementById('chelsea-check-now-btn');
+  const result = document.getElementById('chelsea-check-now-result');
+  btn.disabled = true;
+  result.style.color = '';
+  result.textContent = 'Checking…';
+  try {
+    const data = await apiGetWithParams({ action: 'debugRunChelseaImport' });
+    if (data.error) {
+      result.style.color = 'var(--warn)';
+      result.textContent = 'For ' + (data.targetDate || '') + ': ' + data.error;
+    } else if (data.dateMismatch) {
+      result.style.color = 'var(--warn)';
+      result.textContent = 'Found a court sheet, but its date didn\'t match ' + (data.targetDate || 'the expected date') + '.';
+    } else {
+      result.style.color = 'var(--success)';
+      const applied = (data.applied || []).length;
+      const skipped = (data.skipped || []).length;
+      result.textContent = 'For ' + (data.targetDate || '') + ': applied ' + applied + ' court time(s)' +
+        (skipped ? ', skipped ' + skipped : '') + '.';
+    }
+  } catch(e) {
+    result.style.color = 'var(--danger)';
+    result.textContent = e.message || 'Error checking court sheet.';
   } finally {
     btn.disabled = false;
   }
