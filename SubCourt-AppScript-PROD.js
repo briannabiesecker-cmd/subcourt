@@ -5,6 +5,14 @@
 
 const SHEET_ID = '1hA-ZPhV62pp376qtWRDfQQkFv6y9U5Wkm0nUyKCHC6o';
 
+// Completely side-effect-free: no sheet reads or writes, no email, no Gmail/Drive
+// calls. Exists solely as an obviously-safe function to run once from the Apps
+// Script editor's Run button, to trigger Google's permission-grant screen after
+// new scopes are added to the manifest — without doing anything else.
+function authorizeApp() {
+  Logger.log('authorizeApp: no-op. If you see this line, authorization succeeded.');
+}
+
 // Execution-level cache for getConfig() — resets between trigger/HTTP invocations.
 var _configCache = null;
 
