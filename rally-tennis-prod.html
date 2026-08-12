@@ -3859,16 +3859,29 @@ function renderDispatchConfigTable(cfg) {
 
     <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Match Day -2 Dispatch (Sat, Mon, Wed)</div>
     <table class="dispatch-table compact" style="margin-bottom:14px;">
-      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Time Reminder</th><th>Move to Overflow</th></tr></thead>
+      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Move to Overflow</th></tr></thead>
       <tbody>
         ${md2.map((r, i) => `<tr>
           <td>${i + 1}</td>
           <td>${time('cfgd-md2-time-' + i, r.time)}</td>
           <td>${chk('cfgd-md2-dispatch-' + i, r.dispatch)}</td>
           <td>${chk('cfgd-md2-broadcast-' + i, r.broadcast)}</td>
-          <td>${chk('cfgd-md2-reminder-' + i, r.matchTimeReminder)}</td>
           <td>${chk('cfgd-md2-overflow-' + i, r.overflowDetect)}</td>
         </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Chelsea Court Sheet Check</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Days to check</td><td>${txt('cfgd-chelsea-days', cfg.chelseaCheckDays, 140)}</td>
+            <td>Every</td><td>
+              <select id="cfgd-chelsea-freq" style="font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;">
+                ${[1, 5, 10, 15, 30].map(m => `<option value="${m}" ${cfg.chelseaCheckFrequencyMinutes == m ? 'selected' : ''}>${m} min</option>`).join('')}
+              </select>
+            </td></tr>
+        <tr><td>Start time (ET)</td><td>${time('cfgd-chelsea-start', cfg.chelseaCheckStartTime)}</td>
+            <td>End time (ET)</td><td>${time('cfgd-chelsea-end', cfg.chelseaCheckEndTime)}</td></tr>
       </tbody>
     </table>
 
@@ -3903,7 +3916,6 @@ async function saveDispatchConfig() {
     time: val('cfgd-md2-time-' + i),
     dispatch: chkVal('cfgd-md2-dispatch-' + i),
     broadcast: chkVal('cfgd-md2-broadcast-' + i),
-    matchTimeReminder: chkVal('cfgd-md2-reminder-' + i),
     overflowDetect: chkVal('cfgd-md2-overflow-' + i)
   }));
 
@@ -3924,7 +3936,11 @@ async function saveDispatchConfig() {
       skillWindowUrgent: val('cfgd-match-win-2'),
       skillWindowLastMinute: val('cfgd-match-win-3'),
       preMatchSchedule,
-      matchDayMinus2Schedule
+      matchDayMinus2Schedule,
+      chelseaCheckDays: val('cfgd-chelsea-days'),
+      chelseaCheckStartTime: val('cfgd-chelsea-start'),
+      chelseaCheckEndTime: val('cfgd-chelsea-end'),
+      chelseaCheckFrequencyMinutes: val('cfgd-chelsea-freq')
     });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;

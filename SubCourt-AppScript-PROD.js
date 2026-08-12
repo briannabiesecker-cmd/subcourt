@@ -777,12 +777,11 @@ function getConfig() {
         ['5', '8:00 PM',  'Yes', 'Yes']
       ]);
     }
-    // Match time reminder column — auto-init on first use (column E, rows 50–55).
-    // Separate from the block above since existing sheets already have A50:D55 populated.
-    var e50 = sheet.getRange('E50').getValue();
-    if (e50 === '' || e50 === null) {
-      sheet.getRange('E50').setValue('Time Reminder');
-      sheet.getRange('E51:E55').setValues([['No'], ['No'], ['No'], ['No'], ['No']]);
+    // Match time reminder column (former E) — removed. The reminder email now fires
+    // directly from checkChelseaCourtTimes() instead of a manual per-run schedule flag.
+    // One-time cleanup for sheets that still have the old header/values.
+    if (sheet.getRange('E50').getValue() === 'Time Reminder') {
+      sheet.getRange('E50:E55').clearContent();
     }
     // Overflow-detect column — auto-init on first use (column F, rows 50–55).
     var f50 = sheet.getRange('F50').getValue();
@@ -793,12 +792,11 @@ function getConfig() {
     var md2Rows = sheet.getRange('A51:F55').getValues();
     var matchDayMinus2Schedule = md2Rows.map(function(row) {
       return {
-        run:               row[0].toString(),
-        time:              formatSheetTime(row[1]) || row[1].toString().trim(),
-        dispatch:          row[2] !== 'No' && row[2] !== false,
-        broadcast:         row[3] !== 'No' && row[3] !== false,
-        matchTimeReminder: row[4] === 'Yes' || row[4] === true,
-        overflowDetect:    row[5] === 'Yes' || row[5] === true
+        run:            row[0].toString(),
+        time:           formatSheetTime(row[1]) || row[1].toString().trim(),
+        dispatch:       row[2] !== 'No' && row[2] !== false,
+        broadcast:      row[3] !== 'No' && row[3] !== false,
+        overflowDetect: row[5] === 'Yes' || row[5] === true
       };
     });
     // Friday auto dispatch — auto-init on first use (rows 57–59)
@@ -823,6 +821,20 @@ function getConfig() {
       sheet.getRange('A62').setValue('── MTC Contact ──');
       sheet.getRange('A63').setValue('MTC Email Address 1');
       sheet.getRange('A64').setValue('MTC Email Address 2');
+    }
+    // Chelsea court-sheet check window — auto-init on first use (rows 65–69)
+    if (sheet.getRange('A65').getValue() !== '── Chelsea Court Sheet Check ──') {
+      sheet.getRange('A65').setValue('── Chelsea Court Sheet Check ──');
+      sheet.getRange('A66').setValue('Days to Check (e.g. Sat,Mon,Wed)');
+      sheet.getRange('B66').setValue('Sat,Mon,Wed');
+      sheet.getRange('A67').setValue('Start Time (ET, 24h HH:MM)');
+      sheet.getRange('B67').setNumberFormat('@');
+      sheet.getRange('B67').setValue('07:45');
+      sheet.getRange('A68').setValue('End Time (ET, 24h HH:MM)');
+      sheet.getRange('B68').setNumberFormat('@');
+      sheet.getRange('B68').setValue('09:30');
+      sheet.getRange('A69').setValue('Check Frequency (minutes)');
+      sheet.getRange('B69').setValue(15);
     }
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
@@ -861,6 +873,11 @@ function getConfig() {
       // MTC contact — rows 63–64
       mtcEmail1: (sheet.getRange('B63').getValue() || '').toString().trim(),
       mtcEmail2: (sheet.getRange('B64').getValue() || '').toString().trim(),
+      // Chelsea court-sheet check window — rows 66–69
+      chelseaCheckDays:             (sheet.getRange('B66').getValue() || 'Sat,Mon,Wed').toString().trim(),
+      chelseaCheckStartTime:        formatSheetTime(sheet.getRange('B67').getValue()) || '07:45',
+      chelseaCheckEndTime:          formatSheetTime(sheet.getRange('B68').getValue()) || '09:30',
+      chelseaCheckFrequencyMinutes: parseInt(sheet.getRange('B69').getValue()) || 15,
     };
     _configCache = cfg;
     return cfg;
@@ -902,6 +919,10 @@ function getConfig() {
       allowPlayerNameChangeOnDelete: true,
       mtcEmail1: '',
       mtcEmail2: '',
+      chelseaCheckDays: 'Sat,Mon,Wed',
+      chelseaCheckStartTime: '07:45',
+      chelseaCheckEndTime: '09:30',
+      chelseaCheckFrequencyMinutes: 15,
     };
   }
 }
@@ -943,11 +964,12 @@ function setupTriggers() {
   // Daily check to auto-close availability window
   ScriptApp.newTrigger('checkAvailabilityWindow').timeBased().atHour(4).everyDays(1).create();
 
-  // Chelsea court-time email check — every 15 min, self-guards to Sat/Mon/Wed
-  // 7:45-9:30am ET inside the handler (Apps Script triggers can't be restricted to
-  // specific weekdays at 15-minute granularity, so this follows the same pattern as
-  // the daily dispatch triggers below: install unconditionally, guard in the handler).
-  ScriptApp.newTrigger('checkChelseaCourtTimes').timeBased().everyMinutes(15).create();
+  // Chelsea court-time email check — runs on the configured frequency (Config B69),
+  // self-guards to the configured days/window (B66–B68) inside the handler (Apps
+  // Script triggers can't be restricted to specific weekdays/times at minute
+  // granularity, so this follows the same pattern as the daily dispatch triggers
+  // below: install unconditionally, guard in the handler).
+  updateChelseaCheckTrigger();
 
   // Daily dispatch (handles T+2 broadcast; T+1 is handled by pre-match-day triggers below)
   updateDispatchTrigger();
@@ -963,7 +985,9 @@ function setupTriggers() {
     (config.autoDispatchEnabled ? 'Fridays at ' + config.autoDispatchTimeET + ' ET' : 'disabled') +
     '. Match day -2 runs: Sat/Mon/Wed at 8am, 11am, 2pm, 5pm, 8pm ET.' +
     '. Pre-match-day runs: Sun/Tue/Thu at 8am, 11am, 2pm, 5pm, 8pm ET.' +
-    ' Match time reminder: fires on Match day -2 runs whose Config column E (rows 51-55) is Yes.');
+    ' Chelsea check: ' + config.chelseaCheckDays + ' every ' + config.chelseaCheckFrequencyMinutes +
+    'm from ' + config.chelseaCheckStartTime + ' to ' + config.chelseaCheckEndTime + ' ET' +
+    ' (fires the court-time reminder email once read or given up).');
 }
 
 function onConfigEdit(e) {
@@ -982,6 +1006,10 @@ function onConfigEdit(e) {
   if ((col === 2 || col === 3 || col === 4) && row >= 51 && row <= 55) {
     updateMatchDayMinus2Triggers();
     Logger.log('Match day -2 schedule changed — triggers updated.');
+  }
+  if (col === 2 && row >= 66 && row <= 69) {
+    updateChelseaCheckTrigger();
+    Logger.log('Chelsea check schedule changed — trigger updated.');
   }
 }
 
@@ -1020,6 +1048,21 @@ function updateMatchDayMinus2Triggers() {
       .timeBased().atHour(hour).everyDays(1)
       .inTimezone('America/New_York').create();
   });
+}
+
+// Re-installs the checkChelseaCourtTimes trigger at the configured frequency
+// (Config B69). Apps Script's ClockTriggerBuilder.everyMinutes() only accepts
+// 1, 5, 10, 15, or 30 — an out-of-range configured value falls back to 15.
+function updateChelseaCheckTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'checkChelseaCourtTimes') {
+      try { ScriptApp.deleteTrigger(t); } catch(e) {}
+    }
+  });
+  var config = getConfig();
+  var allowed = [1, 5, 10, 15, 30];
+  var freq = allowed.indexOf(config.chelseaCheckFrequencyMinutes) !== -1 ? config.chelseaCheckFrequencyMinutes : 15;
+  ScriptApp.newTrigger('checkChelseaCourtTimes').timeBased().everyMinutes(freq).create();
 }
 
 function getOrCreateDispatchLog() {
@@ -1274,7 +1317,7 @@ function doGet(e) {
     else if (action === 'saveSettingsConfigTable')      result = saveSettingsConfigTable(e.parameter);
     else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
     else if (action === 'updateMatchGroupTime')       result = updateMatchGroupTime(e.parameter);
-    else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport();
+    else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport(e.parameter);
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -3268,8 +3311,8 @@ function setupSubReminderTrigger() {
     .inTimezone('America/New_York').create();
 }
 
-// Fires from runMatchDayMinus2Dispatch() when the matched run's Config column E
-// (rows 51–55) is Yes.
+// Fires from checkChelseaCourtTimes() — once a Chelsea court sheet is read for the
+// day, or once the check window closes without one arriving.
 function runMatchTimeReminder() {
   var now       = new Date();
   var FOUR_HOURS = 4 * 60 * 60 * 1000;
@@ -3382,7 +3425,11 @@ function getAdminConfigTables() {
     brevoScheduleEmail:       config.brevoScheduleEmail,
     urgentSubEmailsEnabled:   config.urgentSubEmailsEnabled,
     mtcEmail1:                config.mtcEmail1,
-    mtcEmail2:                config.mtcEmail2
+    mtcEmail2:                config.mtcEmail2,
+    chelseaCheckDays:             config.chelseaCheckDays,
+    chelseaCheckStartTime:        config.chelseaCheckStartTime,
+    chelseaCheckEndTime:          config.chelseaCheckEndTime,
+    chelseaCheckFrequencyMinutes: config.chelseaCheckFrequencyMinutes
   };
 }
 
@@ -3406,6 +3453,15 @@ function saveDispatchConfigTable(params) {
   sheet.getRange('B63').setValue((params.mtcEmail1 || '').toString().trim());
   sheet.getRange('B64').setValue((params.mtcEmail2 || '').toString().trim());
 
+  sheet.getRange('B66').setValue((params.chelseaCheckDays || 'Sat,Mon,Wed').toString().trim());
+  var chelseaStartCell = sheet.getRange('B67');
+  chelseaStartCell.setNumberFormat('@');
+  chelseaStartCell.setValue((params.chelseaCheckStartTime || '07:45').toString().trim());
+  var chelseaEndCell = sheet.getRange('B68');
+  chelseaEndCell.setNumberFormat('@');
+  chelseaEndCell.setValue((params.chelseaCheckEndTime || '09:30').toString().trim());
+  sheet.getRange('B69').setValue(parseInt(params.chelseaCheckFrequencyMinutes) || 15);
+
   sheet.getRange('B4').setValue(parseInt(params.preScheduleThresholdHrs)   || 72);
   sheet.getRange('C4').setValue(parseFloat(params.skillWindowFarOut)       || 0.5);
   sheet.getRange('B5').setValue(parseInt(params.urgentThresholdHrs)       || 48);
@@ -3425,7 +3481,7 @@ function saveDispatchConfigTable(params) {
   if (md2.length === 5) {
     sheet.getRange('A51:F55').setValues(md2.map(function(r, i) {
       return [String(i + 1), r.time || '', r.dispatch ? 'Yes' : 'No', r.broadcast ? 'Yes' : 'No',
-              r.matchTimeReminder ? 'Yes' : 'No', r.overflowDetect ? 'Yes' : 'No'];
+              '', r.overflowDetect ? 'Yes' : 'No'];
     }));
   }
 
@@ -3435,6 +3491,7 @@ function saveDispatchConfigTable(params) {
   try { updateDispatchTrigger(enabled, time); } catch(e) { Logger.log('updateDispatchTrigger error: ' + e.message); }
   try { updatePreMatchDayTriggers(); } catch(e) { Logger.log('updatePreMatchDayTriggers error: ' + e.message); }
   try { updateMatchDayMinus2Triggers(); } catch(e) { Logger.log('updateMatchDayMinus2Triggers error: ' + e.message); }
+  try { updateChelseaCheckTrigger(); } catch(e) { Logger.log('updateChelseaCheckTrigger error: ' + e.message); }
 
   return { success: true };
 }
@@ -3552,29 +3609,77 @@ function sendSubNeededTomorrowEmail(req) {
 
 var CHELSEA_TIMES = ['08:00', '09:30', '11:00', '12:30']; // must match frontend TIMES
 
-// Trigger handler — installed every 15 min (see setupTriggers), self-guards to
-// Sat/Mon/Wed 7:45-9:30am ET so it only actually does anything in that window.
+// Trigger handler — installed at the configured frequency (Config B69, see
+// updateChelseaCheckTrigger), self-guards to the configured days/window (Config
+// B66–B68) so it only actually does anything in that range.
+//
+// Also fires the "no court time" reminder email (runMatchTimeReminder) — right
+// after a Chelsea PDF is successfully read for the day, or, if none ever arrives,
+// once after the check window closes ("Rally stops trying"). This replaces the old
+// manually-scheduled Match Day -2 "Time Reminder" flag.
 function checkChelseaCourtTimes() {
+  var config = getConfig();
   var tz  = Session.getScriptTimeZone();
   var now = new Date();
   var dow = parseInt(Utilities.formatDate(now, tz, 'u')); // 1=Mon...7=Sun
-  if ([6, 1, 3].indexOf(dow) === -1) return; // Sat=6, Mon=1, Wed=3
+  var allowedDows = _parseConfigDows(config.chelseaCheckDays);
+  if (allowedDows.length && allowedDows.indexOf(dow) === -1) return;
+
+  var props    = PropertiesService.getScriptProperties();
+  var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  if (props.getProperty('chelseaProcessedDate') === todayStr) return; // already read + reminded today
 
   var minutesOfDay = parseInt(Utilities.formatDate(now, tz, 'H')) * 60 + parseInt(Utilities.formatDate(now, tz, 'm'));
-  if (minutesOfDay < (7 * 60 + 45) || minutesOfDay > (9 * 60 + 30)) return;
+  var startMin = _parseConfigMinutesOfDay(config.chelseaCheckStartTime);
+  var endMin   = _parseConfigMinutesOfDay(config.chelseaCheckEndTime);
+  if (startMin < 0) startMin = 7 * 60 + 45;
+  if (endMin < 0)   endMin   = 9 * 60 + 30;
+  if (minutesOfDay < startMin) return;
 
-  var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
-  if (PropertiesService.getScriptProperties().getProperty('chelseaProcessedDate') === todayStr) return;
+  var reminderSentToday = props.getProperty('chelseaReminderSentDate') === todayStr;
+
+  if (minutesOfDay > endMin) {
+    // Window already closed today — Rally gave up finding the email. Send the
+    // reminder once, if it hasn't gone out yet, then stop; nothing left to check.
+    if (!reminderSentToday) {
+      try { runMatchTimeReminder(); } catch(e) { Logger.log('runMatchTimeReminder failed: ' + e.message); }
+      props.setProperty('chelseaReminderSentDate', todayStr);
+    }
+    return;
+  }
+
+  var isLastRun = (minutesOfDay + config.chelseaCheckFrequencyMinutes) > endMin;
 
   _runChelseaImport();
+
+  var nowProcessed = props.getProperty('chelseaProcessedDate') === todayStr;
+  if ((nowProcessed || isLastRun) && !reminderSentToday) {
+    try { runMatchTimeReminder(); } catch(e) { Logger.log('runMatchTimeReminder failed: ' + e.message); }
+    props.setProperty('chelseaReminderSentDate', todayStr);
+  }
+}
+
+// Converts "Sat,Mon,Wed" style config text into ISO weekday numbers (1=Mon...7=Sun).
+function _parseConfigDows(str) {
+  var map = { SUN: 7, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+  return (str || '').split(',')
+    .map(function(s) { return map[s.trim().slice(0, 3).toUpperCase()]; })
+    .filter(function(n) { return !!n; });
+}
+
+// Parses a 24h "HH:MM" config string into minutes since midnight, or -1 if invalid.
+function _parseConfigMinutesOfDay(timeStr) {
+  var m = (timeStr || '').toString().trim().match(/^(\d{1,2}):(\d{2})$/);
+  return m ? (parseInt(m[1]) * 60 + parseInt(m[2])) : -1;
 }
 
 // Core import — split from the trigger guard above so it can also be run on demand
 // (manual test / admin retry via debugRunChelseaImport) without waiting for the
 // schedule window.
-function _runChelseaImport() {
+function _runChelseaImport(opts) {
+  opts = opts || {};
   var tz = Session.getScriptTimeZone();
-  var targetDate = getDateStr(2); // Chelsea always assigns times exactly 2 days out
+  var targetDate = opts.overrideTargetDate || getDateStr(2); // Chelsea always assigns times exactly 2 days out
   var result = { targetDate: targetDate, applied: [], skipped: [], dateMismatch: false, error: '' };
   var props = PropertiesService.getScriptProperties();
 
@@ -3597,18 +3702,26 @@ function _runChelseaImport() {
 
     var text = _extractPdfText(pdfBlob);
     result.extractedChars = text.length;
+    if (opts.dumpText) { result.text = text; return result; } // debug only — inspect raw extraction, nothing else
 
     // Found and read a real PDF — done for today regardless of what's inside it.
     // A stuck/wrong file won't resolve itself by retrying every 15 minutes.
-    props.setProperty('chelseaProcessedDate', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+    // (Dry runs don't count — they shouldn't suppress the real scheduled check.)
+    if (!opts.dryRun) props.setProperty('chelseaProcessedDate', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
 
-    if (text.indexOf(_chelseaLongDate(targetDate)) === -1) {
+    if (!opts.skipDateCheck && text.indexOf(_chelseaLongDate(targetDate)) === -1) {
       result.dateMismatch = true;
       Logger.log('_runChelseaImport: PDF date text did not match expected target date ' + targetDate + ' — aborting.');
       return result;
     }
 
-    var rows    = _parseChelseaRows(text);
+    var parsed = _parseChelseaRows(text);
+    if (parsed.error) {
+      result.error = parsed.error;
+      Logger.log('_runChelseaImport: ' + parsed.error);
+      return result;
+    }
+    var rows    = parsed.rows;
     var players = getPlayers();
     var ss      = SpreadsheetApp.openById(SHEET_ID);
 
@@ -3625,6 +3738,10 @@ function _runChelseaImport() {
       if (!group) {
         result.skipped.push({ time: row.time, reason: 'no matching group', names: matched.map(function(p){return p.name;}).join(', ') });
         Logger.log('_runChelseaImport: 2+ matches but no MatchGroups row found for ' + targetDate + ' — ' + matched.map(function(p){return p.name;}).join(', '));
+        return;
+      }
+      if (opts.dryRun) {
+        result.applied.push({ group: group.letter, time: row.time, names: matched.map(function(p){return p.name;}).join(', '), dryRun: true });
         return;
       }
       var setResult = _setMatchGroupTime(targetDate, group.letter, row.time);
@@ -3646,7 +3763,10 @@ function _runChelseaImport() {
 // built-in PDF text extraction) — uploads as a temp Google Doc with OCR conversion,
 // reads it, then deletes the temp file.
 function _extractPdfText(pdfBlob) {
-  var resource = { title: 'chelsea-court-sheet-temp', mimeType: MimeType.GOOGLE_DOCS };
+  // resource.mimeType must describe the SOURCE file being uploaded (the PDF) —
+  // not the OCR conversion target. Declaring it as GOOGLE_DOCS here (an earlier
+  // mistake) told Drive the file was already a Doc, so it refused to OCR it.
+  var resource = { title: 'chelsea-court-sheet-temp', mimeType: pdfBlob.getContentType() };
   var file = Drive.Files.insert(resource, pdfBlob, { ocr: true, ocrLanguage: 'en' });
   try {
     return DocumentApp.openById(file.id).getBody().getText();
@@ -3664,34 +3784,67 @@ function _chelseaLongDate(dateStr) {
   return weekday + ' - ' + monthDay + ', ' + d.getFullYear();
 }
 
+function _escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
 // Extracts { time, players: [name,...] } rows from the extracted PDF text, keeping
-// only rows at 8:00/9:30/11:00/12:30. Player names are matched by the repeating
-// "NAME- #12345" pattern; the "* Instructional- #999999" rows fall out naturally
-// (they never match a real player name) rather than needing special-casing.
+// only rows at 8:00/9:30/11:00/12:30.
+//
+// Google's OCR conversion does NOT keep a row's Time value adjacent to it — the
+// source PDF's merged/spanning Time cells apparently confuse the OCR reading-order
+// heuristic, so most Time values end up shifted into one run of text near the end
+// of the document, disconnected from their row (verified against a real sample:
+// court/player content stays in the correct top-to-bottom order, and the Time
+// values — wherever they end up — also stay in the correct relative order, just
+// not adjacent to their row). So rows and times are extracted independently, in
+// document order, and zipped by position. If the counts don't match exactly, the
+// whole import aborts — better to import nothing than to misassign a time to the
+// wrong group.
 function _parseChelseaRows(text) {
-  var timeRe = /^(\d{1,2}):(\d{2})\s*(AM|PM)/i;
+  var headerMatch = text.match(/Player\s*4/i);
+  var body = headerMatch ? text.slice(headerMatch.index + headerMatch[0].length) : text;
+
+  var facilityMatch = text.match(/Facility\s+([A-Za-z][A-Za-z ]*?)\s*(?:\n|Time\s+Facility)/);
+  var facilityName = facilityMatch ? facilityMatch[1].trim() : '';
+  if (!facilityName) return { rows: [], error: 'could not determine facility name from PDF header' };
+  var esc = _escapeRegex(facilityName);
+
+  var rowRe  = new RegExp(esc + '\\s*\\n\\s*(\\d{1,2})\\s*\\n([\\s\\S]*?)(?=' + esc + '\\s*\\n\\s*\\d{1,2}\\s*\\n|$)', 'g');
   var nameRe = /([A-Za-z][A-Za-z .'\-]*?)-\s*#\d+/g;
-  var rows = [];
-  text.split('\n').forEach(function(line) {
-    var tm = line.match(timeRe);
-    if (!tm) return;
+  var rowBlocks = [];
+  var m;
+  while ((m = rowRe.exec(body)) !== null) {
+    var chunk = m[2];
+    var names = [];
+    var nm;
+    nameRe.lastIndex = 0;
+    while ((nm = nameRe.exec(chunk)) !== null) {
+      var n = nm[1].trim();
+      if (n) names.push(n);
+    }
+    if (names.length) rowBlocks.push(names);
+  }
+
+  var timeRe = /(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
+  var times = [];
+  var tm;
+  while ((tm = timeRe.exec(body)) !== null) {
     var h = parseInt(tm[1]);
     var ap = tm[3].toUpperCase();
     if (ap === 'PM' && h !== 12) h += 12;
     if (ap === 'AM' && h === 12) h = 0;
-    var hhmm = (h < 10 ? '0' + h : h) + ':' + tm[2];
-    if (CHELSEA_TIMES.indexOf(hhmm) === -1) return;
+    times.push((h < 10 ? '0' + h : h) + ':' + tm[2]);
+  }
 
-    var names = [];
-    var m;
-    nameRe.lastIndex = 0;
-    while ((m = nameRe.exec(line)) !== null) {
-      var nm = m[1].trim();
-      if (nm) names.push(nm);
-    }
-    if (names.length) rows.push({ time: hhmm, players: names });
-  });
-  return rows;
+  if (times.length !== rowBlocks.length) {
+    return { rows: [], error: 'row/time count mismatch (' + rowBlocks.length + ' rows, ' + times.length + ' times) — aborting' };
+  }
+
+  var rows = [];
+  for (var i = 0; i < rowBlocks.length; i++) {
+    if (CHELSEA_TIMES.indexOf(times[i]) === -1) continue; // not one of the MWF slots
+    rows.push({ time: times[i], players: rowBlocks[i] });
+  }
+  return { rows: rows, error: '' };
 }
 
 // Matches PDF player-name fragments against the Players sheet, case-insensitively.
@@ -3710,8 +3863,14 @@ function _matchChelseaRowPlayers(names, players) {
 
 // Manual/on-demand run for testing — same import the schedule would run, without
 // waiting for Sat/Mon/Wed 7:45-9:30am or the "already ran today" guard.
-function debugRunChelseaImport() {
-  return _runChelseaImport();
+function debugRunChelseaImport(params) {
+  params = params || {};
+  return _runChelseaImport({
+    dumpText:          params.dumpText === '1',
+    skipDateCheck:     params.skipDateCheck === '1',
+    overrideTargetDate: params.overrideTargetDate || '',
+    dryRun:            params.dryRun === '1'
+  });
 }
 
 // Marks still-TBD sub requests for targetDate as 'Overflow' (Match Day -2 Dispatch,
@@ -4258,7 +4417,7 @@ function runMatchDayMinus2Dispatch() {
   if (!row) row = { dispatch: true, broadcast: true };
 
   Logger.log('runMatchDayMinus2Dispatch: ' + targetDate + ' hour=' + currentHour +
-    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' matchTimeReminder=' + !!row.matchTimeReminder +
+    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast +
     ' overflowDetect=' + !!row.overflowDetect);
 
   // Before filling anything: TBD requests this close to match day likely mean the group
@@ -4274,10 +4433,6 @@ function runMatchDayMinus2Dispatch() {
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
     try { sendUrgentSubBroadcast(openReqs, targetDate); }
     catch(e) { Logger.log('sendUrgentSubBroadcast failed: ' + e.message); }
-  }
-
-  if (row.matchTimeReminder) {
-    try { runMatchTimeReminder(); } catch(e) { Logger.log('runMatchTimeReminder failed: ' + e.message); }
   }
 }
 
