@@ -3885,24 +3885,37 @@ function getBrevoBounceSummary(params) {
   var days = parseInt(params.days) || 90;
   if (days > 90) days = 90;
 
-  var url = 'https://api.brevo.com/v3/smtp/statistics/events?event=bounces&days=' + days + '&limit=2500&sort=desc';
-  var response = UrlFetchApp.fetch(url, {
-    method: 'get',
-    headers: { 'api-key': config.brevoApiKey },
-    muteHttpExceptions: true
-  });
-  var code = response.getResponseCode();
-  if (code < 200 || code >= 300) {
-    return { success: false, error: 'Brevo error ' + code + ': ' + response.getContentText().substring(0, 300) };
+  function fetchEvents(eventType) {
+    var url = 'https://api.brevo.com/v3/smtp/statistics/events?event=' + eventType + '&days=' + days + '&limit=2500&sort=desc';
+    var response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { 'api-key': config.brevoApiKey },
+      muteHttpExceptions: true
+    });
+    var code = response.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('Brevo error ' + code + ': ' + response.getContentText().substring(0, 300));
+    }
+    return JSON.parse(response.getContentText()).events || [];
   }
-  var events = (JSON.parse(response.getContentText()).events || []);
+
+  var bounceEvents, requestEvents;
+  try {
+    bounceEvents  = fetchEvents('bounces');
+    requestEvents = fetchEvents('requests'); // one per email actually sent — denominator for failure rate
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
 
   var byEmail = {};
-  events.forEach(function(ev) {
+  function getRec(email) {
+    if (!byEmail[email]) byEmail[email] = { email: email, hardCount: 0, softCount: 0, sentCount: 0, lastDate: '', lastEvent: '', lastReason: '' };
+    return byEmail[email];
+  }
+  bounceEvents.forEach(function(ev) {
     var email = (ev.email || '').toLowerCase();
     if (!email) return;
-    if (!byEmail[email]) byEmail[email] = { email: email, hardCount: 0, softCount: 0, lastDate: '', lastEvent: '', lastReason: '' };
-    var rec = byEmail[email];
+    var rec = getRec(email);
     if (ev.event === 'hardBounces') rec.hardCount++;
     else if (ev.event === 'softBounces') rec.softCount++;
     if (!rec.lastDate || ev.date > rec.lastDate) {
@@ -3911,11 +3924,17 @@ function getBrevoBounceSummary(params) {
       rec.lastReason = ev.reason || '';
     }
   });
+  requestEvents.forEach(function(ev) {
+    var email = (ev.email || '').toLowerCase();
+    if (!email) return;
+    getRec(email).sentCount++;
+  });
 
   var summary = Object.keys(byEmail).map(function(k) {
     var r = byEmail[k];
-    r.totalCount = r.hardCount + r.softCount;
-    r.domain = r.email.split('@')[1] || '';
+    r.totalCount   = r.hardCount + r.softCount;
+    r.domain       = r.email.split('@')[1] || '';
+    r.failPercent  = r.sentCount ? Math.round((r.totalCount / r.sentCount) * 1000) / 10 : null;
     return r;
   }).sort(function(a, b) { return b.totalCount - a.totalCount; });
 
@@ -3925,7 +3944,7 @@ function getBrevoBounceSummary(params) {
   return {
     success: true,
     days: days,
-    totalEvents: events.length,
+    totalEvents: bounceEvents.length,
     uniqueAddresses: summary.length,
     byDomain: domainCounts,
     summary: summary
