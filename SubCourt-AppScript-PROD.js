@@ -3509,15 +3509,6 @@ function saveDispatchConfigTable(params) {
   sheet.getRange('B63').setValue((params.mtcEmail1 || '').toString().trim());
   sheet.getRange('B64').setValue((params.mtcEmail2 || '').toString().trim());
 
-  sheet.getRange('B66').setValue((params.chelseaCheckDays || 'Sat,Mon,Wed').toString().trim());
-  var chelseaStartCell = sheet.getRange('B67');
-  chelseaStartCell.setNumberFormat('@');
-  chelseaStartCell.setValue((params.chelseaCheckStartTime || '07:45').toString().trim());
-  var chelseaEndCell = sheet.getRange('B68');
-  chelseaEndCell.setNumberFormat('@');
-  chelseaEndCell.setValue((params.chelseaCheckEndTime || '09:30').toString().trim());
-  sheet.getRange('B69').setValue(parseInt(params.chelseaCheckFrequencyMinutes) || 15);
-
   sheet.getRange('B4').setValue(parseInt(params.preScheduleThresholdHrs)   || 72);
   sheet.getRange('C4').setValue(parseFloat(params.skillWindowFarOut)       || 0.5);
   sheet.getRange('B5').setValue(parseInt(params.urgentThresholdHrs)       || 48);
@@ -3547,7 +3538,6 @@ function saveDispatchConfigTable(params) {
   try { updateDispatchTrigger(enabled, time); } catch(e) { Logger.log('updateDispatchTrigger error: ' + e.message); }
   try { updatePreMatchDayTriggers(); } catch(e) { Logger.log('updatePreMatchDayTriggers error: ' + e.message); }
   try { updateMatchDayMinus2Triggers(); } catch(e) { Logger.log('updateMatchDayMinus2Triggers error: ' + e.message); }
-  try { updateChelseaCheckTrigger(); } catch(e) { Logger.log('updateChelseaCheckTrigger error: ' + e.message); }
 
   return { success: true };
 }
@@ -3574,8 +3564,19 @@ function saveSettingsConfigTable(params) {
   sheet.getRange('B37').setValue((params.brevoScheduleEmail    === 'true' || params.brevoScheduleEmail    === true) ? 'Yes' : 'No');
   sheet.getRange('B39').setValue((params.urgentSubEmailsEnabled === 'true' || params.urgentSubEmailsEnabled === true) ? 'Yes' : 'No');
 
+  sheet.getRange('B66').setValue((params.chelseaCheckDays || 'Sat,Mon,Wed').toString().trim());
+  var chelseaStartCell = sheet.getRange('B67');
+  chelseaStartCell.setNumberFormat('@');
+  chelseaStartCell.setValue((params.chelseaCheckStartTime || '07:45').toString().trim());
+  var chelseaEndCell = sheet.getRange('B68');
+  chelseaEndCell.setNumberFormat('@');
+  chelseaEndCell.setValue((params.chelseaCheckEndTime || '09:30').toString().trim());
+  sheet.getRange('B69').setValue(parseInt(params.chelseaCheckFrequencyMinutes) || 15);
+
   SpreadsheetApp.flush();
   _configCache = null;
+
+  try { updateChelseaCheckTrigger(); } catch(e) { Logger.log('updateChelseaCheckTrigger error: ' + e.message); }
 
   return { success: true };
 }

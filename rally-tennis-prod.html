@@ -3871,20 +3871,6 @@ function renderDispatchConfigTable(cfg) {
       </tbody>
     </table>
 
-    <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Chelsea Court Sheet Check</div>
-    <table class="dispatch-table compact" style="margin-bottom:14px;">
-      <tbody>
-        <tr><td>Days to check</td><td>${txt('cfgd-chelsea-days', cfg.chelseaCheckDays, 140)}</td>
-            <td>Every</td><td>
-              <select id="cfgd-chelsea-freq" style="font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;">
-                ${[1, 5, 10, 15, 30].map(m => `<option value="${m}" ${cfg.chelseaCheckFrequencyMinutes == m ? 'selected' : ''}>${m} min</option>`).join('')}
-              </select>
-            </td></tr>
-        <tr><td>Start time (ET)</td><td>${time('cfgd-chelsea-start', cfg.chelseaCheckStartTime)}</td>
-            <td>End time (ET)</td><td>${time('cfgd-chelsea-end', cfg.chelseaCheckEndTime)}</td></tr>
-      </tbody>
-    </table>
-
     <table class="dispatch-table compact" style="margin-bottom:14px;">
       <tbody>
         <tr><td>Friday Dispatch</td><td>Enabled</td><td>${chk('cfgd-autodispatch-enabled', cfg.autoDispatchEnabled)}</td>
@@ -3936,11 +3922,7 @@ async function saveDispatchConfig() {
       skillWindowUrgent: val('cfgd-match-win-2'),
       skillWindowLastMinute: val('cfgd-match-win-3'),
       preMatchSchedule,
-      matchDayMinus2Schedule,
-      chelseaCheckDays: val('cfgd-chelsea-days'),
-      chelseaCheckStartTime: val('cfgd-chelsea-start'),
-      chelseaCheckEndTime: val('cfgd-chelsea-end'),
-      chelseaCheckFrequencyMinutes: val('cfgd-chelsea-freq')
+      matchDayMinus2Schedule
     });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;
@@ -4899,9 +4881,10 @@ async function loadSettingsConfig() {
 }
 
 function renderSettingsConfigTable(cfg) {
-  const chk = (id, checked) => `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">`;
-  const num = (id, val, w) => `<input type="number" id="${id}" value="${val ?? ''}" step="any" style="font-size:12px;padding:2px 4px;width:${w || 55}px;border:1px solid var(--line);border-radius:4px;">`;
-  const txt = (id, val, w) => `<input type="text" id="${id}" value="${(val ?? '').toString().replace(/"/g, '&quot;')}" style="font-size:12px;padding:3px 6px;width:${w || 200}px;border:1px solid var(--line);border-radius:4px;">`;
+  const chk  = (id, checked) => `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">`;
+  const num  = (id, val, w) => `<input type="number" id="${id}" value="${val ?? ''}" step="any" style="font-size:12px;padding:2px 4px;width:${w || 55}px;border:1px solid var(--line);border-radius:4px;">`;
+  const txt  = (id, val, w) => `<input type="text" id="${id}" value="${(val ?? '').toString().replace(/"/g, '&quot;')}" style="font-size:12px;padding:3px 6px;width:${w || 200}px;border:1px solid var(--line);border-radius:4px;">`;
+  const time = (id, val) => `<input type="time" id="${id}" value="${val || ''}" style="font-size:12px;padding:2px 4px;width:88px;border:1px solid var(--line);border-radius:4px;">`;
 
   document.getElementById('settings-config-content').innerHTML = `
     <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:10px;">Scheduler Engine Settings</div>
@@ -4934,11 +4917,24 @@ function renderSettingsConfigTable(cfg) {
       </tbody>
     </table>
 
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-top:24px;margin-bottom:10px;">Chelsea Court Sheet Check</div>
+    <table class="dispatch-table compact" style="margin-bottom:14px;">
+      <tbody>
+        <tr><td>Days to check</td><td>${txt('cfgs-chelsea-days', cfg.chelseaCheckDays, 140)}</td>
+            <td>Every</td><td>
+              <select id="cfgs-chelsea-freq" style="font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;">
+                ${[1, 5, 10, 15, 30].map(m => `<option value="${m}" ${cfg.chelseaCheckFrequencyMinutes == m ? 'selected' : ''}>${m} min</option>`).join('')}
+              </select>
+            </td></tr>
+        <tr><td>Start time (ET)</td><td>${time('cfgs-chelsea-start', cfg.chelseaCheckStartTime)}</td>
+            <td>End time (ET)</td><td>${time('cfgs-chelsea-end', cfg.chelseaCheckEndTime)}</td></tr>
+      </tbody>
+    </table>
+
     <button class="btn btn-primary btn-sm" id="settings-config-save-btn" onclick="saveSettingsConfig()">Save Settings</button>
     <div id="settings-config-alert" style="margin-top:8px;"></div>
 
-    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-top:24px;margin-bottom:10px;">Manual Triggers</div>
-    <div style="font-size:13px;color:var(--ink-mid);margin:0 0 10px;">Check for the Chelsea "Upcoming Court Sheet" email now and apply any court times found in its PDF attachment, without waiting for the next scheduled check.</div>
+    <div style="font-size:13px;color:var(--ink-mid);margin:20px 0 10px;">Check for the Chelsea "Upcoming Court Sheet" email now and apply any court times found in its PDF attachment, without waiting for the next scheduled check.</div>
     <button class="btn btn-secondary btn-sm" id="chelsea-check-now-btn" onclick="runChelseaCheckNow()">Check Court Sheet Now</button>
     <div id="chelsea-check-now-result" style="font-size:13px;margin-top:8px;"></div>
   `;
@@ -4968,7 +4964,11 @@ async function saveSettingsConfig() {
       senderEmail: val('cfgs-sender-email'),
       brevoApiKey: val('cfgs-brevo-key'),
       brevoScheduleEmail: chkVal('cfgs-brevo-schedule'),
-      urgentSubEmailsEnabled: chkVal('cfgs-urgent-sub-emails')
+      urgentSubEmailsEnabled: chkVal('cfgs-urgent-sub-emails'),
+      chelseaCheckDays: val('cfgs-chelsea-days'),
+      chelseaCheckStartTime: val('cfgs-chelsea-start'),
+      chelseaCheckEndTime: val('cfgs-chelsea-end'),
+      chelseaCheckFrequencyMinutes: val('cfgs-chelsea-freq')
     });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;
