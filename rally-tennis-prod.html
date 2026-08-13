@@ -4945,13 +4945,14 @@ function renderSettingsConfigTable(cfg) {
             </td></tr>
         <tr><td>Start time (ET)</td><td>${time('cfgs-chelsea-start', cfg.chelseaCheckStartTime)}</td>
             <td>End time (ET)</td><td>${time('cfgs-chelsea-end', cfg.chelseaCheckEndTime)}</td></tr>
+        <tr><td>Email subject contains</td><td colspan="3">${txt('cfgs-chelsea-subject', cfg.chelseaCheckSubject, 260)}</td></tr>
       </tbody>
     </table>
 
     <button class="btn btn-primary btn-sm" id="settings-config-save-btn" onclick="saveSettingsConfig()">Save Settings</button>
     <div id="settings-config-alert" style="margin-top:8px;"></div>
 
-    <div style="font-size:13px;color:var(--ink-mid);margin:20px 0 10px;">Check for the Chelsea "Upcoming Court Sheet" email now and apply any court times found in its PDF attachment, without waiting for the next scheduled check.</div>
+    <div style="font-size:13px;color:var(--ink-mid);margin:20px 0 10px;">Check for the Chelsea court-sheet email now and apply any court times found in its PDF attachment, without waiting for the next scheduled check.</div>
     <button class="btn btn-secondary btn-sm" id="chelsea-check-now-btn" onclick="runChelseaCheckNow()">Check Court Sheet Now</button>
     <div id="chelsea-check-now-result" style="font-size:13px;margin-top:8px;"></div>
   `;
@@ -4985,7 +4986,8 @@ async function saveSettingsConfig() {
       chelseaCheckDays: val('cfgs-chelsea-days'),
       chelseaCheckStartTime: val('cfgs-chelsea-start'),
       chelseaCheckEndTime: val('cfgs-chelsea-end'),
-      chelseaCheckFrequencyMinutes: val('cfgs-chelsea-freq')
+      chelseaCheckFrequencyMinutes: val('cfgs-chelsea-freq'),
+      chelseaCheckSubject: val('cfgs-chelsea-subject')
     });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;

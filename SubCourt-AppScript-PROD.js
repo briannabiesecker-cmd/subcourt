@@ -934,6 +934,7 @@ function getConfig() {
       chelseaCheckStartTime:        formatSheetTime(sheet.getRange('B67').getValue()) || '07:45',
       chelseaCheckEndTime:          formatSheetTime(sheet.getRange('B68').getValue()) || '09:30',
       chelseaCheckFrequencyMinutes: parseInt(sheet.getRange('B69').getValue()) || 15,
+      chelseaCheckSubject:          (sheet.getRange('B70').getValue() || 'Upcoming Court Sheet').toString().trim(),
     };
     _configCache = cfg;
     return cfg;
@@ -979,6 +980,7 @@ function getConfig() {
       chelseaCheckStartTime: '07:45',
       chelseaCheckEndTime: '09:30',
       chelseaCheckFrequencyMinutes: 15,
+      chelseaCheckSubject: 'Upcoming Court Sheet',
     };
   }
 }
@@ -3488,7 +3490,8 @@ function getAdminConfigTables() {
     chelseaCheckDays:             config.chelseaCheckDays,
     chelseaCheckStartTime:        config.chelseaCheckStartTime,
     chelseaCheckEndTime:          config.chelseaCheckEndTime,
-    chelseaCheckFrequencyMinutes: config.chelseaCheckFrequencyMinutes
+    chelseaCheckFrequencyMinutes: config.chelseaCheckFrequencyMinutes,
+    chelseaCheckSubject:          config.chelseaCheckSubject
   };
 }
 
@@ -3575,6 +3578,7 @@ function saveSettingsConfigTable(params) {
   chelseaEndCell.setNumberFormat('@');
   chelseaEndCell.setValue((params.chelseaCheckEndTime || '09:30').toString().trim());
   sheet.getRange('B69').setValue(parseInt(params.chelseaCheckFrequencyMinutes) || 15);
+  sheet.getRange('B70').setValue((params.chelseaCheckSubject || 'Upcoming Court Sheet').toString().trim());
 
   SpreadsheetApp.flush();
   _configCache = null;
@@ -3739,12 +3743,15 @@ function _parseConfigMinutesOfDay(timeStr) {
 function _runChelseaImport(opts) {
   opts = opts || {};
   var tz = Session.getScriptTimeZone();
+  var config = getConfig();
   var targetDate = opts.overrideTargetDate || getDateStr(2); // Chelsea always assigns times exactly 2 days out
   var result = { targetDate: targetDate, applied: [], skipped: [], dateMismatch: false, error: '' };
   var props = PropertiesService.getScriptProperties();
 
   try {
-    var threads = GmailApp.search('to:mwfmtctennis@gmail.com subject:"Upcoming Court Sheet" has:attachment newer_than:2d');
+    var subject = (config.chelseaCheckSubject || 'Upcoming Court Sheet').replace(/"/g, '\\"');
+    var todayForQuery = Utilities.formatDate(new Date(), tz, 'yyyy/MM/dd'); // restrict to today's mail only — old emails left in the inbox shouldn't match
+    var threads = GmailApp.search('to:mwfmtctennis@gmail.com subject:"' + subject + '" has:attachment after:' + todayForQuery);
     if (!threads.length) { result.error = 'no matching email found'; Logger.log('_runChelseaImport: ' + result.error); return result; }
 
     // Most recent matching message with a PDF attachment.
