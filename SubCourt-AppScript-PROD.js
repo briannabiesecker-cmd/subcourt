@@ -1375,6 +1375,7 @@ function doGet(e) {
     else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport(e.parameter);
     else if (action === 'getBrevoBounceSummary')      result = getBrevoBounceSummary(e.parameter);
     else if (action === 'debugCheckSentEmail')        result = debugCheckSentEmail(e.parameter);
+    else if (action === 'debugTestBcc')               result = debugTestBcc(e.parameter);
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -4048,6 +4049,29 @@ function debugCheckSentEmail(params) {
     });
   });
   return { query: query, count: messages.length, messages: messages };
+}
+
+// One-off diagnostic — sends a known bcc list via MailApp and immediately checks
+// whether it lands (a) in the sender's own Sent-folder Bcc header and (b) in the
+// bcc'd inbox itself, to tell apart "Gmail just doesn't show Bcc on API-sent mail"
+// from "the bcc list wasn't actually included/delivered."
+function debugTestBcc(params) {
+  params = params || {};
+  var marker = 'debugTestBcc-' + Date.now();
+  var toAddr  = params.to  || 'marobria@gmail.com';
+  var bccAddr = params.bcc || 'mwfmtctennis@gmail.com';
+  MailApp.sendEmail(toAddr, marker, 'Diagnostic test — checking Bcc delivery.', { bcc: bccAddr, name: 'Rally Diagnostic' });
+  Utilities.sleep(4000); // give Gmail a moment to index the new messages before searching
+  var sentThreads  = GmailApp.search('in:sent subject:"' + marker + '"', 0, 3);
+  var inboxThreads = GmailApp.search('in:anywhere to:' + bccAddr + ' subject:"' + marker + '"', 0, 3);
+  var sentMsg = sentThreads.length ? sentThreads[0].getMessages()[0] : null;
+  return {
+    marker: marker,
+    sentTo:  toAddr,
+    sentBcc: bccAddr,
+    sentFolderShowsBcc: sentMsg ? sentMsg.getBcc() : '(no sent message found)',
+    bccRecipientReceivedIt: inboxThreads.length > 0
+  };
 }
 
 // Marks still-TBD sub requests for targetDate as 'Overflow' (Match Day -2 Dispatch,
