@@ -513,7 +513,7 @@ function _sendLeagueEmailViaMailApp(params, config) {
     if (bccAddrs.length)      opts.bcc         = bccAddrs.join(',');
     try {
       MailApp.sendEmail(params.to, params.subject, params.body, opts);
-      _logEmail(params.to, params.subject, 'sent via MailApp');
+      _logEmail(params.to, params.subject, 'sent via MailApp (1 to + ' + bccAddrs.length + ' bcc: ' + bccAddrs.join('; ') + ')');
     } catch(e) {
       _logEmail(params.to, params.subject, 'failed: ' + e.message);
       _sendAdminFallbackEmail(params);
@@ -538,9 +538,10 @@ function _sendLeagueEmailViaMailApp(params, config) {
       if (i > 0) Utilities.sleep(500);
       try {
         MailApp.sendEmail(chunkTo, params.subject, params.body, chunkOpts);
-        _logEmail(params.to, params.subject, 'sent via MailApp (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ')');
+        _logEmail(chunkTo, params.subject, 'sent via MailApp (bcc chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) +
+          ', 1 to + ' + chunkBcc.length + ' bcc: ' + chunkBcc.join('; ') + ')');
       } catch(e) {
-        _logEmail(params.to, params.subject, 'failed chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ': ' + e.message);
+        _logEmail(chunkTo, params.subject, 'failed chunk ' + (Math.floor(i / BCC_CHUNK_SIZE) + 1) + ': ' + e.message);
         _sendAdminFallbackEmail(params);
         throw e;
       }
