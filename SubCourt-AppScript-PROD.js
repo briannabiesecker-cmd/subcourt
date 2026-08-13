@@ -3853,10 +3853,44 @@ function _chelseaLongDate(dateStr) {
 
 function _escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
+// Placeholder slot text ("999999 * Unavailable" / "999999 * Instructional") is never
+// a real player — filtered out wherever a name is extracted, regardless of which
+// report layout produced the surrounding text.
+var CHELSEA_PLACEHOLDER_NAMES = { UNAVAILABLE: true, INSTRUCTIONAL: true };
+
+// Extracts player names from one row's chunk of text. MTC has sent this report in two
+// different cell layouts so far — "<ID> <NAME>" (e.g. "19150 MARC THORESON", the
+// regular "Short Court Listing") and "<NAME>- #<ID>" (e.g. "ROGER YAUCHZY- #16810",
+// the "Booked Short Court Listing" variant) — so both patterns are tried on every
+// chunk rather than assuming one layout. They don't collide: real content only ever
+// satisfies one of the two, though the ID-then-name pattern can pick up a harmless
+// trailing-hyphen fragment of the *next* cell when parsing name-then-ID text (e.g.
+// matching "JON BRANNON-" out of "...#16810 JON BRANNON- #14400...") — left in
+// rather than suppressed, since it never equals a real player's exact name and so
+// never causes a false match.
+function _extractChelseaNames(chunk) {
+  var names = [];
+  var m;
+
+  var idThenName = /\d{4,6}\s+([A-Za-z][A-Za-z .'\-]+)/g;
+  while ((m = idThenName.exec(chunk)) !== null) {
+    var n1 = m[1].trim();
+    if (n1 && !CHELSEA_PLACEHOLDER_NAMES[n1.toUpperCase()]) names.push(n1);
+  }
+
+  var nameThenId = /([A-Za-z][A-Za-z .'\-]*?)-\s*#\d{4,6}/g;
+  while ((m = nameThenId.exec(chunk)) !== null) {
+    var n2 = m[1].trim();
+    if (n2 && !CHELSEA_PLACEHOLDER_NAMES[n2.toUpperCase()]) names.push(n2);
+  }
+
+  return names;
+}
+
 // Extracts { time, players: [name,...] } rows from the extracted PDF text, keeping
 // only rows at 8:00/9:30/11:00/12:30. Report format (as of 2026-08): "Epic-Padel"
 // court listing, one row per "<Facility>\n<Court#>\n<slot1>\n<slot2>\n<slot3>\n<slot4>",
-// where each slot is blank, "999999 * Unavailable"/"Instructional", or "<ID> <NAME>".
+// where each slot is blank, a placeholder (see above), or a real player name+ID pair.
 //
 // Google's OCR conversion does NOT reliably keep a row's Time value adjacent to it,
 // so rows and times are extracted independently and zipped by position — but only
@@ -3880,7 +3914,6 @@ function _parseChelseaRows(text) {
   var pages = body.split(/Time\s+Facility\s+Court\s+Player\s*1\s+Player\s*2\s+Player\s*3\s+Player\s*4/i).slice(1);
   if (!pages.length) return { rows: [], error: 'could not find any "Time Facility Court..." page headers in PDF text' };
 
-  var nameRe = /\d{4,6}\s+([A-Za-z][A-Za-z .'\-]+)/g;
   var timeRe = /(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
   var rows = [];
   var mismatchedPages = 0;
@@ -3890,15 +3923,7 @@ function _parseChelseaRows(text) {
     var rowBlocks = [];
     var m;
     while ((m = rowRe.exec(page)) !== null) {
-      var chunk = m[2];
-      var names = [];
-      var nm;
-      nameRe.lastIndex = 0;
-      while ((nm = nameRe.exec(chunk)) !== null) {
-        var n = nm[1].trim();
-        if (n) names.push(n);
-      }
-      rowBlocks.push(names); // keep even empty/unavailable rows — needed to stay aligned with times below
+      rowBlocks.push(_extractChelseaNames(m[2])); // keep even empty/unavailable rows — needed to stay aligned with times below
     }
 
     var times = [];
