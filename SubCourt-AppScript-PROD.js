@@ -1374,6 +1374,7 @@ function doGet(e) {
     else if (action === 'updateMatchGroupTime')       result = updateMatchGroupTime(e.parameter);
     else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport(e.parameter);
     else if (action === 'getBrevoBounceSummary')      result = getBrevoBounceSummary(e.parameter);
+    else if (action === 'debugCheckSentEmail')        result = debugCheckSentEmail(e.parameter);
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
@@ -4022,6 +4023,31 @@ function getBrevoBounceSummary(params) {
     byDomain: domainCounts,
     summary: summary
   };
+}
+
+// Debug tool — dumps To/Cc/Bcc headers for recent Sent-folder messages matching a
+// Gmail search query, to directly confirm what actually went out on a MailApp send
+// (Gmail's Sent-folder UI/search only surfaces the visible "To" recipient — Bcc'd
+// recipients on the sender's own copy aren't independently searchable there, which
+// can look like "only one recipient got it" when everyone in Bcc actually did).
+function debugCheckSentEmail(params) {
+  params = params || {};
+  var query = params.query || 'in:sent subject:"subs needed"';
+  var threads = GmailApp.search(query, 0, parseInt(params.limit) || 5);
+  var messages = [];
+  threads.forEach(function(t) {
+    t.getMessages().forEach(function(m) {
+      messages.push({
+        date:    m.getDate().toISOString(),
+        from:    m.getFrom(),
+        to:      m.getTo(),
+        cc:      m.getCc(),
+        bcc:     m.getBcc(),
+        subject: m.getSubject()
+      });
+    });
+  });
+  return { query: query, count: messages.length, messages: messages };
 }
 
 // Marks still-TBD sub requests for targetDate as 'Overflow' (Match Day -2 Dispatch,
