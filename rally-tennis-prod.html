@@ -1207,7 +1207,8 @@
   .dispatch-table.compact td { padding: 4px 8px; font-size: 13px; }
 
   /* ── Request a Sub — schedule table header matches dispatch style ── */
-  #req-schedule-section .sched-table th { background: var(--ink-mid); color: white; border-bottom: 2px solid var(--ink); }
+  #req-schedule-section .sched-table th,
+  #req-filled-section .sched-table th { background: var(--ink-mid); color: white; border-bottom: 2px solid var(--ink); }
 
   /* ── Directory Table ── */
   .dir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -1573,6 +1574,23 @@
             <th></th><th></th><th></th>
           </tr></thead>
           <tbody id="req-schedule-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="req-filled-section" style="display:none;">
+      <div class="section-header" style="padding-bottom:4px;margin-bottom:4px;">
+        <div class="section-title" style="font-size:16px;">Sub Requests Already Filled</div>
+      </div>
+      <div id="req-filled-loading" class="loading" style="display:none;"><div class="spinner"></div>Loading…</div>
+      <div id="req-filled-empty" style="display:none;padding:1rem 0;font-size:14px;color:var(--ink-light);text-align:center;"></div>
+      <div id="req-filled-table-wrap" style="display:none;overflow-x:auto;">
+        <table class="sched-table">
+          <thead><tr>
+            <th>Date</th><th>Volunteer</th>
+            <th></th><th></th><th></th>
+          </tr></thead>
+          <tbody id="req-filled-body"></tbody>
         </table>
       </div>
     </div>
@@ -2559,12 +2577,14 @@ async function refreshRequestTab(email, name) {
     publishedSchedule = data.publishedSchedule;
     await loadMyRequests(email, name, false);
     await loadReqSchedule(email, name, false);
+    await loadReqFilledRequests(email, name);
   } catch(e) {
     // Combined fetch failed — fall back to each section fetching independently.
     requestCache      = null;
     publishedSchedule = null;
     await loadMyRequests(email, name, true);
     await loadReqSchedule(email, name, true);
+    await loadReqFilledRequests(email, name);
   }
 }
 
@@ -2937,6 +2957,65 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
     loading.style.display = 'none';
     empty.style.display   = '';
     empty.textContent     = 'Could not load schedule. Please try again.';
+  }
+}
+
+// Shows this player's own sub requests that already have a volunteer assigned —
+// i.e. "who's covering my spot" for upcoming matches. Only requests they personally
+// submitted (r.email === them), not teammates' requests for the same group.
+async function loadReqFilledRequests(email, name) {
+  const section   = document.getElementById('req-filled-section');
+  const loading   = document.getElementById('req-filled-loading');
+  const empty     = document.getElementById('req-filled-empty');
+  const tableWrap = document.getElementById('req-filled-table-wrap');
+  const tbody     = document.getElementById('req-filled-body');
+
+  section.style.display   = '';
+  loading.style.display   = '';
+  empty.style.display     = 'none';
+  tableWrap.style.display = 'none';
+  tbody.innerHTML         = '';
+
+  try {
+    const [requests] = await Promise.all([getRequests(), loadPlayerList()]);
+    const todayStr   = localDateStr();
+    const emailLower = email.toLowerCase();
+
+    const mine = requests.filter(r =>
+      r.email.toLowerCase() === emailLower &&
+      r.status === 'filled' &&
+      r.matchDate >= todayStr
+    ).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
+
+    loading.style.display = 'none';
+    if (!mine.length) {
+      empty.style.display = '';
+      empty.textContent   = 'No filled sub requests right now.';
+      return;
+    }
+
+    const rows = mine.map(r => {
+      const dt      = new Date(r.matchDate + 'T12:00:00');
+      const dow     = dt.toLocaleDateString('en-US', { weekday: 'short' });
+      const mdd     = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const subPlayer = fullPlayerList.find(p => p.email && p.email.toLowerCase() === (r.assignedSub || '').toLowerCase());
+      const volName   = subPlayer ? subPlayer.name : (r.assignedSub || 'Volunteer');
+      const others    = (r.groupPlayers || []).slice(0, 3);
+      return `<tr>
+        <td class="date-cell" style="white-space:nowrap;line-height:1.4;">${dow}<br><span style="font-size:12px;color:var(--ink-mid);">${mdd}</span></td>
+        <td><span class="captain-badge">S</span>${volName}</td>
+        <td style="text-align:center;">${others[0]?.name || ''}</td>
+        <td style="text-align:center;">${others[1]?.name || ''}</td>
+        <td style="text-align:center;">${others[2]?.name || ''}</td>
+      </tr>`;
+    }).join('');
+
+    tbody.innerHTML         = rows;
+    tableWrap.style.display = '';
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display   = '';
+    empty.textContent     = 'Could not load filled requests. Please try again.';
   }
 }
 
