@@ -3667,9 +3667,11 @@ function sendSubNeededTomorrowEmail(req) {
 // ──────────────────────────────────────────────────
 // CHELSEA COURT-TIME IMPORT
 // ──────────────────────────────────────────────────
-// Chelsea (via MTC) emails a PDF "Court Sheet" to mwfmtctennis@gmail.com with real
-// court times, always exactly 2 days before the match day it covers. This reads
-// that email, extracts the table, and writes matching group times into MatchGroups.
+// Chelsea (via MTC) emails a "Court Sheet" to mwfmtctennis@gmail.com with real
+// court times, always exactly 2 days before the match day it covers — as a PDF
+// (OCR'd) or a native .xlsx spreadsheet (read directly), whichever MTC sends that
+// day. This reads that email, extracts the table, and writes matching group times
+// into MatchGroups.
 
 var CHELSEA_TIMES = ['08:00', '09:30', '11:00', '12:30']; // must match frontend TIMES
 
@@ -3754,35 +3756,45 @@ function _runChelseaImport(opts) {
     var threads = GmailApp.search('to:mwfmtctennis@gmail.com subject:"' + subject + '" has:attachment after:' + todayForQuery);
     if (!threads.length) { result.error = 'no matching email found'; Logger.log('_runChelseaImport: ' + result.error); return result; }
 
-    // Most recent matching message with a PDF attachment.
-    var pdfBlob = null;
+    // Most recent matching message with a PDF or Excel court-sheet attachment.
+    // MTC has sent this report both as a PDF (OCR'd below) and as a native .xlsx
+    // spreadsheet (read directly — far more reliable, no OCR needed). Whichever
+    // is attached is used; the PDF wins if a message somehow has both.
+    var pdfBlob = null, xlsxBlob = null;
     for (var ti = threads.length - 1; ti >= 0 && !pdfBlob; ti--) {
       var msgs = threads[ti].getMessages();
       for (var mi = msgs.length - 1; mi >= 0 && !pdfBlob; mi--) {
         var atts = msgs[mi].getAttachments();
         for (var ai = 0; ai < atts.length; ai++) {
           if (atts[ai].getContentType() === 'application/pdf') { pdfBlob = atts[ai]; break; }
+          if (!xlsxBlob && _isChelseaXlsxAttachment(atts[ai])) xlsxBlob = atts[ai];
         }
       }
     }
-    if (!pdfBlob) { result.error = 'no PDF attachment found'; Logger.log('_runChelseaImport: ' + result.error); return result; }
+    if (!pdfBlob && !xlsxBlob) { result.error = 'no PDF or Excel attachment found'; Logger.log('_runChelseaImport: ' + result.error); return result; }
 
-    var text = _extractPdfText(pdfBlob);
+    var text, grid = null;
+    if (pdfBlob) {
+      text = _extractPdfText(pdfBlob);
+    } else {
+      grid = _extractXlsxGrid(xlsxBlob);
+      text = grid.map(function(row) { return row.join(' '); }).join('\n');
+    }
     result.extractedChars = text.length;
     if (opts.dumpText) { result.text = text; return result; } // debug only — inspect raw extraction, nothing else
 
-    // Found and read a real PDF — done for today regardless of what's inside it.
+    // Found and read a real attachment — done for today regardless of what's inside it.
     // A stuck/wrong file won't resolve itself by retrying every 15 minutes.
     // (Dry runs don't count — they shouldn't suppress the real scheduled check.)
     if (!opts.dryRun) props.setProperty('chelseaProcessedDate', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
 
     if (!opts.skipDateCheck && text.indexOf(_chelseaLongDate(targetDate)) === -1) {
       result.dateMismatch = true;
-      Logger.log('_runChelseaImport: PDF date text did not match expected target date ' + targetDate + ' — aborting.');
+      Logger.log('_runChelseaImport: attachment date text did not match expected target date ' + targetDate + ' — aborting.');
       return result;
     }
 
-    var parsed = _parseChelseaRows(text);
+    var parsed = grid ? _parseChelseaRowsFromGrid(grid) : _parseChelseaRows(text);
     if (parsed.error) {
       result.error = parsed.error;
       Logger.log('_runChelseaImport: ' + parsed.error);
@@ -3839,6 +3851,33 @@ function _extractPdfText(pdfBlob) {
     return DocumentApp.openById(file.id).getBody().getText();
   } finally {
     try { Drive.Files.remove(file.id); } catch (e) { Logger.log('_extractPdfText cleanup failed: ' + e.message); }
+  }
+}
+
+// True if a Gmail attachment looks like the Excel "Booked Short Court Listing"
+// export MTC sometimes sends instead of the PDF (e.g. "ReportTNShortBookL.xlsx").
+// Checked by filename as well as content type since Gmail doesn't always report
+// the spreadsheet MIME type consistently.
+function _isChelseaXlsxAttachment(att) {
+  var name = (att.getName() || '').toLowerCase();
+  var type = (att.getContentType() || '').toLowerCase();
+  return /\.xlsx?$/.test(name) || type.indexOf('spreadsheetml') !== -1 || type === 'application/vnd.ms-excel';
+}
+
+// Converts an .xlsx blob to a 2D array of cell values via the Advanced Drive
+// Service — uploads as a temp Google Sheet, reads its grid, then deletes the
+// temp file. Far more reliable than the PDF's OCR path since this report's
+// Excel export is already a clean structured table, not scanned text.
+function _extractXlsxGrid(xlsxBlob) {
+  var resource = { title: 'chelsea-court-sheet-temp', mimeType: MimeType.GOOGLE_SHEETS };
+  var file = Drive.Files.insert(resource, xlsxBlob, { convert: true });
+  try {
+    var sheet = SpreadsheetApp.openById(file.id).getSheets()[0];
+    return sheet.getDataRange().getValues().map(function(row) {
+      return row.map(function(cell) { return (cell === null || cell === undefined) ? '' : String(cell); });
+    });
+  } finally {
+    try { Drive.Files.remove(file.id); } catch (e) { Logger.log('_extractXlsxGrid cleanup failed: ' + e.message); }
   }
 }
 
@@ -3954,6 +3993,77 @@ function _parseChelseaRows(text) {
     return { rows: [], error: 'row/time count mismatch on all ' + pages.length + ' page(s) — aborting' };
   }
   return { rows: rows, error: '' };
+}
+
+// Parses { time, players: [name,...] } rows directly from the Excel "Booked Short
+// Court Listing" grid — one clean row per court slot (Time, Facility, Court,
+// Player 1-4 columns), unlike the PDF's OCR text. The header row is located by
+// its "Time" / "Player 1" cell text rather than fixed column letters, in case
+// MTC's column layout shifts.
+function _parseChelseaRowsFromGrid(grid) {
+  function findCol(row, label) {
+    for (var c = 0; c < row.length; c++) {
+      if ((row[c] || '').toString().trim().toLowerCase() === label) return c;
+    }
+    return -1;
+  }
+
+  var headerRowIdx = -1, timeCol = -1, playerCols = [];
+  for (var r = 0; r < grid.length; r++) {
+    var row = grid[r];
+    var tCol = findCol(row, 'time');
+    var p1Col = findCol(row, 'player 1');
+    if (tCol !== -1 && p1Col !== -1) {
+      headerRowIdx = r;
+      timeCol = tCol;
+      ['player 1', 'player 2', 'player 3', 'player 4'].forEach(function(label) {
+        var c = findCol(row, label);
+        if (c !== -1) playerCols.push(c);
+      });
+      break;
+    }
+  }
+  if (headerRowIdx === -1) return { rows: [], error: 'could not find "Time / Player 1-4" header row in Excel sheet' };
+
+  var rows = [];
+  for (var i = headerRowIdx + 1; i < grid.length; i++) {
+    var dataRow = grid[i];
+    var timeVal = (dataRow[timeCol] || '').toString().trim();
+    if (!timeVal) continue; // blank spacer row — report keeps going after this in practice, so skip rather than stop
+
+    var time24 = _parseChelseaTimeCell(timeVal);
+    if (!time24 || CHELSEA_TIMES.indexOf(time24) === -1) continue; // not one of the MWF slots
+
+    var names = [];
+    playerCols.forEach(function(c) {
+      var n = _normalizeChelseaCellName(dataRow[c]);
+      if (n) names.push(n);
+    });
+    if (!names.length) continue; // no real players in this slot (e.g. all "* Instructional")
+
+    rows.push({ time: time24, players: names });
+  }
+  return { rows: rows, error: '' };
+}
+
+// Parses an Excel time cell like "08:00  AM" into 24h "HH:MM", or null if unparseable.
+function _parseChelseaTimeCell(str) {
+  var m = /^(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec((str || '').toString().trim());
+  if (!m) return null;
+  var h  = parseInt(m[1]);
+  var ap = m[3].toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return (h < 10 ? '0' + h : h) + ':' + m[2];
+}
+
+// Strips the "* " placeholder marker (e.g. "* Instructional") and filters out
+// non-player placeholder text, using the same placeholder set the PDF parser
+// checks — the Excel export marks these slots the same way, just without an ID.
+function _normalizeChelseaCellName(raw) {
+  var v = (raw || '').toString().trim().replace(/^\*\s*/, '');
+  if (!v || CHELSEA_PLACEHOLDER_NAMES[v.toUpperCase()]) return null;
+  return v;
 }
 
 // Matches PDF player-name fragments against the Players sheet, case-insensitively.
