@@ -3197,11 +3197,94 @@ function csvLastFirst(name) {
 // MATCHING ENGINE (server-side)
 // ──────────────────────────────────────────────────
 
+// Maps every player scheduled to play (per MatchGroups) on matchDate to their own
+// match time ('' if unknown/TBD, or 'Overflow'). One full-sheet scan shared across
+// every volunteer being checked in runMatch, instead of a per-volunteer scan.
+function _getPlayerMatchTimesForDate(ss, matchDate) {
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  var map = {};
+  if (!sheet || sheet.getLastRow() < 2) return map;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
+  rows.forEach(function(r) {
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== matchDate) return;
+    var time = (r[16] || '').toString().trim();
+    for (var pi = 0; pi < 4; pi++) {
+      var email = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
+      if (email) map[email] = time;
+    }
+  });
+  return map;
+}
+
+// A volunteer turns out to already be scheduled to play at the exact time they
+// volunteered for — removes just that time from their record, or cancels the
+// whole record if it was their only time. Runs as a side effect of runMatch
+// discovering the conflict, so the record stops looking (wrongly) available.
+function _removeConflictingVolunteerTime(ss, v, conflictingTime) {
+  var volSheet = ss.getSheetByName(TABS.volunteers);
+  if (!volSheet) return;
+  var remaining = v.times.filter(function(t) { return t !== conflictingTime; });
+  if (remaining.length) {
+    var encoded = remaining.map(function(t) { return t.replace(':', '_'); }).join(',');
+    volSheet.getRange(v.rowIndex, 6).setNumberFormat('@').setValue(encoded);
+    Logger.log('runMatch: removed ' + conflictingTime + ' from ' + v.email + '\'s volunteer record for ' +
+      v.date + ' — already scheduled to play then');
+  } else {
+    volSheet.getRange(v.rowIndex, 7).setValue('cancelled');
+    Logger.log('runMatch: cancelled ' + v.email + '\'s volunteer record for ' + v.date +
+      ' — its only time (' + conflictingTime + ') conflicted with a match they\'re already scheduled to play');
+  }
+}
+
+// True if no other scheduled dispatch run (Pre-Match Day, Match Day -2, or Friday
+// Auto-Dispatch) falls between now and the match's actual date/time — i.e. the run
+// happening right now is the last chance to fill this request before its match.
+// Gates the "already playing at a different time" fallback in runMatch: that
+// fallback should only fire when there's no future run left to find someone cleaner.
+function _isLastDispatchRunBeforeMatch(matchDate, matchTime) {
+  if (!matchDate) return false;
+  var config  = getConfig();
+  var tz      = Session.getScriptTimeZone();
+  var now     = new Date();
+  var matchDT = Utilities.parseDate(matchDate + ' ' + (matchTime || '08:00') + ':00', tz, 'yyyy-MM-dd HH:mm:ss');
+  if (isNaN(matchDT.getTime()) || matchDT.getTime() <= now.getTime()) return true;
+
+  var families = [
+    { dowSet: [7, 2, 4], hours: (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); }) },
+    { dowSet: [6, 1, 3], hours: (config.matchDayMinus2Schedule || []).map(function(r) { return _parseConfigHour(r.time); }) }
+  ];
+  if (config.autoDispatchEnabled) {
+    families.push({ dowSet: [5], hours: [parseInt((config.autoDispatchTimeET || '13:00').split(':')[0])] });
+  }
+
+  var maxDays = Math.min(45, Math.ceil((matchDT.getTime() - now.getTime()) / 86400000) + 1);
+  for (var add = 0; add <= maxDays; add++) {
+    var d       = new Date(now.getTime() + add * 86400000);
+    var dow     = parseInt(Utilities.formatDate(d, tz, 'u'));
+    var dateStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+    for (var fi = 0; fi < families.length; fi++) {
+      var fam = families[fi];
+      if (fam.dowSet.indexOf(dow) === -1) continue;
+      for (var hi = 0; hi < fam.hours.length; hi++) {
+        var h = fam.hours[hi];
+        if (isNaN(h) || h < 0) continue;
+        var candidate = Utilities.parseDate(dateStr + ' ' + (h < 10 ? '0' + h : h) + ':00:00', tz, 'yyyy-MM-dd HH:mm:ss');
+        if (candidate.getTime() > now.getTime() && candidate.getTime() < matchDT.getTime()) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function runMatch(params) {
   const config     = getConfig();
   const requests   = getRequests();
   const volunteers = getVolunteers();
   const players    = getPlayersWithRatings();
+  const ss         = SpreadsheetApp.openById(SHEET_ID);
 
   const req = requests.find(r => r.id === params.requestId);
   if (!req) return { error: 'Request not found' };
@@ -3233,6 +3316,15 @@ function runMatch(params) {
   // needs to cover it to be a valid candidate, No8am or not.
   const timesNeeded = (hasTBDTime && reqHasNo8am) ? TIMES.filter(t => t !== '08:00') : TIMES;
 
+  // Every player already scheduled to play (MatchGroups) on matchDate, mapped to
+  // their own match time — computed once and reused for every volunteer below.
+  const playingElsewhere = _getPlayerMatchTimesForDate(ss, matchDate);
+
+  // (c) Volunteers already playing a different (or unknown-time) match this same
+  // day: excluded from the normal pool, held here as a last-resort fallback only
+  // used if nobody else qualifies and there's no future dispatch run left to try.
+  let fallbackCandidates = [];
+
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
     if (v.email.toLowerCase() === req.email.toLowerCase()) return false;
@@ -3257,14 +3349,47 @@ function runMatch(params) {
       (!matchTime || !r.matchTime || r.matchTime === matchTime)
     );
     if (alreadyAssigned) return false;
-    const alreadyPlaying = requests.some(r =>
+    const alreadyPlayingRequest = requests.some(r =>
       r.email.toLowerCase() === v.email.toLowerCase() &&
       r.matchDate === matchDate && r.status !== 'open' &&
       (!matchTime || !r.matchTime || r.matchTime === matchTime)
     );
-    if (alreadyPlaying) return false;
+    if (alreadyPlayingRequest) return false;
+
+    // (a) A volunteer with an open sub request of their own on this same day may
+    // end up needing a sub themselves — never assign them to anyone else's request.
+    const hasOwnOpenRequest = requests.some(r =>
+      r.email.toLowerCase() === v.email.toLowerCase() &&
+      r.matchDate === matchDate &&
+      r.status === 'open'
+    );
+    if (hasOwnOpenRequest) return false;
+
+    // (b)/(c) The volunteer may already be scheduled to play a real match this same
+    // day per MatchGroups — a separate thing from anything in SubRequests above.
+    const emailLower = v.email.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(playingElsewhere, emailLower)) {
+      const theirTime = playingElsewhere[emailLower];
+      if (matchTime && theirTime && theirTime === matchTime) {
+        // (b) Exact time conflict — never assign, and correct the volunteer record
+        // since it's wrong about them being free then.
+        _removeConflictingVolunteerTime(ss, v, matchTime);
+        return false;
+      }
+      // (c) Playing at a different (or unknown) time — last-resort fallback only.
+      fallbackCandidates.push(v);
+      return false;
+    }
     return true;
   });
+
+  // (c) Nobody qualified normally — fall back to a same-day-different-time
+  // volunteer only if this is the last chance before the match happens.
+  let usedFallback = false;
+  if (!candidates.length && fallbackCandidates.length && _isLastDispatchRunBeforeMatch(matchDate, matchTime)) {
+    candidates = fallbackCandidates;
+    usedFallback = true;
+  }
 
   // Deduplicate by email, keep earliest submission
   const seen = new Map();
@@ -3303,6 +3428,7 @@ function runMatch(params) {
     skillWindow: skillWindow,
     requireAllTimes,
     phase,
+    usedFallback,
     matchTime: matchTime ? TIME_LABELS[matchTime] : null
   };
 }
