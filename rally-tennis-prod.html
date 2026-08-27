@@ -3581,9 +3581,29 @@ async function submitVolunteer() {
   setBtns('Submitting…', true, false);
 
   try {
+    // Dates the player is already scheduled to play (the 2-day warn window, where
+    // volunteering is still allowed) need the schedule-conflict flow resolved first
+    // — it can strip their own match time out of the entry, so re-read the (possibly
+    // reduced) selections afterward rather than the pre-conflict `times`.
+    for (const [date, times] of entries) {
+      if (!nearScheduledDates.has(date)) continue;
+      volSelections[date] = await _resolveScheduledConflict(date, times, email, name);
+    }
+    const finalEntries = entries
+      .map(([date]) => [date, volSelections[date]])
+      .filter(([, v]) => v && v.length > 0);
+    // A date whose only selected time was the player's own match time now has no
+    // times left — if it had an existing pending record, that record should be
+    // removed rather than left stale, same as if the player had cleared it by hand.
+    entries.forEach(([date]) => {
+      if (finalEntries.some(([d]) => d === date)) return;
+      const ex = myVolunteerMap[date];
+      if (ex && ex.status === 'pending' && !toDelete.some(([d]) => d === date)) toDelete.push([date, ex]);
+    });
+
     const toUpdate = [];
     const toCreate = [];
-    for (const [date, times] of entries) {
+    for (const [date, times] of finalEntries) {
       const ex = myVolunteerMap[date];
       if (ex && ex.status === 'matched') continue;
       if (ex && ex.status === 'pending') toUpdate.push({ rowIndex: ex.rowIndex, times });
@@ -3601,7 +3621,7 @@ async function submitVolunteer() {
         entries: toCreate.map(({ date, times }) => ({ date, times: times.map(t => t.replace(':', '_')) }))
       });
     }
-    const msg = toDelete.length && !entries.length
+    const msg = toDelete.length && !finalEntries.length
       ? `${toDelete.length} date(s) removed.`
       : `Saved ${toUpdate.length + toCreate.length} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`;
     showAlert('vol-alert', 'success', msg);
@@ -4268,13 +4288,105 @@ function showConfirmModal(msg, onConfirm, opts = {}) {
   const close = () => { modal.classList.remove('open'); ok.onclick = null; can.onclick = null; can.style.display = ''; };
   ok.onclick  = () => { close(); onConfirm(); };
   can.onclick = () => { close(); if (opts.onCancel) opts.onCancel(); };
-  modal.onclick = e => { if (e.target === modal) { close(); if (opts.onCancel) opts.onCancel(); } };
+  // A single-button (acknowledgment-only) modal has no real "cancel" — dismissing
+  // via the backdrop should count as pressing the one button, not silently drop
+  // the callback (which otherwise never fires and can strand an awaiting caller).
+  modal.onclick = e => {
+    if (e.target !== modal) return;
+    close();
+    if (opts.singleButton) onConfirm();
+    else if (opts.onCancel) opts.onCancel();
+  };
 }
 
 // Player-facing warning dialog with a single acknowledgment button — used where the
 // only real option is "OK, I understand," not a yes/no choice.
 function showWarningModal(msg, onClose) {
   showConfirmModal(msg, onClose || (() => {}), { confirmLabel: 'OK', singleButton: true });
+}
+
+// Populates and shows the "what is your current match time" picker; resolves
+// with the chosen time code (e.g. "08:00") once the player picks one and
+// clicks Continue. There's no cancel path — a match time is required before
+// the volunteer submission can proceed.
+function askVolMatchTimeModal(dateLabel) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('vol-match-time-modal');
+    document.getElementById('vol-match-time-date').textContent = dateLabel;
+    const sel = document.getElementById('vol-match-time-select');
+    sel.innerHTML = '<option value="" selected disabled>Select a time…</option>' +
+      TIMES.map(t => `<option value="${t}">${TIME_LABELS[t]}</option>`).join('');
+    modal.style.display = 'flex';
+    const btn = document.getElementById('vol-match-time-continue');
+    btn.onclick = () => {
+      if (!sel.value) return;
+      const chosen = sel.value;
+      modal.style.display = 'none';
+      btn.onclick = null;
+      resolve(chosen);
+    };
+  });
+}
+
+// Handles the "already scheduled to play" conflict for one date the player is
+// volunteering for (only reachable in the 2-day warn window, where volunteering
+// is still allowed alongside their own match). Confirms/collects their match
+// time, records it on MatchGroups if it wasn't already known, strips that time
+// out of the times they're volunteering with, then asks whether they want to
+// play twice or have Rally look for a sub at their own match time instead.
+// Returns the (possibly reduced) times array to actually submit for this date.
+async function _resolveScheduledConflict(date, times, email, name) {
+  const sched = publishedSchedule || await apiGetWithParams({ action: 'getPublishedSchedule' });
+  publishedSchedule = sched;
+  const emailLower = email.toLowerCase();
+  const dayObj = sched && sched.dates ? sched.dates.find(d => d.date === date) : null;
+  const group  = dayObj ? dayObj.groups.find(g => (g.players || []).some(p => (p.email || '').toLowerCase() === emailLower)) : null;
+  if (!group) return times; // shouldn't happen — fail open rather than block the submission
+
+  const dateLabel = formatDate(date);
+  let matchTime = group.time || '';
+
+  if (matchTime) {
+    await new Promise(resolve => showWarningModal(
+      `You are currently scheduled to play at ${TIME_LABELS[matchTime] || matchTime} on ${dateLabel}.`, resolve
+    ));
+  } else {
+    matchTime = await askVolMatchTimeModal(dateLabel);
+    try {
+      const result = await apiPost({ action: 'updateMatchGroupTime', matchDate: date, groupLetter: group.letter, matchTime });
+      if (result.success) group.time = matchTime;
+    } catch(e) {}
+  }
+
+  const remainingTimes = times.filter(t => t !== matchTime);
+
+  const wantsChangeTimes = await new Promise(resolve => {
+    showConfirmModal('Do you want to play twice or change times?', () => resolve(false), {
+      confirmLabel: 'Play twice',
+      cancelLabel:  'Change times',
+      onCancel:     () => resolve(true)
+    });
+  });
+
+  if (wantsChangeTimes) {
+    try {
+      requestCache = null;
+      const requests = await getRequests();
+      const hasOpenRequest = requests.some(r =>
+        r.email.toLowerCase() === emailLower &&
+        r.matchDate === date &&
+        r.matchTime === matchTime &&
+        r.status === 'open'
+      );
+      if (!hasOpenRequest) {
+        const partners = (group.players || []).filter(p => (p.email || '').toLowerCase() !== emailLower && p.name && p.email);
+        await apiPost({ action: 'submitRequest', name, email, matchDate: date, matchTime, groupPlayers: partners });
+        clearCache();
+      }
+    } catch(e) {}
+  }
+
+  return remainingTimes;
 }
 
 async function refreshAll() {
@@ -6229,6 +6341,19 @@ function applyAvailConfigToHomeCard(config) {
     <div class="confirm-modal-btns">
       <button class="confirm-modal-ok"    id="confirm-modal-ok">Confirm</button>
       <button class="confirm-modal-cancel" id="confirm-modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Volunteer/Match-time Conflict Modal ── -->
+<div id="vol-match-time-modal" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div class="confirm-modal-box">
+    <div class="confirm-modal-msg">What is your current match time on <span id="vol-match-time-date"></span>?</div>
+    <select id="vol-match-time-select" style="width:100%;margin:0 0 1.25rem;font-size:15px;padding:9px 10px;border:1.5px solid var(--line);border-radius:8px;box-sizing:border-box;">
+      <option value="" selected disabled>Select a time…</option>
+    </select>
+    <div class="confirm-modal-btns">
+      <button class="confirm-modal-ok" id="vol-match-time-continue" style="background:var(--court);">Continue</button>
     </div>
   </div>
 </div>
