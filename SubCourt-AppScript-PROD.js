@@ -1780,13 +1780,16 @@ function submitRequest(params) {
   }
 
   // Court times only ever exist within 2 days of the match, and MatchGroups is
-  // authoritative in that window. If this group is already marked Overflow, block
-  // the request outright — server-side, not just a hidden frontend control.
+  // authoritative in that window. A group still marked Overflow needs the player
+  // to supply a real time before a request can go through — same as a blank/TBD
+  // time — rather than being blocked outright; server-side, not just a hidden
+  // frontend control.
+  var submittedTime = params.matchTime ? params.matchTime.toString().trim() : '';
   var nearTermGroup = null;
   if (reqDate && _isTomorrowOrDayAfterTomorrow(reqDate)) {
     nearTermGroup = _findMatchGroupRow(SpreadsheetApp.openById(SHEET_ID), reqDate, [reqEmail].concat(partnerEmails));
-    if (nearTermGroup && nearTermGroup.time === 'Overflow') {
-      return { success: false, error: "This match is in Overflow status — sub requests can't be submitted. Contact your coordinator." };
+    if (nearTermGroup && nearTermGroup.time === 'Overflow' && !submittedTime) {
+      return { success: false, error: 'This match is in Overflow status — please select a match time, or contact your coordinator.' };
     }
   }
 
@@ -1813,7 +1816,6 @@ function submitRequest(params) {
   // back into MatchGroups (and any other open request for the group) — only when
   // it's actually new/different, not when they just accepted what was already shown.
   try {
-    var submittedTime = params.matchTime ? params.matchTime.toString().trim() : '';
     if (submittedTime && nearTermGroup && nearTermGroup.time !== submittedTime) {
       var setResult = _setMatchGroupTime(reqDate, nearTermGroup.letter, submittedTime);
       if (setResult.success) _syncGroupTimeToOpenRequests(reqDate, setResult.emails, submittedTime);

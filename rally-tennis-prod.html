@@ -2650,20 +2650,17 @@ async function onReqDateChange() {
       return `<span style="font-weight:${isMe ? '700' : '500'};color:${isMe ? 'var(--clay)' : 'var(--ink)'};white-space:nowrap;">${p.name}${isMe ? ' ★' : ''}</span>`;
     }).join('<span style="color:var(--line);margin:0 5px;">|</span>');
 
-    if (reqAutoFill.overflow) {
-      wrap.innerHTML = `<div style="background:var(--chalk);border-radius:var(--radius);padding:0.75rem 1rem;">
-        <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:6px;">Match from schedule</div>
-        <div style="font-size:14px;line-height:1.6;margin-bottom:10px;">${playerTags}</div>
-        <div class="alert alert-error" style="margin:0;">This match is in Overflow status — sub requests can't be submitted. Contact your coordinator.</div>
-      </div>`;
-      return;
-    }
-
+    // A known real court time is final here — no confirm/change control. Entering
+    // (or, for an Overflow match, re-entering) a time is only offered when there
+    // isn't one yet: blank/TBD, or Overflow (which also has no real time set).
     const needsTimePick = isNearTermRequestDate(matchDate) && !reqAutoFill.matchTime;
-    const canChangeKnownTime = isNearTermRequestDate(matchDate) && !!reqAutoFill.matchTime;
     const timeLabel = reqAutoFill.matchTime
       ? (TIME_LABELS[reqAutoFill.matchTime] || reqAutoFill.matchTime)
-      : (needsTimePick ? 'Required below' : 'TBD');
+      : (needsTimePick ? 'Required below' : (reqAutoFill.overflow ? 'Overflow' : 'TBD'));
+
+    const overflowNoteHtml = reqAutoFill.overflow
+      ? `<div class="alert alert-error" style="margin:8px 0 0;">This match was in Overflow status — please enter its actual court time below.</div>`
+      : '';
 
     const timePickerHtml = needsTimePick
       ? `<div style="margin-top:8px;">
@@ -2675,36 +2672,19 @@ async function onReqDateChange() {
          </div>`
       : '';
 
-    // Court times sometimes change — a known time can be accepted as-is (default,
-    // no interaction needed) or changed via this small reveal-on-click control.
-    const changeTimeHtml = canChangeKnownTime
-      ? `<button type="button" onclick="_showReqTimeOverride()" id="req-time-change-btn" style="background:none;border:none;color:var(--clay);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;padding:0;margin-top:6px;">Change time</button>
-         <div id="req-time-override-wrap" style="display:none;margin-top:8px;">
-           <label style="font-size:12px;font-weight:600;color:var(--ink-light);">Change match time</label>
-           <select id="req-time-override" style="width:100%;margin-top:3px;font-size:14px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;box-sizing:border-box;">
-             ${TIMES.map(t => `<option value="${t}" ${t === reqAutoFill.matchTime ? 'selected' : ''}>${TIME_LABELS[t]}</option>`).join('')}
-           </select>
-         </div>`
-      : '';
-
     wrap.innerHTML = `<div style="background:var(--chalk);border-radius:var(--radius);padding:0.75rem 1rem;">
       <div style="font-size:12px;font-weight:600;color:var(--ink-light);margin-bottom:6px;">Match from schedule</div>
       <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
         <div><span style="font-size:12px;color:var(--ink-light);">Time</span><br><span style="font-weight:600;font-size:14px;">${timeLabel}</span></div>
         <div><span style="font-size:12px;color:var(--ink-light);">Group</span><br><span style="font-size:14px;line-height:1.6;">${playerTags}</span></div>
       </div>
-      ${changeTimeHtml}
+      ${overflowNoteHtml}
       ${timePickerHtml}
     </div>`;
   } catch(e) {
     if (seq !== reqLookupSeq) return;
     wrap.innerHTML = `<div class="alert alert-error" style="margin:0;">Could not look up match. Please try again.</div>`;
   }
-}
-
-function _showReqTimeOverride() {
-  document.getElementById('req-time-change-btn').style.display = 'none';
-  document.getElementById('req-time-override-wrap').style.display = 'block';
 }
 
 async function submitRequest() {
@@ -2723,11 +2703,9 @@ async function submitRequest() {
     showAlert('req-alert', 'error', 'No match found for this date — please select a scheduled match date.');
     return;
   }
-  if (reqAutoFill.overflow) {
-    showAlert('req-alert', 'error', "This match is in Overflow status — sub requests can't be submitted. Contact your coordinator.");
-    return;
-  }
-
+  // A known real court time is final and always used as-is — only a blank/TBD or
+  // Overflow time (both leave reqAutoFill.matchTime empty) requires the player to
+  // pick one here.
   let matchTime = reqAutoFill.matchTime || '';
   if (!matchTime && isNearTermRequestDate(matchDate)) {
     const timeSel = document.getElementById('req-time-required');
@@ -2735,14 +2713,6 @@ async function submitRequest() {
     if (!matchTime) {
       showAlert('req-alert', 'error', 'Please select a match time — TBD is not allowed for requests within the next two days.');
       return;
-    }
-  } else if (matchTime && isNearTermRequestDate(matchDate)) {
-    // A known time was shown — if the player opened "Change time" and picked
-    // something else, use that instead of what was originally shown.
-    const overrideWrap = document.getElementById('req-time-override-wrap');
-    const overrideSel  = document.getElementById('req-time-override');
-    if (overrideWrap && overrideWrap.style.display !== 'none' && overrideSel && overrideSel.value) {
-      matchTime = overrideSel.value;
     }
   }
   const partners  = reqAutoFill.partners.filter(p => p.name && p.email);
@@ -2911,10 +2881,11 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
         const dt      = new Date(d.date + 'T12:00:00');
         const dow     = dt.toLocaleDateString('en-US', { weekday: 'short' });
         const mdd     = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        const key     = d.date + '|' + g.letter;
+        const key       = d.date + '|' + g.letter;
+        const knownTime = g.time && g.time !== 'Overflow' ? g.time : '';
         reqScheduleData[key] = {
           matchDate: d.date,
-          matchTime: g.time || '',
+          matchTime: knownTime,
           players:   g.players,
           partners:  g.players.filter(p => !p.email || p.email.toLowerCase() !== emailLower)
         };
@@ -2924,13 +2895,13 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
           const reqEmails = new Set(r.groupPlayers.map(p => (p.email || '').toLowerCase()));
           return g.players.some(p => p.email && reqEmails.has(p.email.toLowerCase()));
         });
-        // A known time (already assigned via Chelsea or a manual schedule edit) needs
-        // no forced picker — one-click request at that time, same as the TBD-allowed
-        // checkbox flow. Only fall back to the required picker when the time is
-        // genuinely still unknown and this close to match day.
+        // A known real time (already assigned via Chelsea or a manual schedule edit)
+        // needs no forced picker — one-click request at that time. Blank/TBD and
+        // Overflow (no real time set either way) fall back to the required picker
+        // once this close to match day.
         const cbHtml = alreadyRequested
           ? `<span style="font-size:12px;color:var(--ink-light);">Requested</span>`
-          : (g.time || !isNearTermRequestDate(d.date)) ? _reqCheckboxHtml(key) : _reqTimeSelectHtml(key);
+          : (knownTime || !isNearTermRequestDate(d.date)) ? _reqCheckboxHtml(key) : _reqTimeSelectHtml(key);
         const timeBadge = g.time
           ? `<br><span style="font-size:11px;color:var(--clay);font-weight:600;">${TIME_LABELS_SHORT[g.time] || g.time}</span>`
           : '';
