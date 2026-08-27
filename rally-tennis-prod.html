@@ -5954,15 +5954,23 @@ async function dirSaveMyInfo() {
   }
 }
 
-// Group-letter column becomes an editable court-time dropdown once a match is
-// within 2 days (the only window a real court time ever exists in) — matches
-// isNearTermRequestDate exactly, same as the Request a Sub form. Further-out
-// dates keep showing the plain Group letter, since there's nothing to edit yet.
+// Group-letter column shows the match time instead of the letter whenever one
+// is set. Within 2 days (the only window a real court time is ever assigned in
+// — matches isNearTermRequestDate exactly, same as the Request a Sub form) it's
+// an editable dropdown; further out it's plain text, since editing isn't allowed
+// that far ahead. With no time set, further-out dates just show the plain letter.
 function _schedTimeCellHtml(date, group) {
+  const time = group.time || '';
   if (!isNearTermRequestDate(date)) {
+    // A real time can exist on a far-out date too (however it got set) — always
+    // show it over the plain Group letter. Editing is only ever allowed within
+    // 2 days, so this stays plain text rather than the editable dropdown below.
+    if (time) {
+      const label = TIME_LABELS_SHORT[time] || time;
+      return `<td style="font-weight:600;color:var(--court);">${label}</td>`;
+    }
     return `<td style="font-weight:600;color:var(--court);">${group.letter}</td>`;
   }
-  const time = group.time || '';
   const opts = ['<option value="">TBD</option>']
     .concat(TIMES.map(t => `<option value="${t}" ${t === time ? 'selected' : ''}>${TIME_LABELS_SHORT[t]}</option>`))
     .concat([`<option value="Overflow" ${time === 'Overflow' ? 'selected' : ''}>Overflow</option>`])
