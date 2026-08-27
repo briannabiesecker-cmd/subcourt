@@ -5911,6 +5911,10 @@ var CAPTAIN_TARGETS = {
   'marobria@gmail.com': 0
 };
 
+// Hard cap — no player is made captain more than this many times in one month's
+// schedule, regardless of how far below their target ratio they are.
+var CAPTAIN_MAX_PER_MONTH = 3;
+
 function assignCaptains(slotResults) {
   // Count total appearances per player across all slots
   var appearanceCounts = {};
@@ -5924,7 +5928,8 @@ function assignCaptains(slotResults) {
   });
 
   // Greedy assignment: pick the player whose captaincy ratio is furthest below
-  // their individual target (ratio / target — lower score = more overdue).
+  // their individual target (ratio / target — lower score = more overdue), skipping
+  // anyone who has already hit the monthly cap.
   var captainCounts = {};
   slotResults.forEach(function(slot) {
     if (slot.skipped) return;
@@ -5937,10 +5942,24 @@ function assignCaptains(slotResults) {
         var emailKey = p.email.toLowerCase();
         var target = CAPTAIN_TARGETS.hasOwnProperty(emailKey) ? CAPTAIN_TARGETS[emailKey] : 0.25;
         if (target === 0) return;
+        if ((captainCounts[p.email] || 0) >= CAPTAIN_MAX_PER_MONTH) return;
         var ratio  = (captainCounts[p.email] || 0) / (appearanceCounts[p.email] || 1);
         var score  = ratio / target;
         if (score < bestScore) { bestScore = score; best = p; }
       });
+      // Every candidate in this group already hit the cap (only possible with a
+      // very small, repeatedly-paired roster) — fall back to ignoring the cap
+      // rather than leaving the group without a captain ("captain is always P1").
+      if (!best) {
+        group.forEach(function(p) {
+          if (!p.email) return;
+          var emailKey = p.email.toLowerCase();
+          var target = CAPTAIN_TARGETS.hasOwnProperty(emailKey) ? CAPTAIN_TARGETS[emailKey] : 0.25;
+          if (target === 0) return;
+          var ratio = (captainCounts[p.email] || 0) / (appearanceCounts[p.email] || 1);
+          if (ratio < bestScore) { bestScore = ratio; best = p; }
+        });
+      }
       if (best) {
         captains.push(best.email);
         captainCounts[best.email] = (captainCounts[best.email] || 0) + 1;
