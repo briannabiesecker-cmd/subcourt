@@ -1381,6 +1381,7 @@ function doGet(e) {
     else if (action === 'checkEmailQuotaNow')        result = { remaining: MailApp.getRemainingDailyQuota() };
     else if (action === 'sendBroadcastFallbackToAdmin') result = sendBroadcastFallbackToAdmin(e.parameter);
     else if (action === 'backfillNo8amFlags')        result = backfillNo8amFlags();
+    else if (action === 'backfillGroupLetters')      result = backfillGroupLetters();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -1771,6 +1772,38 @@ function backfillNo8amFlags() {
     updated++;
   });
   return { success: true, updated: updated };
+}
+
+// One-off backfill: looks up and records the MatchGroups group letter (column K)
+// for every currently open SubRequests row that doesn't have one yet — requests
+// created before that field existed. New requests get it automatically going
+// forward via submitRequest / publishScheduleSlot's Anita Sub creation.
+function backfillGroupLetters() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  if (!reqSheet || reqSheet.getLastRow() < 2) return { success: true, updated: 0, notFound: 0 };
+  var rows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, 11).getValues();
+  var updated  = 0;
+  var notFound = 0;
+  rows.forEach(function(r, i) {
+    if ((r[6] || '').toString().toLowerCase().trim() !== 'open') return;
+    if (r[10] && r[10].toString().trim()) return; // already has a letter
+
+    var email = (r[3] || '').toString().toLowerCase().trim();
+    var matchDate = formatSheetDate(r[4]);
+    var groupPlayers = [];
+    try { groupPlayers = JSON.parse(r[8] || '[]'); } catch(e) {}
+    var partnerEmails = groupPlayers.map(function(p) { return (p.email || '').toLowerCase(); });
+    var matchGroupRow = _findMatchGroupRow(ss, matchDate, [email].concat(partnerEmails));
+    if (matchGroupRow && matchGroupRow.letter) {
+      _setGroupLetterOnRequestRow(reqSheet, i + 2, matchGroupRow.letter);
+      updated++;
+    } else {
+      notFound++;
+      Logger.log('backfillGroupLetters: no MatchGroups row found for row ' + (i + 2) + ' (' + email + ', ' + matchDate + ')');
+    }
+  });
+  return { success: true, updated: updated, notFound: notFound };
 }
 
 function submitRequest(params) {
