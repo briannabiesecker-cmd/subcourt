@@ -4461,7 +4461,7 @@ function getPlayersScheduledForDate(targetDate) {
 function getMatchGroupsForDate(targetDate) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 16).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
   var groups = [];
   rows.forEach(function(r) {
     var rowDate = r[2] instanceof Date
@@ -4476,28 +4476,39 @@ function getMatchGroupsForDate(targetDate) {
       var email = r[4 + pi * 2 + 1] ? r[4 + pi * 2 + 1].toString().trim() : '';
       if (name) players.push({ name: name, email: email, isCaptain: pi === 0 });
     }
-    if (players.length) groups.push({ letter: letter, players: players });
+    if (players.length) groups.push({ letter: letter, time: r[16] ? r[16].toString().trim() : '', players: players });
   });
   groups.sort(function(a, b) { return a.letter.localeCompare(b.letter); });
   return groups;
 }
 
+// Match-time label for the "groups playing" table — the leftover-volunteers email
+// always shows the actual court time in the Group column when one is set, falling
+// back to the plain Group letter only if it isn't known yet.
+function _groupTimeLabel(g) {
+  return g.time ? (TIME_LABELS[g.time] || g.time) : g.letter;
+}
+
 function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
   var introText = 'No more sub requests can be filled for tomorrow. The following players are available if needed.';
-  var dataRows = volunteers.map(function(v) {
-    var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
-    return '<tr style="border-bottom:1px solid #f0f0f0;">' +
-      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.name + '</td>' +
-      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.email + '</td>' +
-      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + (v.phone || '—') + '</td>' +
-      '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + times + '</td>' +
-      '</tr>';
-  }).join('');
+  var dataRows = volunteers.length
+    ? volunteers.map(function(v) {
+        var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
+        return '<tr style="border-bottom:1px solid #f0f0f0;">' +
+          '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.name + '</td>' +
+          '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + v.email + '</td>' +
+          '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + (v.phone || '—') + '</td>' +
+          '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + times + '</td>' +
+          '</tr>';
+      }).join('')
+    : '<tr style="border-bottom:1px solid #f0f0f0;">' +
+        '<td colspan="4" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">None</td>' +
+        '</tr>';
 
   var groupRows = (groups || []).map(function(g) {
     var names = g.players.map(function(p) { return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name; }).join(', ');
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
-      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;font-weight:600;">' + g.letter + '</td>' +
+      '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;font-weight:600;">' + _groupTimeLabel(g) + '</td>' +
       '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + names + '</td>' +
       '</tr>';
   }).join('');
@@ -4546,16 +4557,20 @@ function buildLeftoverVolunteersEmailText(volunteers, groups) {
   var lines = [];
   lines.push('No more sub requests can be filled for tomorrow. The following players are available if needed.');
   lines.push('');
-  volunteers.forEach(function(v) {
-    var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
-    lines.push(v.name + '  |  ' + v.email + '  |  ' + (v.phone || '—') + '  |  ' + times);
-  });
+  if (volunteers.length) {
+    volunteers.forEach(function(v) {
+      var times = (v.times || []).map(function(t) { return TIME_LABELS[t] || t; }).join(', ') || 'TBD';
+      lines.push(v.name + '  |  ' + v.email + '  |  ' + (v.phone || '—') + '  |  ' + times);
+    });
+  } else {
+    lines.push('None');
+  }
   if (groups && groups.length) {
     lines.push('');
     lines.push('Groups playing tomorrow:');
     groups.forEach(function(g) {
       var names = g.players.map(function(p) { return p.name; }).join(', ');
-      lines.push('  ' + g.letter + ': ' + names);
+      lines.push('  ' + _groupTimeLabel(g) + ': ' + names);
     });
   }
   lines.push('');
@@ -4567,12 +4582,11 @@ function buildLeftoverVolunteersEmailText(volunteers, groups) {
 
 // Fires on the final Pre-Match Day run (row.cancel), win or lose — a request can
 // stay unfilled even with a leftover volunteer if their rating misses the skill
-// window. If any volunteers for targetDate were never used, lets them and everyone
-// scheduled to play know who's still around.
+// window. Always sends (even with zero leftover volunteers, shown as "None") so
+// everyone scheduled to play knows who's still around if a spot opens up.
 function sendLeftoverVolunteersEmail(targetDate) {
   if (!isEmailEnabled()) return;
   var volunteers = getLeftoverVolunteersForDate(targetDate);
-  if (!volunteers.length) return;
 
   var scheduledPlayers = getPlayersScheduledForDate(targetDate);
   // Once a request is filled, updateScheduleForSub swaps the substitute into the
