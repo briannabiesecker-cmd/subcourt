@@ -1254,6 +1254,7 @@ function runAutoDispatch() {
           requestorEmail:    req.email,
           matchDate:         req.matchDate,
           matchTime:         req.matchTime,
+          groupLetter:       req.groupLetter,
           volunteerRowIndex: best.rowIndex || null,
           groupPlayers:      JSON.stringify(req.groupPlayers || [])
         });
@@ -1498,7 +1499,9 @@ function getRequests() {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  const rows = sheet.getRange(1, 1, lastRow, 9).getValues();
+  // Column J (10) is the No8am flag (_flagNo8amOnRequestRow) — groupLetter lives in
+  // column K (11) instead, alongside it rather than reshuffling existing columns.
+  const rows = sheet.getRange(1, 1, lastRow, 11).getValues();
   rows.shift();
   return rows.map((r, i) => ({
     rowIndex:     i + 2,
@@ -1510,7 +1513,8 @@ function getRequests() {
     matchTime:    formatSheetTime(r[5]),
     status:       r[6] || 'open',
     assignedSub:  r[7] || '',
-    groupPlayers: (function() { try { return JSON.parse(r[8] || '[]'); } catch(e) { return []; } })()
+    groupPlayers: (function() { try { return JSON.parse(r[8] || '[]'); } catch(e) { return []; } })(),
+    groupLetter:  r[10] ? r[10].toString().trim() : ''
   }));
 }
 
@@ -1735,6 +1739,20 @@ function _flagNo8amOnRequestRow(reqSheet, rowNum, emails, allPlayers) {
   }
 }
 
+// Records which MatchGroups group (letter) a SubRequests row belongs to, in column
+// K — so a later sub-confirmation can find the exact row to update in MatchGroups
+// instead of matching on email alone, which is ambiguous if the requester happens
+// to appear in more than one group on the same day.
+function _setGroupLetterOnRequestRow(reqSheet, rowNum, groupLetter) {
+  try {
+    var headerCell = reqSheet.getRange(1, 11);
+    if (!headerCell.getValue()) headerCell.setValue('Group Letter');
+    reqSheet.getRange(rowNum, 11).setValue(groupLetter || '');
+  } catch(e) {
+    Logger.log('_setGroupLetterOnRequestRow failed: ' + e.message);
+  }
+}
+
 // One-off backfill: applies the No8am flag (column J) to every currently open
 // SubRequests row. New requests get it automatically going forward via
 // _flagNo8amOnRequestRow (submitRequest, publishScheduleSlot's Anita Sub creation).
@@ -1779,18 +1797,29 @@ function submitRequest(params) {
     return { success: false, error: 'A sub request for this date already exists.' };
   }
 
+  // Look up the MatchGroups row this request belongs to — captured on the request
+  // itself so a later sub-confirmation can find the exact group/row to update
+  // instead of matching on email alone, which breaks if the requester happens to
+  // appear in more than one group on the same day. When the caller already knows
+  // which group (e.g. the My Matches schedule table, which is keyed by date+letter),
+  // it passes groupLetter explicitly and that's looked up directly; otherwise fall
+  // back to the best-effort email scan.
+  var explicitGroupLetter = (params.groupLetter || '').toString().trim();
+  var ssForGroupLookup = SpreadsheetApp.openById(SHEET_ID);
+  var matchGroupRow = explicitGroupLetter
+    ? _findMatchGroupRowByLetter(ssForGroupLookup, reqDate, explicitGroupLetter)
+    : (reqDate ? _findMatchGroupRow(ssForGroupLookup, reqDate, [reqEmail].concat(partnerEmails)) : null);
+  var groupLetter = matchGroupRow ? matchGroupRow.letter : explicitGroupLetter;
+
   // Court times only ever exist within 2 days of the match, and MatchGroups is
   // authoritative in that window. A group still marked Overflow needs the player
   // to supply a real time before a request can go through — same as a blank/TBD
   // time — rather than being blocked outright; server-side, not just a hidden
   // frontend control.
   var submittedTime = params.matchTime ? params.matchTime.toString().trim() : '';
-  var nearTermGroup = null;
-  if (reqDate && _isTomorrowOrDayAfterTomorrow(reqDate)) {
-    nearTermGroup = _findMatchGroupRow(SpreadsheetApp.openById(SHEET_ID), reqDate, [reqEmail].concat(partnerEmails));
-    if (nearTermGroup && nearTermGroup.time === 'Overflow' && !submittedTime) {
-      return { success: false, error: 'This match is in Overflow status — please select a match time, or contact your coordinator.' };
-    }
+  var nearTermGroup = _isTomorrowOrDayAfterTomorrow(reqDate) ? matchGroupRow : null;
+  if (nearTermGroup && nearTermGroup.time === 'Overflow' && !submittedTime) {
+    return { success: false, error: 'This match is in Overflow status — please select a match time, or contact your coordinator.' };
   }
 
   const groupPlayers = JSON.stringify(groupPlayersArr);
@@ -1810,6 +1839,7 @@ function submitRequest(params) {
   sheet.getRange(lastRow, 5).setNumberFormat('@');
   sheet.getRange(lastRow, 6).setNumberFormat('@');
   sheet.getRange(lastRow, 9).setNumberFormat('@');
+  _setGroupLetterOnRequestRow(sheet, lastRow, groupLetter);
   _flagNo8amOnRequestRow(sheet, lastRow, [params.email].concat(groupPlayersArr.map(function(p) { return p.email; })));
 
   // If the player supplied or changed a time within the 2-day window, reconcile it
@@ -2461,6 +2491,7 @@ function confirmSub(params) {
 // Replaces the requestor's player slot in MatchGroups with the confirmed sub.
 function updateScheduleForSub(ss, params) {
   var matchDate      = (params.matchDate      || '').toString().trim();
+  var groupLetter    = (params.groupLetter    || '').toString().trim();
   var requestorEmail = (params.requestorEmail || '').toLowerCase().trim();
   var subName        = (params.subName        || '').toString().trim();
   var subEmail       = (params.subEmail       || '').toString().trim();
@@ -2476,6 +2507,13 @@ function updateScheduleForSub(ss, params) {
       ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
       : (r[2] ? r[2].toString() : '');
     if (rowDate !== matchDate) continue;
+    // The request records which group it came from — when present, only that
+    // exact row is a candidate. This is what stops the wrong group's slot from
+    // getting overwritten when the requester happens to appear in more than one
+    // group on the same day (matching on email+date alone picked whichever row
+    // came first). Requests created before this field existed have no letter, so
+    // they fall back to the old email-only match.
+    if (groupLetter && (r[3] || '').toString().trim() !== groupLetter) continue;
 
     // Player slots: pi=0→cols 5,6  pi=1→cols 7,8  pi=2→cols 9,10  pi=3→cols 11,12
     for (var pi = 0; pi < 4; pi++) {
@@ -2609,6 +2647,33 @@ function _findMatchGroupRow(ss, matchDate, emails) {
   return null;
 }
 
+// Looks up a MatchGroups row by date + group letter directly, rather than by
+// scanning for an email — used when the caller already knows exactly which group
+// a request belongs to, since an email scan is ambiguous when the same player
+// appears in more than one group on the same day. Returns the same shape as
+// _findMatchGroupRow (letter, time, emails, rowIndex) or null.
+function _findMatchGroupRowByLetter(ss, matchDate, groupLetter) {
+  var sheet = ss.getSheetByName(TABS.matchGroups);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (rowDate !== matchDate) continue;
+    var letter = r[3] ? r[3].toString().trim() : '';
+    if (letter !== groupLetter) continue;
+    var emails = [];
+    for (var pi = 0; pi < 4; pi++) {
+      var em = (r[5 + pi * 2] || '').toString().trim();
+      if (em) emails.push(em);
+    }
+    return { letter: letter, time: (r[16] || '').toString().trim(), emails: emails, rowIndex: i + 2 };
+  }
+  return null;
+}
+
 // Writes a MatchGroups row's time by date + group letter (not by email — used by
 // the Chelsea import and the View Schedule dropdown, which both already know the
 // letter). Returns { success, emails } so callers can cascade to SubRequests
@@ -2725,7 +2790,7 @@ function getMatchSlot(params) {
         }
       }
 
-      return { found: true, matchTime: matchTime, overflow: overflow, players: players };
+      return { found: true, matchTime: matchTime, overflow: overflow, players: players, letter: r[3] ? r[3].toString().trim() : '' };
     }
   }
 
@@ -4286,6 +4351,7 @@ function runDispatchAllOpen() {
           subEmail: best.email, subName: best.name,
           requestorName: req.name, requestorEmail: req.email,
           matchDate: req.matchDate, matchTime: req.matchTime,
+          groupLetter: req.groupLetter,
           volunteerRowIndex: best.rowIndex || null,
           groupPlayers: JSON.stringify(req.groupPlayers || [])
         });
@@ -4907,6 +4973,7 @@ function manuallyAssignSub(params) {
 
   updateScheduleForSub(ss, {
     matchDate:      req.matchDate,
+    groupLetter:    req.groupLetter,
     requestorEmail: req.email,
     subName:        subName,
     subEmail:       subEmail
@@ -6329,6 +6396,7 @@ function publishScheduleSlot(params) {
       rSheet.getRange(lastReqRow, 5).setNumberFormat('@');
       rSheet.getRange(lastReqRow, 6).setNumberFormat('@');
       rSheet.getRange(lastReqRow, 9).setNumberFormat('@');
+      _setGroupLetterOnRequestRow(rSheet, lastReqRow, String.fromCharCode(65 + gi));
       _flagNo8amOnRequestRow(rSheet, lastReqRow, groupForRequest.map(function(p) { return p.email; }));
 
       Logger.log('Created ' + anitaName + ' (rating ' + anitaRating + ') for ' + slot.date + ' group ' + String.fromCharCode(65 + gi));

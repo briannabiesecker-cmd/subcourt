@@ -2638,11 +2638,12 @@ async function onReqDateChange() {
     }
 
     reqAutoFill = {
-      found:     true,
-      matchTime: result.matchTime || '',
-      overflow:  !!result.overflow,
-      players:   result.players,
-      partners:  result.players.filter(p => (p.email || '').toLowerCase() !== email.toLowerCase())
+      found:       true,
+      matchTime:   result.matchTime || '',
+      overflow:    !!result.overflow,
+      groupLetter: result.letter || '',
+      players:     result.players,
+      partners:    result.players.filter(p => (p.email || '').toLowerCase() !== email.toLowerCase())
     };
 
     const playerTags = result.players.map(p => {
@@ -2766,7 +2767,7 @@ async function _doSubmitRequest({ name, email, matchDate, matchTime, partners })
   btn.disabled = true;
   btn.textContent = 'Submitting…';
   try {
-    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupPlayers: partners });
+    await apiPost({ action: 'submitRequest', name, email, matchDate, matchTime, groupLetter: reqAutoFill?.groupLetter || '', groupPlayers: partners });
     showAlert('req-alert', 'success', 'Request submitted! The coordinator will be in touch.');
     document.getElementById('req-date').value = '';
     document.getElementById('req-schedule-lookup').innerHTML = '';
@@ -2884,10 +2885,11 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
         const key       = d.date + '|' + g.letter;
         const knownTime = g.time && g.time !== 'Overflow' ? g.time : '';
         reqScheduleData[key] = {
-          matchDate: d.date,
-          matchTime: knownTime,
-          players:   g.players,
-          partners:  g.players.filter(p => !p.email || p.email.toLowerCase() !== emailLower)
+          matchDate:   d.date,
+          matchTime:   knownTime,
+          groupLetter: g.letter,
+          players:     g.players,
+          partners:    g.players.filter(p => !p.email || p.email.toLowerCase() !== emailLower)
         };
         const alreadyRequested = myRequests.some(r => {
           if (r.matchDate !== d.date) return false;
@@ -3135,6 +3137,7 @@ async function _submitScheduleCheckRequest(el, key, slot, name, email, retryHtml
       name, email,
       matchDate:    slot.matchDate,
       matchTime:    slot.matchTime,
+      groupLetter:  slot.groupLetter,
       groupPlayers: partners
     });
     cell.innerHTML = '<span style="font-size:12px;color:var(--success);">Requested ✓</span>';
@@ -4351,7 +4354,7 @@ async function _resolveScheduledConflict(date, times, email, name) {
       );
       if (!hasOpenRequest) {
         const partners = (group.players || []).filter(p => (p.email || '').toLowerCase() !== emailLower && p.name && p.email);
-        await apiPost({ action: 'submitRequest', name, email, matchDate: date, matchTime, groupPlayers: partners });
+        await apiPost({ action: 'submitRequest', name, email, matchDate: date, matchTime, groupLetter: group.letter, groupPlayers: partners });
         clearCache();
       }
     } catch(e) {}
