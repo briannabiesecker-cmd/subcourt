@@ -155,28 +155,10 @@ function processVolunteerFromEmail(requestId, playerEmail) {
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
   var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  // Prevent duplicate: skip only if a non-cancelled record already exists for this
-  // exact email + date + time slot. Keyed on time too (not just date) so a player who
-  // clicks "I CAN Sub" for two different time slots on the same date gets a volunteer
-  // record for each one, instead of the second click being silently dropped as a
-  // "duplicate" of the first.
-  var lastRow = volSheet.getLastRow();
-  if (lastRow >= 2) {
-    var existing = volSheet.getRange(2, 1, lastRow - 1, 7).getValues();
-    for (var k = 0; k < existing.length; k++) {
-      if ((existing[k][3] || '').toLowerCase() === playerEmail &&
-          formatSheetDate(existing[k][4]) === req.matchDate &&
-          (existing[k][5] || '') === timeCode &&
-          (existing[k][6] || '').toLowerCase() !== 'cancelled') {
-        Logger.log('processVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate + ' at ' + timeCode);
-        return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
-      }
-    }
-  }
-  var nextRow = volSheet.getLastRow() + 1;
-  var rng     = volSheet.getRange(nextRow, 1, 1, 7);
-  rng.setNumberFormats([['@','@','@','@','@','@','@']]);
-  rng.setValues([[uid(), nowEasternISO(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
+  // A player never gets more than one non-cancelled volunteer record on the same
+  // date: if one already exists, this time slot is merged into it rather than a
+  // second record being created for the day.
+  upsertVolunteerTimes(volSheet, playerName, playerEmail, req.matchDate, timeCode.split(','));
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
   return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
 }
@@ -290,29 +272,12 @@ function handleVolunteerFromEmail(e) {
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
-  var volSheet2  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  var lastRow2   = volSheet2.getLastRow();
-  var isDuplicate = false;
-  if (lastRow2 >= 2) {
-    var existing2 = volSheet2.getRange(2, 1, lastRow2 - 1, 7).getValues();
-    for (var k2 = 0; k2 < existing2.length; k2++) {
-      if ((existing2[k2][3] || '').toLowerCase() === playerEmail &&
-          formatSheetDate(existing2[k2][4]) === req.matchDate &&
-          (existing2[k2][5] || '') === timeCode &&
-          (existing2[k2][6] || '').toLowerCase() !== 'cancelled') {
-        Logger.log('handleVolunteerFromEmail: duplicate skipped for ' + playerEmail + ' on ' + req.matchDate + ' at ' + timeCode);
-        isDuplicate = true;
-        break;
-      }
-    }
-  }
-  if (!isDuplicate) {
-    var nextRow2 = volSheet2.getLastRow() + 1;
-    var rng2     = volSheet2.getRange(nextRow2, 1, 1, 7);
-    rng2.setNumberFormats([['@','@','@','@','@','@','@']]);
-    rng2.setValues([[uid(), nowEasternISO(), playerName, playerEmail, req.matchDate, timeCode, 'pending']]);
-    Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
-  }
+  var volSheet2 = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  // A player never gets more than one non-cancelled volunteer record on the same
+  // date: if one already exists, this time slot is merged into it rather than a
+  // second record being created for the day.
+  upsertVolunteerTimes(volSheet2, playerName, playerEmail, req.matchDate, timeCode.split(','));
+  Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
 
   var statusLine = alreadyFilled
     ? '<p style="color:#c0392b;margin:0 0 4px;">Note: The ' +
@@ -1896,51 +1861,58 @@ function submitRequest(params) {
   return { success: true };
 }
 
-function submitVolunteer(params) {
-  const sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
-  const entries    = JSON.parse(params.entries);
-  const emailLower = (params.email || '').toLowerCase();
-  const lastRow0   = sheet.getLastRow();
-  const existing0  = lastRow0 >= 2 ? sheet.getRange(2, 1, lastRow0 - 1, 7).getValues() : [];
-  entries.forEach(entry => {
-    // If a non-cancelled record already exists for this email + date, merge the
-    // newly submitted times into it (instead of dropping this whole resubmission)
-    // as long as it's still 'pending' — an already-matched/expired record represents
-    // a finalized outcome, so leave those alone rather than reopening them.
-    const existingIdx = existing0.findIndex(r =>
-      (r[3] || '').toLowerCase() === emailLower &&
-      formatSheetDate(r[4]) === entry.date &&
-      (r[6] || '').toLowerCase() !== 'cancelled'
-    );
-    if (existingIdx !== -1) {
-      const existingRow = existing0[existingIdx];
-      const status = (existingRow[6] || '').toLowerCase();
-      if (status !== 'pending') {
-        Logger.log('submitVolunteer: skipped merge for ' + emailLower + ' on ' + entry.date + ' — existing record is ' + status);
-        return;
-      }
-      const existingTimes = (existingRow[5] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
-      const mergedTimes   = existingTimes.slice();
-      entry.times.forEach(t => { if (mergedTimes.indexOf(t) === -1) mergedTimes.push(t); });
-      if (mergedTimes.length === existingTimes.length) return; // nothing new to add
-      const rowNum = existingIdx + 2; // +1 for header row, +1 for 1-based sheet rows
-      sheet.getRange(rowNum, 6).setNumberFormat('@').setValue(mergedTimes.join(','));
-      Logger.log('submitVolunteer: merged times for ' + emailLower + ' on ' + entry.date + ' -> ' + mergedTimes.join(','));
-      return;
+// Ensures a player never ends up with more than one non-cancelled volunteer
+// record on the same date: if one already exists (and is still 'pending'),
+// the given times are merged into it instead of a second row being created.
+// An already-matched/expired record represents a finalized outcome, so those
+// are left alone rather than reopened. Times are passed/stored as arrays of
+// encoded codes (e.g. "08_00") to prevent Sheets auto-converting them.
+function upsertVolunteerTimes(sheet, name, email, date, times, timestampISO) {
+  const emailLower = (email || '').toLowerCase();
+  const lastRow    = sheet.getLastRow();
+  const existing   = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, 7).getValues() : [];
+  const existingIdx = existing.findIndex(r =>
+    (r[3] || '').toLowerCase() === emailLower &&
+    formatSheetDate(r[4]) === date &&
+    (r[6] || '').toLowerCase() !== 'cancelled'
+  );
+  if (existingIdx !== -1) {
+    const existingRow = existing[existingIdx];
+    const status = (existingRow[6] || '').toLowerCase();
+    if (status !== 'pending') {
+      Logger.log('upsertVolunteerTimes: skipped merge for ' + emailLower + ' on ' + date + ' — existing record is ' + status);
+      return { created: false, merged: false };
     }
-    const nextRow = sheet.getLastRow() + 1;
-    const range   = sheet.getRange(nextRow, 1, 1, 7);
-    // Set number format first to prevent auto-conversion
-    range.setNumberFormats([['@','@','@','@','@','@','@']]);
-    range.setValues([[
-      uid(),
-      nowEasternISO(),
-      params.name,
-      params.email,
-      entry.date,
-      entry.times.join(','),  // stored as 08_00,09_30 etc to prevent Sheets time conversion
-      'pending'
-    ]]);
+    const existingTimes = (existingRow[5] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
+    const mergedTimes   = existingTimes.slice();
+    times.forEach(t => { if (mergedTimes.indexOf(t) === -1) mergedTimes.push(t); });
+    if (mergedTimes.length === existingTimes.length) return { created: false, merged: false }; // nothing new to add
+    const rowNum = existingIdx + 2; // +1 for header row, +1 for 1-based sheet rows
+    sheet.getRange(rowNum, 6).setNumberFormat('@').setValue(mergedTimes.join(','));
+    Logger.log('upsertVolunteerTimes: merged times for ' + emailLower + ' on ' + date + ' -> ' + mergedTimes.join(','));
+    return { created: false, merged: true };
+  }
+  const nextRow = sheet.getLastRow() + 1;
+  const range   = sheet.getRange(nextRow, 1, 1, 7);
+  // Set number format first to prevent auto-conversion
+  range.setNumberFormats([['@','@','@','@','@','@','@']]);
+  range.setValues([[
+    uid(),
+    timestampISO || nowEasternISO(),
+    name,
+    email,
+    date,
+    times.join(','),  // stored as 08_00,09_30 etc to prevent Sheets time conversion
+    'pending'
+  ]]);
+  return { created: true, merged: false };
+}
+
+function submitVolunteer(params) {
+  const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  const entries = JSON.parse(params.entries);
+  entries.forEach(entry => {
+    upsertVolunteerTimes(sheet, params.name, params.email, entry.date, entry.times);
   });
 
   // Confirmation email to volunteer
@@ -6365,15 +6337,9 @@ function publishScheduleSlot(params) {
       }
     }
     var volSheet = ss.getSheetByName(TABS.volunteers);
-    var volRange = volSheet.getRange(volSheet.getLastRow() + 1, 1, 1, 7);
-    volRange.setNumberFormats([['@','@','@','@','@','@','@']]);
     var thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    volRange.setValues([[
-      uid(), thirtyDaysAgo,
-      sitOutName, sitOutEmail.toLowerCase(),
-      slot.date, sitOutTimes, 'pending'
-    ]]);
-    Logger.log('Created volunteer record for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes + ' (timestamp backdated 30 days)');
+    upsertVolunteerTimes(volSheet, sitOutName, sitOutEmail.toLowerCase(), slot.date, sitOutTimes.split(','), thirtyDaysAgo);
+    Logger.log('Recorded volunteer availability for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes);
     try { sendSitOutNotification(sitOutName, sitOutEmail, slot.date); }
     catch(emailErr) { Logger.log('Sit-out notify failed (email): ' + emailErr.message); }
   }
@@ -6395,15 +6361,9 @@ function publishScheduleSlot(params) {
       }
     }
     var volSheet2 = ss.getSheetByName(TABS.volunteers);
-    var volRange2 = volSheet2.getRange(volSheet2.getLastRow() + 1, 1, 1, 7);
-    volRange2.setNumberFormats([['@','@','@','@','@','@','@']]);
     var thirtyDaysAgo2 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    volRange2.setValues([[
-      uid(), thirtyDaysAgo2,
-      sitOut2Name, sitOut2Email.toLowerCase(),
-      slot.date, sitOut2Times, 'pending'
-    ]]);
-    Logger.log('Created volunteer record for 2nd alternate: ' + sitOut2Name + ' on ' + slot.date + ' times: ' + sitOut2Times + ' (timestamp backdated 30 days)');
+    upsertVolunteerTimes(volSheet2, sitOut2Name, sitOut2Email.toLowerCase(), slot.date, sitOut2Times.split(','), thirtyDaysAgo2);
+    Logger.log('Recorded volunteer availability for 2nd alternate: ' + sitOut2Name + ' on ' + slot.date + ' times: ' + sitOut2Times);
     try { sendSitOutNotification(sitOut2Name, sitOut2Email, slot.date); }
     catch(emailErr) { Logger.log('Sit-out2 notify failed (email): ' + emailErr.message); }
   }
