@@ -4527,6 +4527,26 @@ function runDispatchAllOpen() {
   return matched;
 }
 
+// Friendly "h:mm AM/PM" formatting for the next-dispatch-run note appended to the
+// subs-needed broadcast — separate from TIME_LABELS since this covers whatever
+// hour is actually configured, not just the 4 canonical match time slots.
+function _formatClockTime(date, tz) {
+  return Utilities.formatDate(date, tz, 'h:mm a');
+}
+
+// One-sentence heads-up appended to the bottom of the subs-needed broadcast, telling
+// players when Dispatch will next attempt to fill any remaining open requests.
+// Returns '' if there's no scheduled run to report (e.g. every dispatch schedule
+// is disabled/empty) so callers can skip the note entirely.
+function _nextDispatchRunWindow() {
+  var next = _computeNextDispatchRun();
+  if (!next) return null;
+  var tz    = Session.getScriptTimeZone();
+  var start = new Date(next.time);
+  var end   = new Date(start.getTime() + 60 * 60 * 1000);
+  return { start: _formatClockTime(start, tz), end: _formatClockTime(end, tz) };
+}
+
 function buildSubNeededEmailHtml(requests, scriptUrl) {
   var dateStr    = formatDate(requests[0].matchDate);
   var headerRow =
@@ -4555,6 +4575,13 @@ function buildSubNeededEmailHtml(requests, scriptUrl) {
       '</tr>';
   }).join('');
 
+  var nextRun    = _nextDispatchRunWindow();
+  var nextRunRow = nextRun
+    ? '<tr><td colspan="4" style="padding-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111111;">' +
+        'The Dispatch process will run again between <strong>' + nextRun.start + '</strong> and <strong>' + nextRun.end + '</strong>.' +
+      '</td></tr>'
+    : '';
+
   return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
     '<html xmlns="http://www.w3.org/1999/xhtml"><head>' +
     '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />' +
@@ -4572,6 +4599,7 @@ function buildSubNeededEmailHtml(requests, scriptUrl) {
     '<tr><td colspan="4"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' +
     headerRow + dataRows +
     '</table></td></tr>' +
+    nextRunRow +
     '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
     '</table></td></tr>' +
     '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
@@ -4592,6 +4620,11 @@ function buildSubNeededEmailText(requests, targetDate) {
       .map(function(p) { return p.name; }).join(', ');
     lines.push('Needs Sub: ' + (req.name || '') + '  |  Time: ' + timeLabel + '  |  Other Players: ' + otherNames);
   });
+  var nextRun = _nextDispatchRunWindow();
+  if (nextRun) {
+    lines.push('');
+    lines.push('The Dispatch process will run again between ' + nextRun.start + ' and ' + nextRun.end + '.');
+  }
   lines.push('');
   lines.push('Do not reply to this email.');
   lines.push('');
