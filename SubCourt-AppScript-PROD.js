@@ -5399,6 +5399,7 @@ function checkAvailabilityWindow() {
   var avUrl          = APP_BASE_URL + '#availability';
   var subject        = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes ' + urgency;
   var body =
+    'Your monthly availability has not been received.\n\n' +
     'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes ' + urgency + ' (' + closeDateLabel + ').\n\n' +
     'Please submit your available dates before the window closes so we can include you in the schedule.\n\n' +
     'Open the My Availability page to submit:\n' +
@@ -5406,6 +5407,7 @@ function checkAvailabilityWindow() {
     'See you on the court!\n' +
     'MWF Tennis League';
   var htmlBody =
+    'Your monthly availability has <u>not</u> been received.<br><br>' +
     'Just a reminder — the availability window for <strong>' + config.targetMonthLabel + '</strong> closes ' + urgency + ' (' + closeDateLabel + ').<br><br>' +
     'Please submit your available dates before the window closes so we can include you in the schedule.<br><br>' +
     'Open the <a href="' + avUrl + '">My Availability</a> page to submit.<br><br>' +
@@ -5433,6 +5435,7 @@ function testCheckAvailabilityWindowEmail() {
   var avUrl       = APP_BASE_URL + '#availability';
   var subject     = 'Reminder: Submit your availability for ' + config.targetMonthLabel + ' — closes today';
   var body =
+    'Your monthly availability has not been received.\n\n' +
     'Just a reminder — the availability window for ' + config.targetMonthLabel + ' closes today (' + closeDateLabel + ').\n\n' +
     'Please submit your available dates before the window closes so we can include you in the schedule.\n\n' +
     'Open the My Availability page to submit:\n' +
@@ -5440,6 +5443,7 @@ function testCheckAvailabilityWindowEmail() {
     'See you on the court!\n' +
     'MWF Tennis League';
   var htmlBody =
+    'Your monthly availability has <u>not</u> been received.<br><br>' +
     'Just a reminder — the availability window for <strong>' + config.targetMonthLabel + '</strong> closes today (' + closeDateLabel + ').<br><br>' +
     'Please submit your available dates before the window closes so we can include you in the schedule.<br><br>' +
     'Open the <a href="' + avUrl + '">My Availability</a> page to submit.<br><br>' +
