@@ -128,19 +128,40 @@ function sendBrevoEmail(params) {
 }
 
 // Called via google.script.run from the confirmation page — no navigation needed.
-// True only when the player has a real (non-blank, non-Overflow) match time on
-// MatchGroups for matchDate that exactly equals matchTime — the same exact-time
-// conflict check runMatch uses (see _getPlayerMatchTimesForDate) before assigning
-// a sub, applied here up front so the "I CAN Sub" email link can't create a
-// volunteer record for a slot the player is already double-booked into.
-function _playerHasExactMatchConflict(ss, matchDate, matchTime, playerEmail) {
-  if (!matchTime || matchTime === 'Overflow') return false;
+// Resolves what the player's own match time is on matchDate (per MatchGroups),
+// mirroring the Volunteer to Sub screen's warnScheduledDateRow logic: not
+// scheduled that day → no conflict possible. Scheduled with a real time or
+// Overflow → that's authoritative. Scheduled but still blank/TBD → the caller
+// must supply ownMatchTime (collected from the player first) before this can
+// resolve; if it isn't supplied yet, needsMatchTime comes back true so the
+// caller can ask, then re-call with the answer. A supplied ownMatchTime is
+// saved back to MatchGroups so it only has to be asked once.
+function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime) {
+  var emailLower = (playerEmail || '').toLowerCase();
   var playingElsewhere = _getPlayerMatchTimesForDate(ss, matchDate);
-  var theirTime = playingElsewhere[(playerEmail || '').toLowerCase()];
-  return !!theirTime && theirTime === matchTime;
+  if (!Object.prototype.hasOwnProperty.call(playingElsewhere, emailLower)) {
+    return { scheduled: false, matchTime: '' };
+  }
+  var theirTime = playingElsewhere[emailLower];
+  if (theirTime) return { scheduled: true, matchTime: theirTime };
+
+  ownMatchTime = (ownMatchTime || '').toString().trim();
+  if (!ownMatchTime || TIMES.indexOf(ownMatchTime) === -1) {
+    return { scheduled: true, matchTime: '', needsMatchTime: true };
+  }
+  var groupRow = _findMatchGroupRow(ss, matchDate, [playerEmail]);
+  if (groupRow) _setMatchGroupTime(matchDate, groupRow.letter, ownMatchTime);
+  return { scheduled: true, matchTime: ownMatchTime };
 }
 
-function processVolunteerFromEmail(requestId, playerEmail) {
+// True when the player's own resolved match time (see above) exactly conflicts
+// with matchTime — Overflow, blank, or "not scheduled that day" are never a
+// conflict, same as the Volunteer to Sub screen's rules.
+function _isExactMatchConflict(ownMatch, matchTime) {
+  return !!(ownMatch.matchTime && ownMatch.matchTime !== 'Overflow' && matchTime && ownMatch.matchTime === matchTime);
+}
+
+function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime) {
   requestId   = (requestId   || '').trim();
   playerEmail = (playerEmail || '').trim().toLowerCase();
   if (!requestId || !playerEmail) return { success: false, error: 'Invalid parameters.' };
@@ -151,7 +172,11 @@ function processVolunteerFromEmail(requestId, playerEmail) {
   }
   if (!req) return { success: false, error: 'This sub request could not be found. It may have already been filled.' };
   var ss = SpreadsheetApp.openById(SHEET_ID);
-  if (_playerHasExactMatchConflict(ss, req.matchDate, req.matchTime, playerEmail)) {
+  var ownMatch = _resolvePlayerOwnMatchTime(ss, req.matchDate, playerEmail, ownMatchTime);
+  if (ownMatch.needsMatchTime) {
+    return { success: false, needsMatchTime: true, dateStr: formatDate(req.matchDate) };
+  }
+  if (_isExactMatchConflict(ownMatch, req.matchTime)) {
     return { success: false, error: 'You are already scheduled to play at ' + (TIME_LABELS[req.matchTime] || req.matchTime) + ' that day, so you can\'t sub for this request.' };
   }
   var alreadyFilled = req.status !== 'open';
@@ -215,9 +240,16 @@ function handleVolunteerFromEmail(e) {
   }
 
   if (!playerEmail) {
-    // BCC path — confirmation page; uses google.script.run so no navigation needed
+    // BCC path — confirmation page; uses google.script.run so no navigation needed.
+    // If the player turns out to be scheduled to play that day with no match time
+    // recorded yet, processVolunteerFromEmail comes back with needsMatchTime and
+    // this page collects it (no TBD option) before resubmitting — mirroring the
+    // Volunteer to Sub screen's askVolMatchTimeModal flow for this same case.
     var timeLabel = timeStr ? ' at ' + timeStr : '';
     var reqIdJs   = requestId.replace(/'/g, "\\'");
+    var timeOptionsHtml = TIMES.map(function(t) {
+      return '<option value="' + t + '">' + TIME_LABELS[t] + '</option>';
+    }).join('').replace(/'/g, "\\'");
     return wrap(
       '<div id="pg">' +
         '<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">I can sub' + timeLabel + '<br>on ' + dateStr + '</h2>' +
@@ -234,18 +266,27 @@ function handleVolunteerFromEmail(e) {
       '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>' +
       '<script>' +
         'var RID=\'' + reqIdJs + '\';' +
-        'document.getElementById(\'btnC\').onclick=function(){' +
-          'var e=(document.getElementById(\'em\').value||\'\').trim();' +
-          'if(!e){alert(\'Please enter your email address.\');return;}' +
-          'document.getElementById(\'btns\').style.display=\'none\';' +
-          'document.getElementById(\'msg\').style.display=\'block\';' +
+        'var EM=null;' +
+        'var TIME_OPTS=\'' + timeOptionsHtml + '\';' +
+        'function submitVol(mt){' +
+          'var btns=document.getElementById(\'btns\');' +
+          'if(btns){btns.style.display=\'none\';document.getElementById(\'msg\').style.display=\'block\';}' +
           'google.script.run' +
             '.withSuccessHandler(function(r){' +
-              'document.getElementById(\'btns\').style.display=\'flex\';' +
-              'document.getElementById(\'msg\').style.display=\'none\';' +
               'if(!r.success){' +
-                'document.getElementById(\'errmsg\').textContent=r.error||\'An error occurred.\';' +
-                'document.getElementById(\'errmsg\').style.display=\'block\';' +
+                'if(r.needsMatchTime){showTimePicker(r.dateStr);return;}' +
+                'var b=document.getElementById(\'btns\');' +
+                'if(b){' +
+                  'b.style.display=\'flex\';' +
+                  'document.getElementById(\'msg\').style.display=\'none\';' +
+                  'document.getElementById(\'errmsg\').textContent=r.error||\'An error occurred.\';' +
+                  'document.getElementById(\'errmsg\').style.display=\'block\';' +
+                '}else{' +
+                  'document.getElementById(\'pg\').innerHTML=' +
+                    '\'<h2 style="color:#c0392b;">Match time conflict</h2>\'+' +
+                    '\'<p>\'+(r.error||\'An error occurred.\')+\'</p>\'+' +
+                    '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
+                '}' +
                 'return;' +
               '}' +
               'var n=r.playerName?(", "+r.playerName.split(" ")[0]):"";' +
@@ -260,11 +301,39 @@ function handleVolunteerFromEmail(e) {
                 '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
             '})' +
             '.withFailureHandler(function(){' +
-              'document.getElementById(\'btns\').style.display=\'flex\';' +
-              'document.getElementById(\'msg\').style.display=\'none\';' +
+              'var b=document.getElementById(\'btns\');' +
+              'if(b){b.style.display=\'flex\';document.getElementById(\'msg\').style.display=\'none\';}' +
               'alert(\'Something went wrong. Please try again.\');' +
             '})' +
-            '.processVolunteerFromEmail(RID,e);' +
+            '.processVolunteerFromEmail(RID,EM,mt||\'\');' +
+        '}' +
+        'function showTimePicker(ds){' +
+          'document.getElementById(\'pg\').innerHTML=' +
+            '\'<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">What time are you playing on \'+ds+\'?</h2>\'+' +
+            '\'<p style="margin-bottom:16px;">You are scheduled to play tennis that day. Please select your match time so Rally can check for a conflict.</p>\'+' +
+            '\'<select id="mt" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">\'+' +
+              '\'<option value="" selected disabled>Select a time…</option>\'+' +
+              'TIME_OPTS+' +
+            '\'</select>\'+' +
+            '\'<button id="btnMT" style="width:100%;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Continue</button>\'+' +
+            '\'<p id="errmsg2" style="display:none;color:#dc2626;font-size:14px;margin-top:8px;"></p>\';' +
+          'document.getElementById(\'btnMT\').onclick=function(){' +
+            'var sel=document.getElementById(\'mt\').value;' +
+            'if(!sel){' +
+              'var em2=document.getElementById(\'errmsg2\');' +
+              'em2.textContent=\'Please select a time.\';' +
+              'em2.style.display=\'block\';' +
+              'return;' +
+            '}' +
+            'document.getElementById(\'pg\').innerHTML=\'<p style="color:#6b7280;">Processing…</p>\';' +
+            'submitVol(sel);' +
+          '};' +
+        '}' +
+        'document.getElementById(\'btnC\').onclick=function(){' +
+          'var val=(document.getElementById(\'em\').value||\'\').trim();' +
+          'if(!val){alert(\'Please enter your email address.\');return;}' +
+          'EM=val;' +
+          'submitVol(\'\');' +
         '};' +
         'document.getElementById(\'btnD\').onclick=function(){' +
           'document.getElementById(\'pg\').innerHTML=' +
@@ -278,10 +347,21 @@ function handleVolunteerFromEmail(e) {
 
   // Email present — look up name from Players sheet and create volunteer record
   var ss2 = SpreadsheetApp.openById(SHEET_ID);
-  if (_playerHasExactMatchConflict(ss2, req.matchDate, req.matchTime, playerEmail)) {
+  var ownMatch2 = _resolvePlayerOwnMatchTime(ss2, req.matchDate, playerEmail, '');
+  if (ownMatch2.needsMatchTime) {
+    // This static link has no form to collect a match time interactively —
+    // send them to the Volunteer to Sub screen, which will ask for it.
     return wrap(
-      '<h2 style="color:#c0392b;">Can\'t sub for this match</h2>' +
-      '<p>You are already scheduled to play at <strong>' + timeStr + '</strong> on <strong>' + dateStr + '</strong>, so you can\'t volunteer to sub for this request.</p>' +
+      '<h2 style="color:#c0392b;">Please confirm your match time first</h2>' +
+      '<p>You are scheduled to play on <strong>' + dateStr + '</strong> but Rally does not know your match time yet. ' +
+      'Open the <a href="' + APP_BASE_URL + '#volunteer">Volunteer to Sub</a> page, which will ask for it before letting you sub.</p>' +
+      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+    );
+  }
+  if (_isExactMatchConflict(ownMatch2, req.matchTime)) {
+    return wrap(
+      '<h2 style="color:#c0392b;">Match time conflict</h2>' +
+      '<p>You are already scheduled to play at <strong>' + timeStr + '</strong> on <strong>' + dateStr + '</strong>, so you can not volunteer to sub for this request.</p>' +
       '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
     );
   }
