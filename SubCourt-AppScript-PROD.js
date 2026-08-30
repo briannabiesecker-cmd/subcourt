@@ -128,6 +128,18 @@ function sendBrevoEmail(params) {
 }
 
 // Called via google.script.run from the confirmation page — no navigation needed.
+// True only when the player has a real (non-blank, non-Overflow) match time on
+// MatchGroups for matchDate that exactly equals matchTime — the same exact-time
+// conflict check runMatch uses (see _getPlayerMatchTimesForDate) before assigning
+// a sub, applied here up front so the "I CAN Sub" email link can't create a
+// volunteer record for a slot the player is already double-booked into.
+function _playerHasExactMatchConflict(ss, matchDate, matchTime, playerEmail) {
+  if (!matchTime || matchTime === 'Overflow') return false;
+  var playingElsewhere = _getPlayerMatchTimesForDate(ss, matchDate);
+  var theirTime = playingElsewhere[(playerEmail || '').toLowerCase()];
+  return !!theirTime && theirTime === matchTime;
+}
+
 function processVolunteerFromEmail(requestId, playerEmail) {
   requestId   = (requestId   || '').trim();
   playerEmail = (playerEmail || '').trim().toLowerCase();
@@ -138,6 +150,10 @@ function processVolunteerFromEmail(requestId, playerEmail) {
     if (requests[i].id === requestId) { req = requests[i]; break; }
   }
   if (!req) return { success: false, error: 'This sub request could not be found. It may have already been filled.' };
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  if (_playerHasExactMatchConflict(ss, req.matchDate, req.matchTime, playerEmail)) {
+    return { success: false, error: 'You are already scheduled to play at ' + (TIME_LABELS[req.matchTime] || req.matchTime) + ' that day, so you can\'t sub for this request.' };
+  }
   var alreadyFilled = req.status !== 'open';
   var filledNote = req.status === 'filled' ? 'has already been filled' : 'is no longer active';
   var players    = getPlayers();
@@ -154,7 +170,7 @@ function processVolunteerFromEmail(requestId, playerEmail) {
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
-  var volSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  var volSheet = ss.getSheetByName(TABS.volunteers);
   // A player never gets more than one non-cancelled volunteer record on the same
   // date: if one already exists, this time slot is merged into it rather than a
   // second record being created for the day.
@@ -261,6 +277,14 @@ function handleVolunteerFromEmail(e) {
   }
 
   // Email present — look up name from Players sheet and create volunteer record
+  var ss2 = SpreadsheetApp.openById(SHEET_ID);
+  if (_playerHasExactMatchConflict(ss2, req.matchDate, req.matchTime, playerEmail)) {
+    return wrap(
+      '<h2 style="color:#c0392b;">Can\'t sub for this match</h2>' +
+      '<p>You are already scheduled to play at <strong>' + timeStr + '</strong> on <strong>' + dateStr + '</strong>, so you can\'t volunteer to sub for this request.</p>' +
+      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+    );
+  }
   var players    = getPlayers();
   var playerName = '';
   for (var j = 0; j < players.length; j++) {
@@ -272,7 +296,7 @@ function handleVolunteerFromEmail(e) {
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
-  var volSheet2 = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
+  var volSheet2 = ss2.getSheetByName(TABS.volunteers);
   // A player never gets more than one non-cancelled volunteer record on the same
   // date: if one already exists, this time slot is merged into it rather than a
   // second record being created for the day.
