@@ -217,6 +217,7 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwi
       dateStr: formatDate(req.matchDate)
     };
   }
+  var ownRequestCreated = false;
   if (ownMatch.scheduled && playTwiceChoice === 'changeTimes') {
     try {
       var groupRow = _findMatchGroupRow(ss, req.matchDate, [playerEmail]);
@@ -231,10 +232,11 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwi
           var partners = (groupRow.players || []).filter(function(p) {
             return p.email && p.email.toLowerCase() !== playerEmail && p.name;
           });
-          submitRequest({
+          var ownReqResult = submitRequest({
             name: playerName, email: playerEmail, matchDate: req.matchDate,
             matchTime: ownMatch.matchTime, groupLetter: groupRow.letter, groupPlayers: partners
           });
+          ownRequestCreated = !!(ownReqResult && ownReqResult.success);
         }
       }
     } catch (e) {
@@ -253,7 +255,13 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwi
   // second record being created for the day.
   upsertVolunteerTimes(volSheet, playerName, playerEmail, req.matchDate, timeCode.split(','));
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
-  return { success: true, playerName: playerName, dateStr: formatDate(req.matchDate), shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '', alreadyFilled: alreadyFilled, filledNote: filledNote };
+  return {
+    success: true, playerName: playerName, dateStr: formatDate(req.matchDate),
+    shortDateStr: formatDateShort(req.matchDate), timeStr: TIME_LABELS[req.matchTime] || req.matchTime || '',
+    alreadyFilled: alreadyFilled, filledNote: filledNote,
+    ownRequestCreated: ownRequestCreated,
+    ownRequestTimeStr: ownRequestCreated ? (TIME_LABELS[ownMatch.matchTime] || ownMatch.matchTime) : ''
+  };
 }
 
 function handleVolunteerFromEmail(e) {
@@ -341,8 +349,7 @@ function handleVolunteerFromEmail(e) {
                 '}else{' +
                   'document.getElementById(\'pg\').innerHTML=' +
                     '\'<h2 style="color:#c0392b;">Match time conflict</h2>\'+' +
-                    '\'<p>\'+(r.error||\'An error occurred.\')+\'</p>\'+' +
-                    '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
+                    '\'<p>\'+(r.error||\'An error occurred.\')+\'</p>\';' +
                 '}' +
                 'return;' +
               '}' +
@@ -350,12 +357,15 @@ function handleVolunteerFromEmail(e) {
               'var statusLine=r.alreadyFilled' +
                 '?(\'<p style="color:#c0392b;margin:0 0 4px;">Note: The \'+(r.timeStr?r.timeStr+\' \':\'\')+\'sub request on \'+r.shortDateStr+\' \'+(r.filledNote||\'is no longer active\')+\'.</p>\'+\'<p style="margin:0;">However, a volunteer record has been created for you.</p>\')' +
                 ':\'<p>You will be notified if you are selected as a substitute.</p>\';' +
+              'var ownRequestLine=r.ownRequestCreated' +
+                '?\'<p style="margin-top:12px;">Rally has also submitted a sub request for your own match on <strong>\'+r.dateStr+\'</strong> at <strong>\'+r.ownRequestTimeStr+\'</strong>. You will be notified once a sub is found.</p>\'' +
+                ':\'\';' +
               'document.getElementById(\'pg\').innerHTML=' +
                 '\'<h2>Thank you\'+n+\'!</h2>\'+' +
                 '\'<p>You have volunteered to sub on <strong>\'+r.dateStr+\'</strong>\'+' +
                 '(r.timeStr?\' at <strong>\'+r.timeStr+\'</strong>\':\'\')+\'.</p>\'+' +
                 'statusLine+' +
-                '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
+                'ownRequestLine;' +
             '})' +
             '.withFailureHandler(function(){' +
               'var b=document.getElementById(\'btns\');' +
@@ -412,8 +422,7 @@ function handleVolunteerFromEmail(e) {
         'document.getElementById(\'btnD\').onclick=function(){' +
           'document.getElementById(\'pg\').innerHTML=' +
             '\'<p style="font-size:18px;font-weight:bold;color:#1a5c3a;">No problem!</p>\'+' +
-            '\'<p>Thanks for letting us know. We\\\'ll keep looking for a sub.</p>\'+' +
-            '\'<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>\';' +
+            '\'<p>Thanks for letting us know. We\\\'ll keep looking for a sub.</p>\';' +
         '};' +
       '<\/script>'
     );
