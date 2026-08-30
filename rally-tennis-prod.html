@@ -3398,6 +3398,13 @@ let scheduledGroupByDate = {}; // date → MatchGroups group object (letter/play
 let scheduledMatchTime   = {}; // date → resolved match time ('Overflow' or a TIMES code) for near-scheduled dates
 let volSavedSnapshot   = '{}'; // last-saved/loaded volSelections, for unsaved-changes detection
 
+// A match time counts as Overflow only when it's literally that exact string —
+// blank, whitespace-only, or anything else is unknown and must be asked for,
+// never silently treated as Overflow.
+function isOverflowTime(v) {
+  return (v || '').toString().trim() === 'Overflow';
+}
+
 function volSelectionsSnapshot() {
   const obj = {};
   Object.keys(volSelections).sort().forEach(k => { obj[k] = [...volSelections[k]].sort(); });
@@ -3760,7 +3767,7 @@ async function warnScheduledDateRow(k, group) {
   nearScheduledDates.add(k);
   scheduledGroupByDate[k] = group;
 
-  let matchTime = group.time || '';
+  let matchTime = (group.time || '').toString().trim();
   if (!matchTime) {
     matchTime = await askVolMatchTimeModal(formatDate(k));
     try {
@@ -3770,7 +3777,7 @@ async function warnScheduledDateRow(k, group) {
   }
   scheduledMatchTime[k] = matchTime;
 
-  if (matchTime !== 'Overflow') {
+  if (!isOverflowTime(matchTime)) {
     const chip = document.getElementById('chip-' + k + '-' + matchTime);
     if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
     const arr = volSelections[k];

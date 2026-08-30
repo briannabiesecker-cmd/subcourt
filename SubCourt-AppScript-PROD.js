@@ -128,6 +128,15 @@ function sendBrevoEmail(params) {
 }
 
 // Called via google.script.run from the confirmation page — no navigation needed.
+// Canonical Overflow check, used everywhere a match time needs to be told apart
+// from Overflow — a time counts as Overflow only when the MatchGroups cell (or a
+// value about to be written to it) literally is that exact string. Blank,
+// whitespace-only, "TBD", or anything else is never Overflow — those are treated
+// as unknown and must be asked for, never silently assumed to be Overflow.
+function _isOverflowTime(v) {
+  return (v || '').toString().trim() === 'Overflow';
+}
+
 // Resolves what the player's own match time is on matchDate (per MatchGroups),
 // mirroring the Volunteer to Sub screen's warnScheduledDateRow logic: not
 // scheduled that day → no conflict possible. Scheduled with a real time or
@@ -142,11 +151,11 @@ function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime) {
   if (!Object.prototype.hasOwnProperty.call(playingElsewhere, emailLower)) {
     return { scheduled: false, matchTime: '' };
   }
-  var theirTime = playingElsewhere[emailLower];
+  var theirTime = (playingElsewhere[emailLower] || '').toString().trim();
   if (theirTime) return { scheduled: true, matchTime: theirTime };
 
   ownMatchTime = (ownMatchTime || '').toString().trim();
-  if (!ownMatchTime || (TIMES.indexOf(ownMatchTime) === -1 && ownMatchTime !== 'Overflow')) {
+  if (!ownMatchTime || (TIMES.indexOf(ownMatchTime) === -1 && !_isOverflowTime(ownMatchTime))) {
     return { scheduled: true, matchTime: '', needsMatchTime: true };
   }
   var groupRow = _findMatchGroupRow(ss, matchDate, [playerEmail]);
@@ -158,7 +167,7 @@ function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime) {
 // with matchTime — Overflow, blank, or "not scheduled that day" are never a
 // conflict, same as the Volunteer to Sub screen's rules.
 function _isExactMatchConflict(ownMatch, matchTime) {
-  return !!(ownMatch.matchTime && ownMatch.matchTime !== 'Overflow' && matchTime && ownMatch.matchTime === matchTime);
+  return !!(ownMatch.matchTime && !_isOverflowTime(ownMatch.matchTime) && matchTime && ownMatch.matchTime === matchTime);
 }
 
 function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwiceChoice) {
@@ -3375,6 +3384,10 @@ function csvLastFirst(name) {
 // Maps every player scheduled to play (per MatchGroups) on matchDate to their own
 // match time ('' if unknown/TBD, or 'Overflow'). One full-sheet scan shared across
 // every volunteer being checked in runMatch, instead of a per-volunteer scan.
+// First match wins if a player somehow appears on more than one row for the same
+// date (a sheet data-entry slip) — consistent with _findMatchGroupRow, which also
+// returns the first row it finds, so both stay in agreement about which group's
+// time is authoritative for that player.
 function _getPlayerMatchTimesForDate(ss, matchDate) {
   var sheet = ss.getSheetByName(TABS.matchGroups);
   var map = {};
@@ -3388,7 +3401,7 @@ function _getPlayerMatchTimesForDate(ss, matchDate) {
     var time = (r[16] || '').toString().trim();
     for (var pi = 0; pi < 4; pi++) {
       var email = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
-      if (email) map[email] = time;
+      if (email && !Object.prototype.hasOwnProperty.call(map, email)) map[email] = time;
     }
   });
   return map;
