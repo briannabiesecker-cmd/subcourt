@@ -3394,6 +3394,8 @@ async function deleteRequest(requestId) {
 let volSelections      = {};
 let myVolunteerMap     = {}; // date → {rowIndex, status, times} for pre-existing submissions
 let nearScheduledDates = new Set(); // dates ≤2 days away where player is already scheduled
+let scheduledGroupByDate = {}; // date → MatchGroups group object (letter/players) for near-scheduled dates
+let scheduledMatchTime   = {}; // date → resolved match time ('Overflow' or a TIMES code) for near-scheduled dates
 let volSavedSnapshot   = '{}'; // last-saved/loaded volSelections, for unsaved-changes detection
 
 function volSelectionsSnapshot() {
@@ -3472,9 +3474,17 @@ async function buildCalendar() {
   }
 }
 
+function allowedTimesForRow(k) {
+  return TIMES.filter(t => {
+    const chip = document.getElementById('chip-' + k + '-' + t);
+    return !(chip && chip.disabled);
+  });
+}
+
 function toggleAllTimes(k) {
-  const allOn = TIMES.every(t => volSelections[k].includes(t));
-  volSelections[k] = allOn ? [] : [...TIMES];
+  const allowed = allowedTimesForRow(k);
+  const allOn = allowed.length > 0 && allowed.every(t => volSelections[k].includes(t));
+  volSelections[k] = allOn ? [] : [...allowed];
   refreshDateRow(k);
   updateVolSummary();
 }
@@ -3482,15 +3492,8 @@ function toggleAllTimes(k) {
 function toggleTime(k, time) {
   const arr = volSelections[k];
   const idx = arr.indexOf(time);
-  if (idx > -1) {
-    arr.splice(idx, 1);
-  } else {
-    if (nearScheduledDates.has(k) && arr.length >= 3) {
-      showAlert('vol-alert', 'error', 'You can select at most 3 time slots on a day you are already scheduled to play.');
-      return;
-    }
-    arr.push(time);
-  }
+  if (idx > -1) arr.splice(idx, 1);
+  else arr.push(time);
   refreshDateRow(k);
   updateVolSummary();
 }
@@ -3501,7 +3504,8 @@ function refreshDateRow(k) {
   const allChk = document.getElementById('allchk-' + k);
   if (!row) return;
   const anyOn = arr.length > 0;
-  const allOn = TIMES.every(t => arr.includes(t));
+  const allowed = allowedTimesForRow(k);
+  const allOn = allowed.length > 0 && allowed.every(t => arr.includes(t));
   row.className = 'date-row' + (anyOn ? ' any-selected' : '');
   allChk.checked = allOn;
   allChk.indeterminate = false;
@@ -3619,6 +3623,8 @@ function clearVolForm() {
 async function loadMySubmissions(email) {
   myVolunteerMap = {};
   nearScheduledDates.clear();
+  scheduledGroupByDate = {};
+  scheduledMatchTime   = {};
   // Clear alert message and summary
   document.getElementById('vol-alert').className = 'hidden';
   document.getElementById('vol-summary').classList.add('hidden');
@@ -3695,22 +3701,23 @@ async function loadMySubmissions(email) {
     try {
       const sched = publishedSchedule
         || await apiGetWithParams({ action: 'getPublishedSchedule' });
+      publishedSchedule = sched;
       if (sched && sched.dates) {
         const emailLower = email.toLowerCase();
         const todayMs    = new Date(localDateStr() + 'T12:00:00').getTime();
-        sched.dates.forEach(d => {
-          if (!volSelections.hasOwnProperty(d.date)) return; // not in calendar range
-          const isScheduled = (d.groups || []).some(g =>
+        for (const d of sched.dates) {
+          if (!volSelections.hasOwnProperty(d.date)) continue; // not in calendar range
+          const group = (d.groups || []).find(g =>
             (g.players || []).some(p => (p.email || '').toLowerCase() === emailLower)
           );
-          if (!isScheduled) return;
+          if (!group) continue;
           const daysAway = Math.round((new Date(d.date + 'T12:00:00').getTime() - todayMs) / 86400000);
           if (daysAway <= 2) {
-            warnScheduledDateRow(d.date);
+            await warnScheduledDateRow(d.date, group);
           } else {
             lockScheduledDateRow(d.date);
           }
-        });
+        }
       }
     } catch(e) {}
   } catch(e) {
@@ -3740,21 +3747,45 @@ function lockScheduledDateRow(k) {
   }
 }
 
-function warnScheduledDateRow(k) {
+// Handles one date (≤2 days away) the player is already scheduled to play. If the
+// match's court time is still blank/TBD, collects it from the player right away
+// (no TBD option — a real time is required) and saves it to MatchGroups. Once the
+// time is known: an Overflow match has no fixed court time yet, so all slots stay
+// open; a real match time blocks just that one slot so the player can't double
+// book it, leaving the others open (no arbitrary cap on how many they can pick).
+async function warnScheduledDateRow(k, group) {
   const row = document.getElementById('daterow-' + k);
   if (!row) return;
   if (row.querySelector('.matched-note')) return;
   nearScheduledDates.add(k);
-  // Disable "All times" — player can pick at most 3
-  const allChk = document.getElementById('allchk-' + k);
-  if (allChk) allChk.disabled = true;
-  const saw = row.querySelector('.select-all-wrap');
-  if (saw) saw.style.pointerEvents = 'none';
+  scheduledGroupByDate[k] = group;
+
+  let matchTime = group.time || '';
+  if (!matchTime) {
+    matchTime = await askVolMatchTimeModal(formatDate(k));
+    try {
+      const result = await apiPost({ action: 'updateMatchGroupTime', matchDate: k, groupLetter: group.letter, matchTime });
+      if (result.success) group.time = matchTime;
+    } catch(e) {}
+  }
+  scheduledMatchTime[k] = matchTime;
+
+  if (matchTime !== 'Overflow') {
+    const chip = document.getElementById('chip-' + k + '-' + matchTime);
+    if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
+    const arr = volSelections[k];
+    if (arr) {
+      const idx = arr.indexOf(matchTime);
+      if (idx > -1) arr.splice(idx, 1);
+    }
+  }
+  refreshDateRow(k);
+
   if (!row.querySelector('.near-scheduled-note')) {
     const note = document.createElement('div');
     note.className = 'near-scheduled-note';
     note.style.cssText = 'font-size:12px;color:var(--warn);font-style:italic;margin-top:4px;width:100%;';
-    note.textContent = 'You’re scheduled to play — select only times that don’t conflict with your match (max 3).';
+    note.textContent = `You are scheduled to play at ${TIME_LABELS[matchTime] || matchTime}.`;
     row.appendChild(note);
   }
 }
@@ -4304,34 +4335,16 @@ function askVolMatchTimeModal(dateLabel) {
 
 // Handles the "already scheduled to play" conflict for one date the player is
 // volunteering for (only reachable in the 2-day warn window, where volunteering
-// is still allowed alongside their own match). Confirms/collects their match
-// time, records it on MatchGroups if it wasn't already known, strips that time
-// out of the times they're volunteering with, then asks whether they want to
-// play twice or have Rally look for a sub at their own match time instead.
-// Returns the (possibly reduced) times array to actually submit for this date.
+// is still allowed alongside their own match). The match time itself was already
+// collected/confirmed up front by warnScheduledDateRow, so this just asks whether
+// the player wants to play twice or have Rally look for a sub at their own match
+// time instead. Returns the (possibly reduced) times array to submit for this date.
 async function _resolveScheduledConflict(date, times, email, name) {
-  const sched = publishedSchedule || await apiGetWithParams({ action: 'getPublishedSchedule' });
-  publishedSchedule = sched;
+  const group     = scheduledGroupByDate[date];
+  const matchTime = scheduledMatchTime[date];
+  if (!group || !matchTime) return times; // shouldn't happen — fail open rather than block the submission
+
   const emailLower = email.toLowerCase();
-  const dayObj = sched && sched.dates ? sched.dates.find(d => d.date === date) : null;
-  const group  = dayObj ? dayObj.groups.find(g => (g.players || []).some(p => (p.email || '').toLowerCase() === emailLower)) : null;
-  if (!group) return times; // shouldn't happen — fail open rather than block the submission
-
-  const dateLabel = formatDate(date);
-  let matchTime = group.time || '';
-
-  if (matchTime) {
-    await new Promise(resolve => showWarningModal(
-      `You are currently scheduled to play at ${TIME_LABELS[matchTime] || matchTime} on ${dateLabel}.`, resolve
-    ));
-  } else {
-    matchTime = await askVolMatchTimeModal(dateLabel);
-    try {
-      const result = await apiPost({ action: 'updateMatchGroupTime', matchDate: date, groupLetter: group.letter, matchTime });
-      if (result.success) group.time = matchTime;
-    } catch(e) {}
-  }
-
   const remainingTimes = times.filter(t => t !== matchTime);
 
   const wantsChangeTimes = await new Promise(resolve => {
