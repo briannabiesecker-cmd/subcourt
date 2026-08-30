@@ -161,9 +161,10 @@ function _isExactMatchConflict(ownMatch, matchTime) {
   return !!(ownMatch.matchTime && ownMatch.matchTime !== 'Overflow' && matchTime && ownMatch.matchTime === matchTime);
 }
 
-function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime) {
-  requestId   = (requestId   || '').trim();
-  playerEmail = (playerEmail || '').trim().toLowerCase();
+function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwiceChoice) {
+  requestId       = (requestId       || '').trim();
+  playerEmail     = (playerEmail     || '').trim().toLowerCase();
+  playTwiceChoice = (playTwiceChoice || '').trim();
   if (!requestId || !playerEmail) return { success: false, error: 'Invalid parameters.' };
   var requests = getRequests();
   var req;
@@ -171,16 +172,7 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime) {
     if (requests[i].id === requestId) { req = requests[i]; break; }
   }
   if (!req) return { success: false, error: 'This sub request could not be found. It may have already been filled.' };
-  var ss = SpreadsheetApp.openById(SHEET_ID);
-  var ownMatch = _resolvePlayerOwnMatchTime(ss, req.matchDate, playerEmail, ownMatchTime);
-  if (ownMatch.needsMatchTime) {
-    return { success: false, needsMatchTime: true, dateStr: formatDate(req.matchDate) };
-  }
-  if (_isExactMatchConflict(ownMatch, req.matchTime)) {
-    return { success: false, error: 'You are already scheduled to play at ' + (TIME_LABELS[req.matchTime] || req.matchTime) + ' that day, so you can\'t sub for this request.' };
-  }
-  var alreadyFilled = req.status !== 'open';
-  var filledNote = req.status === 'filled' ? 'has already been filled' : 'is no longer active';
+
   var players    = getPlayers();
   var playerName = '';
   var found      = false;
@@ -192,6 +184,57 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime) {
     }
   }
   if (!found) return { success: false, error: 'That email address was not found in the league roster. Please check your email and try again.' };
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var ownMatch = _resolvePlayerOwnMatchTime(ss, req.matchDate, playerEmail, ownMatchTime);
+  if (ownMatch.needsMatchTime) {
+    return { success: false, needsMatchTime: true, dateStr: formatDate(req.matchDate) };
+  }
+  if (_isExactMatchConflict(ownMatch, req.matchTime)) {
+    return { success: false, error: 'You are already scheduled to play at ' + (TIME_LABELS[req.matchTime] || req.matchTime) + ' that day, so you can\'t sub for this request.' };
+  }
+
+  // Scheduled to play at a different time (or Overflow) this same day — same as
+  // the Volunteer to Sub screen, ask whether they want to play twice or have
+  // Rally look for a sub at their own match time instead, before creating the
+  // volunteer record. "Change times" checks for (and creates, if missing) an
+  // open sub request for their own match, exactly like _resolveScheduledConflict
+  // does for the calendar screen.
+  if (ownMatch.scheduled && !playTwiceChoice) {
+    return {
+      success: false,
+      needsPlayTwiceChoice: true,
+      ownMatchTimeLabel: TIME_LABELS[ownMatch.matchTime] || ownMatch.matchTime,
+      dateStr: formatDate(req.matchDate)
+    };
+  }
+  if (ownMatch.scheduled && playTwiceChoice === 'changeTimes') {
+    try {
+      var groupRow = _findMatchGroupRow(ss, req.matchDate, [playerEmail]);
+      if (groupRow) {
+        var hasOpenRequest = requests.some(function(r) {
+          return r.email.toLowerCase() === playerEmail &&
+            r.matchDate === req.matchDate &&
+            r.matchTime === ownMatch.matchTime &&
+            r.status === 'open';
+        });
+        if (!hasOpenRequest) {
+          var partners = (groupRow.players || []).filter(function(p) {
+            return p.email && p.email.toLowerCase() !== playerEmail && p.name;
+          });
+          submitRequest({
+            name: playerName, email: playerEmail, matchDate: req.matchDate,
+            matchTime: ownMatch.matchTime, groupLetter: groupRow.letter, groupPlayers: partners
+          });
+        }
+      }
+    } catch (e) {
+      Logger.log('processVolunteerFromEmail: change-times sub request failed: ' + e.message);
+    }
+  }
+
+  var alreadyFilled = req.status !== 'open';
+  var filledNote = req.status === 'filled' ? 'has already been filled' : 'is no longer active';
   var timeCode = req.matchTime
     ? req.matchTime.replace(':', '_')
     : TIMES.map(function(t) { return t.replace(':', '_'); }).join(',');
@@ -241,10 +284,14 @@ function handleVolunteerFromEmail(e) {
 
   if (!playerEmail) {
     // BCC path — confirmation page; uses google.script.run so no navigation needed.
-    // If the player turns out to be scheduled to play that day with no match time
-    // recorded yet, processVolunteerFromEmail comes back with needsMatchTime and
-    // this page collects it (no TBD option) before resubmitting — mirroring the
-    // Volunteer to Sub screen's askVolMatchTimeModal flow for this same case.
+    // Mirrors the Volunteer to Sub screen's conflict handling: if the player is
+    // scheduled to play that day with no match time recorded yet,
+    // processVolunteerFromEmail comes back with needsMatchTime and this page
+    // collects it (Overflow included, no TBD option) before resubmitting. Once
+    // the time is known, an exact conflict is blocked outright; scheduled at a
+    // different time (or Overflow) instead comes back with needsPlayTwiceChoice,
+    // prompting the player the same "play twice or change times" question the
+    // calendar screen asks on submit.
     var timeLabel = timeStr ? ' at ' + timeStr : '';
     var reqIdJs   = requestId.replace(/'/g, "\\'");
     var timeOptionsHtml = (TIMES.map(function(t) {
@@ -268,13 +315,14 @@ function handleVolunteerFromEmail(e) {
         'var RID=\'' + reqIdJs + '\';' +
         'var EM=null;' +
         'var TIME_OPTS=\'' + timeOptionsHtml + '\';' +
-        'function submitVol(mt){' +
+        'function submitVol(mt,choice){' +
           'var btns=document.getElementById(\'btns\');' +
           'if(btns){btns.style.display=\'none\';document.getElementById(\'msg\').style.display=\'block\';}' +
           'google.script.run' +
             '.withSuccessHandler(function(r){' +
               'if(!r.success){' +
                 'if(r.needsMatchTime){showTimePicker(r.dateStr);return;}' +
+                'if(r.needsPlayTwiceChoice){showPlayTwicePrompt(r.dateStr,r.ownMatchTimeLabel);return;}' +
                 'var b=document.getElementById(\'btns\');' +
                 'if(b){' +
                   'b.style.display=\'flex\';' +
@@ -305,7 +353,24 @@ function handleVolunteerFromEmail(e) {
               'if(b){b.style.display=\'flex\';document.getElementById(\'msg\').style.display=\'none\';}' +
               'alert(\'Something went wrong. Please try again.\');' +
             '})' +
-            '.processVolunteerFromEmail(RID,EM,mt||\'\');' +
+            '.processVolunteerFromEmail(RID,EM,mt||\'\',choice||\'\');' +
+        '}' +
+        'function showPlayTwicePrompt(ds,timeLabel){' +
+          'document.getElementById(\'pg\').innerHTML=' +
+            '\'<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">Do you want to play twice or change times?</h2>\'+' +
+            '\'<p style="margin-bottom:16px;">You are scheduled to play at \'+timeLabel+\' on \'+ds+\'.</p>\'+' +
+            '\'<div style="display:flex;gap:12px;">\'+' +
+              '\'<button id="btnPT" style="flex:1;padding:14px;background:#1a5c3a;color:#fff;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Play twice</button>\'+' +
+              '\'<button id="btnCT" style="flex:1;padding:14px;background:#e5e7eb;color:#374151;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;">Change times</button>\'+' +
+            '\'</div>\';' +
+          'document.getElementById(\'btnPT\').onclick=function(){' +
+            'document.getElementById(\'pg\').innerHTML=\'<p style="color:#6b7280;">Processing…</p>\';' +
+            'submitVol(\'\',\'playTwice\');' +
+          '};' +
+          'document.getElementById(\'btnCT\').onclick=function(){' +
+            'document.getElementById(\'pg\').innerHTML=\'<p style="color:#6b7280;">Processing…</p>\';' +
+            'submitVol(\'\',\'changeTimes\');' +
+          '};' +
         '}' +
         'function showTimePicker(ds){' +
           'document.getElementById(\'pg\').innerHTML=' +
@@ -2772,13 +2837,19 @@ function _findMatchGroupRow(ss, matchDate, emails) {
       : (r[2] ? r[2].toString() : '');
     if (rowDate !== matchDate) continue;
     var groupEmails = [];
+    var groupPlayers = [];
     var isMatch = false;
     for (var pi = 0; pi < 4; pi++) {
+      var nm = (r[4 + pi * 2] || '').toString().trim();
       var em = (r[5 + pi * 2] || '').toString().trim();
-      if (em) { groupEmails.push(em); if (lookFor[em.toLowerCase()]) isMatch = true; }
+      if (em) {
+        groupEmails.push(em);
+        groupPlayers.push({ name: nm, email: em });
+        if (lookFor[em.toLowerCase()]) isMatch = true;
+      }
     }
     if (isMatch) {
-      return { letter: r[3] ? r[3].toString() : '', time: (r[16] || '').toString().trim(), emails: groupEmails, rowIndex: i + 2 };
+      return { letter: r[3] ? r[3].toString() : '', time: (r[16] || '').toString().trim(), emails: groupEmails, players: groupPlayers, rowIndex: i + 2 };
     }
   }
   return null;
