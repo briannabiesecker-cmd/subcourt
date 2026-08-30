@@ -4311,8 +4311,8 @@ function showWarningModal(msg, onClose) {
 }
 
 // Populates and shows the "what is your current match time" picker; resolves
-// with the chosen time code (e.g. "08:00") once the player picks one and
-// clicks Continue. There's no cancel path — a match time is required before
+// with the chosen value ("08:00" etc., or "Overflow") once the player picks one
+// and clicks Continue. There's no cancel path — a match time is required before
 // the volunteer submission can proceed.
 function askVolMatchTimeModal(dateLabel) {
   return new Promise(resolve => {
@@ -4320,7 +4320,8 @@ function askVolMatchTimeModal(dateLabel) {
     document.getElementById('vol-match-time-date').textContent = dateLabel;
     const sel = document.getElementById('vol-match-time-select');
     sel.innerHTML = '<option value="" selected disabled>Select a time…</option>' +
-      TIMES.map(t => `<option value="${t}">${TIME_LABELS[t]}</option>`).join('');
+      TIMES.map(t => `<option value="${t}">${TIME_LABELS[t]}</option>`).join('') +
+      '<option value="Overflow">Overflow</option>';
     modal.style.display = 'flex';
     const btn = document.getElementById('vol-match-time-continue');
     btn.onclick = () => {

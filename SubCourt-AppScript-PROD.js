@@ -146,7 +146,7 @@ function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime) {
   if (theirTime) return { scheduled: true, matchTime: theirTime };
 
   ownMatchTime = (ownMatchTime || '').toString().trim();
-  if (!ownMatchTime || TIMES.indexOf(ownMatchTime) === -1) {
+  if (!ownMatchTime || (TIMES.indexOf(ownMatchTime) === -1 && ownMatchTime !== 'Overflow')) {
     return { scheduled: true, matchTime: '', needsMatchTime: true };
   }
   var groupRow = _findMatchGroupRow(ss, matchDate, [playerEmail]);
@@ -247,9 +247,9 @@ function handleVolunteerFromEmail(e) {
     // Volunteer to Sub screen's askVolMatchTimeModal flow for this same case.
     var timeLabel = timeStr ? ' at ' + timeStr : '';
     var reqIdJs   = requestId.replace(/'/g, "\\'");
-    var timeOptionsHtml = TIMES.map(function(t) {
+    var timeOptionsHtml = (TIMES.map(function(t) {
       return '<option value="' + t + '">' + TIME_LABELS[t] + '</option>';
-    }).join('').replace(/'/g, "\\'");
+    }).join('') + '<option value="Overflow">Overflow</option>').replace(/'/g, "\\'");
     return wrap(
       '<div id="pg">' +
         '<h2 style="color:#1a5c3a;font-size:22px;margin-bottom:8px;">I can sub' + timeLabel + '<br>on ' + dateStr + '</h2>' +
