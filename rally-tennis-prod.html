@@ -3973,7 +3973,7 @@ function renderDispatchConfigTable(cfg) {
 
     <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Pre-Match Day Dispatch (Sun, Tue, Thu)</div>
     <table class="dispatch-table compact" style="margin-bottom:14px;">
-      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Cancel if open</th></tr></thead>
+      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Cancel if open</th><th>Expand Volunteers</th></tr></thead>
       <tbody>
         ${pm.map((r, i) => `<tr>
           <td>${i + 1}</td>
@@ -3981,6 +3981,7 @@ function renderDispatchConfigTable(cfg) {
           <td>${chk('cfgd-pmd-dispatch-' + i, r.dispatch)}</td>
           <td>${chk('cfgd-pmd-broadcast-' + i, r.broadcast)}</td>
           <td>${chk('cfgd-pmd-cancel-' + i, r.cancel)}</td>
+          <td>${chk('cfgd-pmd-expand-' + i, r.expandVolunteers)}</td>
         </tr>`).join('')}
       </tbody>
     </table>
@@ -4024,7 +4025,8 @@ async function saveDispatchConfig() {
     time: val('cfgd-pmd-time-' + i),
     dispatch: chkVal('cfgd-pmd-dispatch-' + i),
     broadcast: chkVal('cfgd-pmd-broadcast-' + i),
-    cancel: chkVal('cfgd-pmd-cancel-' + i)
+    cancel: chkVal('cfgd-pmd-cancel-' + i),
+    expandVolunteers: chkVal('cfgd-pmd-expand-' + i)
   }));
   const matchDayMinus2Schedule = [0, 1, 2, 3, 4].map(i => ({
     time: val('cfgd-md2-time-' + i),

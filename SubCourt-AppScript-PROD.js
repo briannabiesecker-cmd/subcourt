@@ -959,14 +959,24 @@ function getConfig() {
         ['5', '8:00 PM',  'Yes', 'Yes', 'Yes']
       ]);
     }
-    var schedRows = sheet.getRange('A43:E47').getValues();
+    // Expand Volunteers column — auto-init on first use (column F, rows 42–47).
+    // Defaults to Yes only on the last run, mirroring "Cancel if open" — the last
+    // run is the one that used to auto-relax candidate selection on its own;
+    // now that's an explicit, per-run choice instead.
+    var f42 = sheet.getRange('F42').getValue();
+    if (f42 === '' || f42 === null) {
+      sheet.getRange('F42').setValue('Expand Volunteers');
+      sheet.getRange('F43:F47').setValues([['No'], ['No'], ['No'], ['No'], ['Yes']]);
+    }
+    var schedRows = sheet.getRange('A43:F47').getValues();
     var preMatchSchedule = schedRows.map(function(row) {
       return {
-        run:       row[0].toString(),
-        time:      formatSheetTime(row[1]) || row[1].toString().trim(),
-        dispatch:  row[2] !== 'No' && row[2] !== false,
-        broadcast: row[3] !== 'No' && row[3] !== false,
-        cancel:    row[4] === 'Yes' || row[4] === true
+        run:              row[0].toString(),
+        time:             formatSheetTime(row[1]) || row[1].toString().trim(),
+        dispatch:         row[2] !== 'No' && row[2] !== false,
+        broadcast:        row[3] !== 'No' && row[3] !== false,
+        cancel:           row[4] === 'Yes' || row[4] === true,
+        expandVolunteers: row[5] === 'Yes' || row[5] === true
       };
     });
     // Match Day -2 dispatch schedule — auto-init on first use (rows 49–55)
@@ -3436,52 +3446,15 @@ function _removeConflictingVolunteerTime(ss, v, conflictingTime) {
   }
 }
 
-// True if no other scheduled dispatch run (Pre-Match Day, Match Day -2, or Friday
-// Auto-Dispatch) falls between now and the match's actual date/time — i.e. the run
-// happening right now is the last chance to fill this request before its match.
-// Gates the "already playing at a different time" fallback in runMatch: that
-// fallback should only fire when there's no future run left to find someone cleaner.
-function _isLastDispatchRunBeforeMatch(matchDate, matchTime) {
-  if (!matchDate) return false;
-  var config  = getConfig();
-  var tz      = Session.getScriptTimeZone();
-  var now     = new Date();
-  var matchDT = Utilities.parseDate(matchDate + ' ' + (matchTime || '08:00') + ':00', tz, 'yyyy-MM-dd HH:mm:ss');
-  if (isNaN(matchDT.getTime()) || matchDT.getTime() <= now.getTime()) return true;
-
-  var families = [
-    { dowSet: [7, 2, 4], hours: (config.preMatchSchedule || []).map(function(r) { return _parseConfigHour(r.time); }) },
-    { dowSet: [6, 1, 3], hours: (config.matchDayMinus2Schedule || []).map(function(r) { return _parseConfigHour(r.time); }) }
-  ];
-  if (config.autoDispatchEnabled) {
-    families.push({ dowSet: [5], hours: [parseInt((config.autoDispatchTimeET || '13:00').split(':')[0])] });
-  }
-
-  var maxDays = Math.min(45, Math.ceil((matchDT.getTime() - now.getTime()) / 86400000) + 1);
-  for (var add = 0; add <= maxDays; add++) {
-    var d       = new Date(now.getTime() + add * 86400000);
-    var dow     = parseInt(Utilities.formatDate(d, tz, 'u'));
-    var dateStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-    for (var fi = 0; fi < families.length; fi++) {
-      var fam = families[fi];
-      if (fam.dowSet.indexOf(dow) === -1) continue;
-      for (var hi = 0; hi < fam.hours.length; hi++) {
-        var h = fam.hours[hi];
-        if (isNaN(h) || h < 0) continue;
-        var candidate = Utilities.parseDate(dateStr + ' ' + (h < 10 ? '0' + h : h) + ':00:00', tz, 'yyyy-MM-dd HH:mm:ss');
-        if (candidate.getTime() > now.getTime() && candidate.getTime() < matchDT.getTime()) return false;
-      }
-    }
-  }
-  return true;
-}
-
 function runMatch(params) {
   const config     = getConfig();
   const requests   = getRequests();
   const volunteers = getVolunteers();
   const players    = getPlayersWithRatings();
   const ss         = SpreadsheetApp.openById(SHEET_ID);
+  // Only ever true on a Pre-Match Day Dispatch run whose configured row has
+  // "Expand Volunteers" checked — see the own-match-conflict rules below.
+  const expandVolunteers = params.expandVolunteers === true || params.expandVolunteers === 'true';
 
   const req = requests.find(r => r.id === params.requestId);
   if (!req) return { error: 'Request not found' };
@@ -3517,11 +3490,6 @@ function runMatch(params) {
   // their own match time — computed once and reused for every volunteer below.
   const playingElsewhere = _getPlayerMatchTimesForDate(ss, matchDate);
 
-  // (c) Volunteers already playing a different (or unknown-time) match this same
-  // day: excluded from the normal pool, held here as a last-resort fallback only
-  // used if nobody else qualifies and there's no future dispatch run left to try.
-  let fallbackCandidates = [];
-
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
     if (v.email.toLowerCase() === req.email.toLowerCase()) return false;
@@ -3553,40 +3521,42 @@ function runMatch(params) {
     );
     if (alreadyPlayingRequest) return false;
 
-    // (a) A volunteer with an open sub request of their own on this same day may
-    // end up needing a sub themselves — never assign them to anyone else's request.
-    const hasOwnOpenRequest = requests.some(r =>
-      r.email.toLowerCase() === v.email.toLowerCase() &&
-      r.matchDate === matchDate &&
-      r.status === 'open'
-    );
-    if (hasOwnOpenRequest) return false;
-
-    // (b)/(c) The volunteer may already be scheduled to play a real match this same
-    // day per MatchGroups — a separate thing from anything in SubRequests above.
+    // The volunteer may already be scheduled to play a real match this same day
+    // per MatchGroups — a separate thing from anything in SubRequests above.
     const emailLower = v.email.toLowerCase();
     if (Object.prototype.hasOwnProperty.call(playingElsewhere, emailLower)) {
       const theirTime = playingElsewhere[emailLower];
+
+      // Exact same day+time as this request is a literal double-booking — never
+      // assign, and correct the volunteer record since it's wrong about them
+      // being free then.
       if (matchTime && theirTime && theirTime === matchTime) {
-        // (b) Exact time conflict — never assign, and correct the volunteer record
-        // since it's wrong about them being free then.
         _removeConflictingVolunteerTime(ss, v, matchTime);
         return false;
       }
-      // (c) Playing at a different (or unknown) time — last-resort fallback only.
-      fallbackCandidates.push(v);
-      return false;
+
+      // Own match is Overflow — no confirmed court time yet, so it isn't a real
+      // conflict and nothing further applies.
+      if (theirTime !== 'Overflow') {
+        // Scheduled at a different (or still-unknown) time this same day.
+        // Whether they can be assigned depends on their own open sub request
+        // (if any) and this dispatch run's Expand Volunteers setting.
+        const ownOpenRequest = requests.find(r =>
+          r.email.toLowerCase() === emailLower &&
+          r.matchDate === matchDate &&
+          r.status === 'open'
+        );
+        // Own open request at 9:30, 11:00, or 12:30 — never allow.
+        if (ownOpenRequest && TIMES.includes(ownOpenRequest.matchTime) && ownOpenRequest.matchTime !== '08:00') {
+          return false;
+        }
+        // Own open request at 8am, or no open request at all — only allow when
+        // this dispatch run has Expand Volunteers turned on.
+        if (!expandVolunteers) return false;
+      }
     }
     return true;
   });
-
-  // (c) Nobody qualified normally — fall back to a same-day-different-time
-  // volunteer only if this is the last chance before the match happens.
-  let usedFallback = false;
-  if (!candidates.length && fallbackCandidates.length && _isLastDispatchRunBeforeMatch(matchDate, matchTime)) {
-    candidates = fallbackCandidates;
-    usedFallback = true;
-  }
 
   // Deduplicate by email, keep earliest submission
   const seen = new Map();
@@ -3625,7 +3595,6 @@ function runMatch(params) {
     skillWindow: skillWindow,
     requireAllTimes,
     phase,
-    usedFallback,
     matchTime: matchTime ? TIME_LABELS[matchTime] : null
   };
 }
@@ -3920,8 +3889,9 @@ function saveDispatchConfigTable(params) {
 
   var preMatch = JSON.parse(params.preMatchSchedule || '[]');
   if (preMatch.length === 5) {
-    sheet.getRange('A43:E47').setValues(preMatch.map(function(r, i) {
-      return [String(i + 1), r.time || '', r.dispatch ? 'Yes' : 'No', r.broadcast ? 'Yes' : 'No', r.cancel ? 'Yes' : 'No'];
+    sheet.getRange('A43:F47').setValues(preMatch.map(function(r, i) {
+      return [String(i + 1), r.time || '', r.dispatch ? 'Yes' : 'No', r.broadcast ? 'Yes' : 'No',
+              r.cancel ? 'Yes' : 'No', r.expandVolunteers ? 'Yes' : 'No'];
     }));
   }
 
@@ -4686,7 +4656,11 @@ function getOpenRequestsForDate(targetDate) {
 // given trigger run happens to target. A request 3 weeks out gets the same shot at
 // being filled as one due tomorrow; getDispatchPhase()/runMatch() already size the
 // skill window per-request based on hours-until-match, so this works at any distance.
-function runDispatchAllOpen() {
+// expandVolunteers is only ever true when called from a Pre-Match Day Dispatch
+// run whose configured row has "Expand Volunteers" checked — every other caller
+// (Match Day -2, Friday Auto-Dispatch, manual admin dispatch) omits it, which
+// keeps the stricter default behavior for runMatch's own-match-conflict rules.
+function runDispatchAllOpen(expandVolunteers) {
   var requests  = getRequests().filter(function(r) { return r.status === 'open'; });
   if (!requests.length) return 0;
   var logSheet  = getOrCreateDispatchLog();
@@ -4695,7 +4669,7 @@ function runDispatchAllOpen() {
   var matched   = 0;
   requests.forEach(function(req) {
     try {
-      var result = runMatch({ requestId: req.id });
+      var result = runMatch({ requestId: req.id, expandVolunteers: !!expandVolunteers });
       if (result.candidates && result.candidates.length) {
         var eligible = result.candidates.filter(function(c) {
           return !assigned[c.email.toLowerCase() + '|' + req.matchDate];
@@ -5136,12 +5110,13 @@ function runPreMatchDayDispatch() {
     var h = _parseConfigHour(r.time);
     if (h >= 0 && Math.abs(h - currentHour) <= 1) row = r;
   });
-  if (!row) row = { dispatch: true, broadcast: true, cancel: false }; // safe fallback
+  if (!row) row = { dispatch: true, broadcast: true, cancel: false, expandVolunteers: false }; // safe fallback
 
   Logger.log('runPreMatchDayDispatch: ' + targetDate + ' hour=' + currentHour +
-    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' cancel=' + row.cancel);
+    ' dispatch=' + row.dispatch + ' broadcast=' + row.broadcast + ' cancel=' + row.cancel +
+    ' expandVolunteers=' + !!row.expandVolunteers);
 
-  if (row.dispatch) runDispatchAllOpen();
+  if (row.dispatch) runDispatchAllOpen(!!row.expandVolunteers);
 
   var openReqs = getOpenRequestsForDate(targetDate);
   if (openReqs.length && row.broadcast && isEmailEnabled() && config.urgentSubEmailsEnabled) {
