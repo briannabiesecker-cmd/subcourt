@@ -3546,13 +3546,16 @@ function runMatch(params) {
           r.matchDate === matchDate &&
           r.status === 'open'
         );
-        // Own open request at 9:30, 11:00, or 12:30 — never allow.
-        if (ownOpenRequest && TIMES.includes(ownOpenRequest.matchTime) && ownOpenRequest.matchTime !== '08:00') {
+        const ownOpenNonEightAm = ownOpenRequest && TIMES.includes(ownOpenRequest.matchTime) && ownOpenRequest.matchTime !== '08:00';
+        if (ownOpenNonEightAm) {
+          // Own open request at 9:30, 11:00, or 12:30 — only an 8:00 assignment
+          // is allowed, regardless of Expand Volunteers.
+          if (matchTime !== '08:00') return false;
+        } else if (!expandVolunteers) {
+          // Own open request at 8am, or no open request at all — only allow
+          // when this dispatch run has Expand Volunteers turned on.
           return false;
         }
-        // Own open request at 8am, or no open request at all — only allow when
-        // this dispatch run has Expand Volunteers turned on.
-        if (!expandVolunteers) return false;
       }
     }
     return true;
