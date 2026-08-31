@@ -3954,7 +3954,7 @@ function renderDispatchConfigTable(cfg) {
     <table class="dispatch-table compact" style="margin-bottom:14px;">
       <tbody>
         <tr><td>Days to show in volunteer calendar</td><td>${num('cfgd-calendar-lookahead', cfg.calendarLookaheadDays)}</td>
-            <td>Allow name change on delete</td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
+            <td>Allow name change on delete <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="This allows players to delete a sub request and assign their spot to another player, bypassing Dispatch.">ⓘ</span></td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
         <tr><td>MTC email addresses <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="Only enter email addresses if MTC agrees to receive substitution confirmation emails">ⓘ</span></td><td>${txt('cfgd-mtc-email-1', cfg.mtcEmail1)}</td>
             <td></td><td>${txt('cfgd-mtc-email-2', cfg.mtcEmail2)}</td></tr>
       </tbody>
