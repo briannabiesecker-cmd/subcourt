@@ -3955,7 +3955,7 @@ function renderDispatchConfigTable(cfg) {
       <tbody>
         <tr><td>Days to show in volunteer calendar</td><td>${num('cfgd-calendar-lookahead', cfg.calendarLookaheadDays)}</td>
             <td>Allow name change on delete</td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
-        <tr><td>MTC email addresses</td><td>${txt('cfgd-mtc-email-1', cfg.mtcEmail1)}</td>
+        <tr><td>MTC email addresses <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="Only enter email addresses if MTC agrees to receive substitution confirmation emails">ⓘ</span></td><td>${txt('cfgd-mtc-email-1', cfg.mtcEmail1)}</td>
             <td></td><td>${txt('cfgd-mtc-email-2', cfg.mtcEmail2)}</td></tr>
       </tbody>
     </table>
@@ -3973,7 +3973,7 @@ function renderDispatchConfigTable(cfg) {
 
     <div style="font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Pre-Match Day Dispatch (Sun, Tue, Thu)</div>
     <table class="dispatch-table compact" style="margin-bottom:14px;">
-      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Cancel if open</th><th>Expand Volunteers <span title="Allow a volunteer to sub even if they are already scheduled to play and have an open 8am sub request or want to play twice" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--ink-light);color:#fff;font-size:10px;font-weight:700;font-style:normal;cursor:help;">i</span></th></tr></thead>
+      <thead><tr><th>Run</th><th>Time</th><th>Dispatch</th><th>Broadcast</th><th>Cancel if open</th><th>Expand Volunteers <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="Allow a volunteer to sub even if they are already scheduled to play and have an open 8am sub request or want to play twice">ⓘ</span></th></tr></thead>
       <tbody>
         ${pm.map((r, i) => `<tr>
           <td>${i + 1}</td>
