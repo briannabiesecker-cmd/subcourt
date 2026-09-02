@@ -5097,6 +5097,24 @@ function _parseConfigHour(timeStr) {
   return -1;
 }
 
+// Cancels the given player's own still-open (pending) Volunteers record for
+// date, if any — used when their own sub request for that same day just got
+// auto-cancelled with no sub found, so they're no longer available to sub for
+// someone else's match on a day their own situation is still unresolved.
+// Leaves an already-matched volunteer record alone (that's a real confirmed
+// assignment for a different match, not just an open offer).
+function _cancelOwnOpenVolunteerRecord(ss, email, date) {
+  var emailLower = (email || '').toLowerCase();
+  var match = getVolunteers().find(function(v) {
+    return v.email.toLowerCase() === emailLower && v.date === date && v.status === 'pending';
+  });
+  if (!match) return false;
+  ss.getSheetByName(TABS.volunteers).getRange(match.rowIndex, 7).setValue('cancelled');
+  Logger.log('runPreMatchDayDispatch: cancelled ' + email + '\'s own volunteer record for ' + date +
+    ' — their sub request for that day was just auto-cancelled');
+  return true;
+}
+
 function runPreMatchDayDispatch() {
   var targetDate = _preMatchDayTargetDate();
   if (!targetDate) { Logger.log('runPreMatchDayDispatch: not a pre-match day'); return; }
@@ -5128,11 +5146,19 @@ function runPreMatchDayDispatch() {
   }
   if (row.cancel) {
     if (openReqs.length) {
-      var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+      var ss       = SpreadsheetApp.openById(SHEET_ID);
+      var reqSheet = ss.getSheetByName(TABS.requests);
       openReqs.forEach(function(req) {
         reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
         try { sendSubNeededTomorrowEmail(req); } catch(e) {
           Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
+        }
+        // The requester may have also volunteered to sub elsewhere this same day
+        // (e.g. trying to switch groups) — with their own request now cancelled
+        // and no sub found, that offer should go away too rather than risk Rally
+        // assigning them as a sub for someone else's match.
+        try { _cancelOwnOpenVolunteerRecord(ss, req.email, targetDate); } catch(e) {
+          Logger.log('Own-volunteer-record cancel failed for ' + req.id + ': ' + e.message);
         }
       });
     }
