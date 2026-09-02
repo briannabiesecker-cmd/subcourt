@@ -1403,6 +1403,24 @@ function _computeNextDispatchRun() {
   return { time: Utilities.formatDate(best.time, tz, "yyyy-MM-dd'T'HH:mm:ssXXX"), label: best.label };
 }
 
+// Processing order for open sub requests during Dispatch — not chronological:
+// 8:00 first, then 12:30, 11:00, 9:30, and finally TBD/blank (and Overflow,
+// which has no confirmed time either) last. Requests for an earlier match date
+// are processed before a later one; within the same match date, ties on match
+// time break by earliest submission timestamp.
+var DISPATCH_TIME_PRIORITY = ['08:00', '12:30', '11:00', '09:30'];
+function _sortRequestsForDispatch(requests) {
+  return requests.slice().sort(function(a, b) {
+    if (a.matchDate !== b.matchDate) return a.matchDate < b.matchDate ? -1 : 1;
+    var ai = DISPATCH_TIME_PRIORITY.indexOf(a.matchTime);
+    var bi = DISPATCH_TIME_PRIORITY.indexOf(b.matchTime);
+    if (ai === -1) ai = DISPATCH_TIME_PRIORITY.length;
+    if (bi === -1) bi = DISPATCH_TIME_PRIORITY.length;
+    if (ai !== bi) return ai - bi;
+    return a.timestamp.localeCompare(b.timestamp);
+  });
+}
+
 function runAutoDispatch() {
   var config = getConfig();
   if (!config.autoDispatchEnabled) {
@@ -1416,7 +1434,7 @@ function runAutoDispatch() {
 
   // Step 2: fetch open requests (after expiry, so already-expired ones are excluded)
   var requests  = getRequests();
-  var open      = requests.filter(function(r) { return r.status === 'open'; });
+  var open      = _sortRequestsForDispatch(requests.filter(function(r) { return r.status === 'open'; }));
   var logSheet  = getOrCreateDispatchLog();
   var reqSheet  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
   var timestamp = nowEasternISO();
@@ -4664,7 +4682,7 @@ function getOpenRequestsForDate(targetDate) {
 // (Match Day -2, Friday Auto-Dispatch, manual admin dispatch) omits it, which
 // keeps the stricter default behavior for runMatch's own-match-conflict rules.
 function runDispatchAllOpen(expandVolunteers) {
-  var requests  = getRequests().filter(function(r) { return r.status === 'open'; });
+  var requests  = _sortRequestsForDispatch(getRequests().filter(function(r) { return r.status === 'open'; }));
   if (!requests.length) return 0;
   var logSheet  = getOrCreateDispatchLog();
   var timestamp = nowEasternISO();
