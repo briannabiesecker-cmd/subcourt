@@ -253,7 +253,11 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwi
   // A player never gets more than one non-cancelled volunteer record on the same
   // date: if one already exists, this time slot is merged into it rather than a
   // second record being created for the day.
-  upsertVolunteerTimes(volSheet, playerName, playerEmail, req.matchDate, timeCode.split(','));
+  var upsertResult = upsertVolunteerTimes(volSheet, playerName, playerEmail, req.matchDate, timeCode.split(','));
+  if (upsertResult.created) {
+    try { _notifyLateVolunteerForTomorrow(playerName, playerEmail, req.matchDate, timeCode.split(',')); }
+    catch(e) { Logger.log('_notifyLateVolunteerForTomorrow failed: ' + e.message); }
+  }
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
   return {
     success: true, playerName: playerName, dateStr: formatDate(req.matchDate),
@@ -463,7 +467,11 @@ function handleVolunteerFromEmail(e) {
   // A player never gets more than one non-cancelled volunteer record on the same
   // date: if one already exists, this time slot is merged into it rather than a
   // second record being created for the day.
-  upsertVolunteerTimes(volSheet2, playerName, playerEmail, req.matchDate, timeCode.split(','));
+  var upsertResult2 = upsertVolunteerTimes(volSheet2, playerName, playerEmail, req.matchDate, timeCode.split(','));
+  if (upsertResult2.created) {
+    try { _notifyLateVolunteerForTomorrow(playerName, playerEmail, req.matchDate, timeCode.split(',')); }
+    catch(e) { Logger.log('_notifyLateVolunteerForTomorrow failed: ' + e.message); }
+  }
   Logger.log('Volunteer from email: ' + playerName + ' (' + playerEmail + ') for request ' + requestId);
 
   var statusLine = alreadyFilled
@@ -2204,7 +2212,11 @@ function submitVolunteer(params) {
   const sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.volunteers);
   const entries = JSON.parse(params.entries);
   entries.forEach(entry => {
-    upsertVolunteerTimes(sheet, params.name, params.email, entry.date, entry.times);
+    var upsertResult = upsertVolunteerTimes(sheet, params.name, params.email, entry.date, entry.times);
+    if (upsertResult.created) {
+      try { _notifyLateVolunteerForTomorrow(params.name, params.email, entry.date, entry.times); }
+      catch(e) { Logger.log('_notifyLateVolunteerForTomorrow failed: ' + e.message); }
+    }
   });
 
   // Confirmation email to volunteer
@@ -5065,6 +5077,94 @@ function buildLeftoverVolunteersEmailText(volunteers, groups) {
 // stay unfilled even with a leftover volunteer if their rating misses the skill
 // window. Always sends (even with zero leftover volunteers, shown as "None") so
 // everyone scheduled to play knows who's still around if a spot opens up.
+// Called right after a brand-new (not merged) volunteer record is created for
+// tomorrow, once today's last chance at an automated Pre-Match Day Dispatch
+// run has passed (see _hasRemainingPreMatchDayDispatchToday) — Dispatch won't
+// see this volunteer today. Notifies each still-open sub request on that date
+// whose match time the volunteer just offered, so the requester knows to
+// reach out directly instead of waiting on a run that isn't coming today.
+function _notifyLateVolunteerForTomorrow(volunteerName, volunteerEmail, date, times) {
+  try {
+    if (date !== getDateStr(1)) return; // only "tomorrow" — the whole point is today's dispatch window
+    if (_hasRemainingPreMatchDayDispatchToday(getConfig())) return; // dispatch could still catch it today
+
+    var volunteerEmailLower = (volunteerEmail || '').toLowerCase();
+    var offeredTimes = (times || []).map(function(t) { return t.toString().replace('_', ':'); });
+    var openReqs = getRequests().filter(function(r) {
+      return r.status === 'open' && r.matchDate === date &&
+        r.email.toLowerCase() !== volunteerEmailLower &&
+        offeredTimes.indexOf(r.matchTime) !== -1;
+    });
+    openReqs.forEach(function(req) {
+      try { _sendLateVolunteerNotification(req, volunteerName, volunteerEmail); }
+      catch(e) { Logger.log('_sendLateVolunteerNotification failed for ' + req.id + ': ' + e.message); }
+    });
+  } catch(e) {
+    Logger.log('_notifyLateVolunteerForTomorrow failed: ' + e.message);
+  }
+}
+
+function _sendLateVolunteerNotification(req, volunteerName, volunteerEmail) {
+  if (!isEmailEnabled()) return;
+  var players = getPlayers();
+  var reqEmail = _resolveEmail(req.name, req.email, players) || req.email;
+  var volEmail = _resolveEmail(volunteerName, volunteerEmail, players) || volunteerEmail;
+  if (!reqEmail || !volEmail) return;
+
+  var phoneByEmail = {};
+  players.forEach(function(p) { if (p.email) phoneByEmail[p.email.toLowerCase()] = p.phone || ''; });
+  var reqPhone = phoneByEmail[reqEmail.toLowerCase()] || '';
+  var volPhone = phoneByEmail[volEmail.toLowerCase()] || '';
+
+  var dateStr = formatDate(req.matchDate);
+  var timeStr = TIME_LABELS[req.matchTime] || req.matchTime;
+
+  var ccList = (req.groupPlayers || [])
+    .map(function(p) { return _resolveEmail(p.name, p.email, players); })
+    .concat([volEmail])
+    .filter(Boolean)
+    .filter(function(e) { return e.toLowerCase() !== reqEmail.toLowerCase(); });
+  var seenCc = {};
+  ccList = ccList.filter(function(e) {
+    var lc = e.toLowerCase();
+    if (seenCc[lc]) return false;
+    seenCc[lc] = true;
+    return true;
+  });
+
+  var subject = 'MWF Tennis League — ' + volunteerName + ' just volunteered for ' + dateStr;
+
+  var body =
+    'Hi ' + (req.name || 'there') + ',\n\n' +
+    volunteerName + ' has just volunteered to sub on ' + dateStr + ' at ' + timeStr +
+    ' — the same day and time as your open sub request — but it is too late for today\'s Dispatch to assign them automatically.\n\n' +
+    'If you are still looking for a sub, contact each other directly:\n\n' +
+    '  ' + volunteerName + '  |  ' + volEmail + (volPhone ? '  |  ' + volPhone : '') + '\n' +
+    '  ' + (req.name || '') + '  |  ' + reqEmail + (reqPhone ? '  |  ' + reqPhone : '') + '\n\n' +
+    'MWF Tennis League';
+
+  var htmlBody =
+    'Hi ' + (req.name || 'there') + ',<br><br>' +
+    '<strong>' + volunteerName + '</strong> has just volunteered to sub on <strong>' + dateStr + '</strong> at <strong>' + timeStr + '</strong>' +
+    ' — the same day and time as your open sub request — but it is too late for today\'s Dispatch to assign them automatically.<br><br>' +
+    'If you are still looking for a sub, contact each other directly:<br><br>' +
+    '<table style="font-family:Arial,sans-serif;font-size:14px;border-collapse:collapse;">' +
+      '<tr><td style="padding:3px 12px 3px 0;font-weight:600;">' + volunteerName + '</td><td style="padding:3px 12px 3px 0;">' + volEmail + '</td><td style="padding:3px 0;">' + (volPhone || '—') + '</td></tr>' +
+      '<tr><td style="padding:3px 12px 3px 0;font-weight:600;">' + (req.name || '') + '</td><td style="padding:3px 12px 3px 0;">' + reqEmail + '</td><td style="padding:3px 0;">' + (reqPhone || '—') + '</td></tr>' +
+    '</table><br>' +
+    'MWF Tennis League';
+
+  sendLeagueEmail({
+    to:       reqEmail,
+    cc:       ccList.join(','),
+    subject:  subject,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     'MWF Tennis League'
+  });
+  Logger.log('Late-volunteer notification sent: ' + reqEmail + ' <- ' + volunteerName + ' (' + req.id + ')');
+}
+
 function sendLeftoverVolunteersEmail(targetDate) {
   if (!isEmailEnabled()) return;
   var volunteers = getLeftoverVolunteersForDate(targetDate);
@@ -5130,6 +5230,20 @@ function _remainingPreMatchRunsToday(config) {
     if (h > currentHour) remaining++;
   });
   return remaining;
+}
+
+// True once today no longer has any chance of an automated Pre-Match Day
+// Dispatch run — either today isn't a Pre-Match Day at all (not Sun/Tue/Thu,
+// so none was ever coming), or it is but every enabled run's hour has already
+// passed. Used to decide whether a volunteer who just offered to sub tomorrow
+// missed Dispatch's window entirely for today.
+function _hasRemainingPreMatchDayDispatchToday(config) {
+  if (!_preMatchDayTargetDate()) return false;
+  var tz = Session.getScriptTimeZone();
+  var currentHour = parseInt(Utilities.formatDate(new Date(), tz, 'H'));
+  return (config.preMatchSchedule || []).some(function(r) {
+    return r.dispatch && _parseConfigHour(r.time) > currentHour;
+  });
 }
 
 function _parseConfigHour(timeStr) {
