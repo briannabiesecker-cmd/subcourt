@@ -1421,6 +1421,18 @@ function _sortRequestsForDispatch(requests) {
   });
 }
 
+// Maps a zero-candidate runMatch() result to a more specific DispatchLog Result
+// string when the reason is known, for easier admin diagnosis. Falls back to
+// the generic 'no_candidates' when nobody matched the requested date/time at
+// all, or the reason was something else (no8am mismatch, already assigned via
+// a different open request, etc).
+function _dispatchNoCandidateResult(result) {
+  if (result.matchTime === 'Overflow') return 'Overflow';
+  if (result.noCandidateReason === 'alreadyScheduled') return 'Candidate already scheduled';
+  if (result.noCandidateReason === 'outOfRange') return 'Candidate out of range';
+  return 'no_candidates';
+}
+
 function runAutoDispatch() {
   var config = getConfig();
   if (!config.autoDispatchEnabled) {
@@ -1488,10 +1500,10 @@ function runAutoDispatch() {
             Logger.log('sendSubNeededTomorrowEmail failed for ' + req.id + ': ' + emailErr.message);
           }
           if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
-          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', emailNote]);
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', emailNote]);
           Logger.log('No candidates (last-minute, cancelled): ' + req.name + ' — ' + emailNote);
         } else {
-          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', '']);
+          logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', '']);
           Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
         }
       }
@@ -3508,6 +3520,13 @@ function runMatch(params) {
   // their own match time — computed once and reused for every volunteer below.
   const playingElsewhere = _getPlayerMatchTimesForDate(ss, matchDate);
 
+  // Set when a volunteer otherwise available for this exact date+time gets
+  // excluded specifically for that reason — lets the caller log a more useful
+  // DispatchLog Result than a generic "no candidates" when that's the whole
+  // story (checked in this priority order: already-scheduled, then out-of-range).
+  let anyOutOfRange = false;
+  let anyAlreadyScheduled = false;
+
   let candidates = volunteers.filter(v => {
     if (v.date.trim() !== matchDate.trim()) return false;
     if (v.email.toLowerCase() === req.email.toLowerCase()) return false;
@@ -3521,7 +3540,7 @@ function runMatch(params) {
     // Look up player record for rating and no8am flag
     const vol = players.find(p => p.email.toLowerCase() === v.email.toLowerCase());
     if (!vol) return false;
-    if (Math.abs(vol.rating - reqRating) > skillWindow) return false;
+    if (Math.abs(vol.rating - reqRating) > skillWindow) { anyOutOfRange = true; return false; }
     // No8am volunteers must never be matched to a confirmed 8am slot. A TBD request
     // defaults to effectiveTime '08:00' too (it could turn out to be 8am) — unless the
     // request's own group already includes a No8am player, which rules that out.
@@ -3550,6 +3569,7 @@ function runMatch(params) {
       // being free then.
       if (matchTime && theirTime && theirTime === matchTime) {
         _removeConflictingVolunteerTime(ss, v, matchTime);
+        anyAlreadyScheduled = true;
         return false;
       }
 
@@ -3568,10 +3588,11 @@ function runMatch(params) {
         if (ownOpenNonEightAm) {
           // Own open request at 9:30, 11:00, or 12:30 — only an 8:00 assignment
           // is allowed, regardless of Expand Volunteers.
-          if (matchTime !== '08:00') return false;
+          if (matchTime !== '08:00') { anyAlreadyScheduled = true; return false; }
         } else if (!expandVolunteers) {
           // Own open request at 8am, or no open request at all — only allow
           // when this dispatch run has Expand Volunteers turned on.
+          anyAlreadyScheduled = true;
           return false;
         }
       }
@@ -3611,11 +3632,21 @@ function runMatch(params) {
     return a.ratingDiff - b.ratingDiff;
   });
 
+  // Only meaningful when candidates is empty — tells the caller why, for a more
+  // specific DispatchLog Result than a generic "no candidates" when the reason
+  // is known. Priority: already-scheduled beats out-of-range if both occurred.
+  var noCandidateReason = 'none';
+  if (!candidates.length) {
+    if (anyAlreadyScheduled) noCandidateReason = 'alreadyScheduled';
+    else if (anyOutOfRange) noCandidateReason = 'outOfRange';
+  }
+
   return {
     candidates: candidates.slice(0, 5),
     skillWindow: skillWindow,
     requireAllTimes,
     phase,
+    noCandidateReason,
     matchTime: matchTime ? TIME_LABELS[matchTime] : null
   };
 }
@@ -4710,7 +4741,7 @@ function runDispatchAllOpen(expandVolunteers) {
         logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'matched', best.name, best.email, 'followup dispatch']);
         matched++;
       } else {
-        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'no_candidates', '', '', 'followup dispatch']);
+        logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', 'followup dispatch']);
       }
     } catch(e) {
       logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, 'error', '', '', 'followup: ' + e.message]);
