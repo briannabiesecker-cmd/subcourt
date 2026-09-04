@@ -145,7 +145,7 @@ function _isOverflowTime(v) {
 // resolve; if it isn't supplied yet, needsMatchTime comes back true so the
 // caller can ask, then re-call with the answer. A supplied ownMatchTime is
 // saved back to MatchGroups so it only has to be asked once.
-function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime) {
+function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime, playerName) {
   var emailLower = (playerEmail || '').toLowerCase();
   var playingElsewhere = _getPlayerMatchTimesForDate(ss, matchDate);
   if (!Object.prototype.hasOwnProperty.call(playingElsewhere, emailLower)) {
@@ -159,7 +159,10 @@ function _resolvePlayerOwnMatchTime(ss, matchDate, playerEmail, ownMatchTime) {
     return { scheduled: true, matchTime: '', needsMatchTime: true };
   }
   var groupRow = _findMatchGroupRow(ss, matchDate, [playerEmail]);
-  if (groupRow) _setMatchGroupTime(matchDate, groupRow.letter, ownMatchTime);
+  if (groupRow) {
+    _setMatchGroupTime(matchDate, groupRow.letter, ownMatchTime,
+      'Ask match time (Volunteer to Sub / I CAN Sub)', playerName, playerEmail);
+  }
   return { scheduled: true, matchTime: ownMatchTime };
 }
 
@@ -195,7 +198,7 @@ function processVolunteerFromEmail(requestId, playerEmail, ownMatchTime, playTwi
   if (!found) return { success: false, error: 'That email address was not found in the league roster. Please check your email and try again.' };
 
   var ss = SpreadsheetApp.openById(SHEET_ID);
-  var ownMatch = _resolvePlayerOwnMatchTime(ss, req.matchDate, playerEmail, ownMatchTime);
+  var ownMatch = _resolvePlayerOwnMatchTime(ss, req.matchDate, playerEmail, ownMatchTime, playerName);
   if (ownMatch.needsMatchTime) {
     return { success: false, needsMatchTime: true, dateStr: formatDate(req.matchDate) };
   }
@@ -2115,7 +2118,8 @@ function submitRequest(params) {
   // it's actually new/different, not when they just accepted what was already shown.
   try {
     if (submittedTime && nearTermGroup && nearTermGroup.time !== submittedTime) {
-      var setResult = _setMatchGroupTime(reqDate, nearTermGroup.letter, submittedTime);
+      var setResult = _setMatchGroupTime(reqDate, nearTermGroup.letter, submittedTime,
+        'Request a Sub form', params.name, params.email);
       if (setResult.success) _syncGroupTimeToOpenRequests(reqDate, setResult.emails, submittedTime);
     }
   } catch(e) {
@@ -2720,11 +2724,14 @@ function updateMatchGroupTime(params) {
   var matchDate    = (params.matchDate || '').toString().trim();
   var groupLetter  = (params.groupLetter || '').toString().trim();
   var matchTime    = (params.matchTime || '').toString().trim();
+  var source       = (params.source || 'View Schedule manual edit').toString().trim();
+  var playerName   = (params.playerName || '').toString().trim();
+  var playerEmail  = (params.playerEmail || '').toString().trim();
   if (!matchDate || !groupLetter) return { success: false, error: 'Missing matchDate or groupLetter.' };
   if (!_isTomorrowOrDayAfterTomorrow(matchDate)) {
     return { success: false, error: 'Court times can only be set within 2 days of the match.' };
   }
-  var setResult = _setMatchGroupTime(matchDate, groupLetter, matchTime);
+  var setResult = _setMatchGroupTime(matchDate, groupLetter, matchTime, source, playerName, playerEmail);
   if (!setResult.success) return { success: false, error: 'No matching MatchGroups row found.' };
   var updatedRequests = _syncGroupTimeToOpenRequests(matchDate, setResult.emails, matchTime);
   return { success: true, updatedRequests: updatedRequests };
@@ -2956,11 +2963,15 @@ function _findMatchGroupRowByLetter(ss, matchDate, groupLetter) {
 // the Chelsea import and the View Schedule dropdown, which both already know the
 // letter). Returns { success, emails } so callers can cascade to SubRequests
 // without a second scan.
-function _setMatchGroupTime(matchDate, groupLetter, timeValue) {
+// source/playerName/playerEmail are optional — pass them so the MatchTimeLog
+// audit row (appended below, only when the value actually changes) records
+// who/what made the change and why, since this cell otherwise leaves no trace
+// of who touched it.
+function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerName, playerEmail) {
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { success: false, emails: [] };
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     var rowDate = r[2] instanceof Date
@@ -2968,16 +2979,40 @@ function _setMatchGroupTime(matchDate, groupLetter, timeValue) {
       : (r[2] ? r[2].toString() : '');
     var letter = r[3] ? r[3].toString() : '';
     if (rowDate === matchDate && letter === groupLetter) {
+      var oldTime = (r[16] || '').toString().trim();
       sheet.getRange(i + 2, 17).setNumberFormat('@').setValue(timeValue);
       var emails = [];
       for (var pi = 0; pi < 4; pi++) {
         var em = (r[5 + pi * 2] || '').toString().trim();
         if (em) emails.push(em);
       }
+      if (oldTime !== timeValue) {
+        try {
+          getOrCreateMatchTimeLog().appendRow([
+            nowEasternISO(), matchDate, groupLetter, oldTime, timeValue,
+            source || 'unknown', playerName || '', playerEmail || ''
+          ]);
+        } catch(e) {
+          Logger.log('_setMatchGroupTime: MatchTimeLog append failed: ' + e.message);
+        }
+      }
       return { success: true, emails: emails };
     }
   }
   return { success: false, emails: [] };
+}
+
+function getOrCreateMatchTimeLog() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName('MatchTimeLog');
+  if (!sheet) {
+    sheet = ss.insertSheet('MatchTimeLog');
+    sheet.getRange(1, 1, 1, 8).setValues([[
+      'Timestamp', 'MatchDate', 'GroupLetter', 'OldTime', 'NewTime', 'Source', 'PlayerName', 'PlayerEmail'
+    ]]);
+    sheet.getRange(1, 1, 1, 8).setFontWeight('bold');
+  }
+  return sheet;
 }
 
 // Pushes a group's time onto every still-open SubRequests row for that date whose
@@ -4252,7 +4287,7 @@ function _runChelseaImport(opts) {
         result.applied.push({ group: group.letter, time: row.time, names: matched.map(function(p){return p.name;}).join(', '), dryRun: true });
         return;
       }
-      var setResult = _setMatchGroupTime(targetDate, group.letter, row.time);
+      var setResult = _setMatchGroupTime(targetDate, group.letter, row.time, 'Chelsea import');
       if (setResult.success) {
         _syncGroupTimeToOpenRequests(targetDate, setResult.emails, row.time);
         result.applied.push({ group: group.letter, time: row.time, names: matched.map(function(p){return p.name;}).join(', ') });
@@ -4655,7 +4690,7 @@ function markOverflowRequests(targetDate) {
     try {
       var emails = [req.email].concat((req.groupPlayers || []).map(function(p) { return p.email; }));
       var group = _findMatchGroupRow(ss, targetDate, emails);
-      if (group) _setMatchGroupTime(targetDate, group.letter, 'Overflow');
+      if (group) _setMatchGroupTime(targetDate, group.letter, 'Overflow', 'Match Day -2 auto-Overflow');
     } catch(e) {
       Logger.log('markOverflowRequests: MatchGroups sync failed for ' + req.id + ': ' + e.message);
     }

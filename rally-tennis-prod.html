@@ -3771,7 +3771,11 @@ async function warnScheduledDateRow(k, group) {
   if (!matchTime) {
     matchTime = await askVolMatchTimeModal(formatDate(k));
     try {
-      const result = await apiPost({ action: 'updateMatchGroupTime', matchDate: k, groupLetter: group.letter, matchTime });
+      const { name: askedName, email: askedEmail } = getTypeaheadValue('vol');
+      const result = await apiPost({
+        action: 'updateMatchGroupTime', matchDate: k, groupLetter: group.letter, matchTime,
+        source: 'Ask match time (Volunteer to Sub)', playerName: askedName, playerEmail: askedEmail
+      });
       if (result.success) group.time = matchTime;
     } catch(e) {}
   }
@@ -6010,7 +6014,11 @@ async function onSchedTimeChange(select, date, groupLetter) {
   const newTime = select.value;
   select.disabled = true;
   try {
-    const result = await apiPost({ action: 'updateMatchGroupTime', matchDate: date, groupLetter, matchTime: newTime });
+    const { name: schName, email: schEmail } = getTypeaheadValue('sch');
+    const result = await apiPost({
+      action: 'updateMatchGroupTime', matchDate: date, groupLetter, matchTime: newTime,
+      source: 'View Schedule manual edit', playerName: schName, playerEmail: schEmail
+    });
     if (!result.success) {
       alert('Could not update court time: ' + (result.error || 'unknown error'));
     } else {
