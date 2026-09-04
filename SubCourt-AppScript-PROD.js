@@ -1602,12 +1602,14 @@ function doGet(e) {
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
+    else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
     else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
     else if (action === 'addPlayer')               result = addPlayer(e.parameter);
     else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
     else if (action === 'propagateEmailChange')    result = propagateEmailChange(e.parameter);
     else if (action === 'deletePlayer')            result = deletePlayer(e.parameter);
     else if (action === 'saveCoordinatorRatings')  result = saveCoordinatorRatings(e.parameter);
+    else if (action === 'saveCoordinatorRankings') result = saveCoordinatorRankings(e.parameter);
     else if (action === 'getAvailabilityConfig')   result = getAvailabilityConfig();
     else if (action === 'openAvailabilityWindow')  result = openAvailabilityWindow(e.parameter);
     else if (action === 'closeAvailabilityWindow') result = closeAvailabilityWindow();
@@ -2558,6 +2560,236 @@ function saveCoordinatorRatings(params) {
   SpreadsheetApp.flush();
 
   return { success: true };
+}
+
+// ──────────────────────────────────────────────────
+// PLAYER RANKINGS (replaces the 1-5 rating input on the Player Profile screen —
+// see getCoordinatorRatings/saveCoordinatorRatings above, kept intact and unused
+// as an easy fallback). Each coordinator ranks players 1..n with no duplicates
+// (n = however many that coordinator has ranked); rank 1 = their worst player,
+// rank n = their best, matching the "worst to best" convention used throughout
+// this pipeline. saveCoordinatorRankings recomputes every player's final 1-5
+// Rating (column D) from every coordinator's ranks via
+// _recomputeAllPlayerRatingsFromRankings.
+// ──────────────────────────────────────────────────
+
+function getCoordinatorRankings(params) {
+  var coordEmail = (params.email || '').toLowerCase().trim();
+  var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col        = getColMap(sheet);
+  var lastRow    = sheet.getLastRow();
+  if (lastRow < 2) return { players: [] };
+
+  var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+  var allData = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = allData[0];
+
+  var coordColIdx = -1;
+  for (var i = col.coordStart; i <= col.coordEnd; i++) {
+    if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
+      coordColIdx = i; break;
+    }
+  }
+  if (coordColIdx === -1) return { players: [], notAssigned: true };
+
+  var players = [];
+  for (var r = 1; r < allData.length; r++) {
+    var row = allData[r];
+    if (!row[col.name]) continue;
+    var email = (row[col.email] || '').toLowerCase();
+    if (/^anita\.sub\d+@xgmail\.com$/i.test(email)) continue; // scheduler-managed, not ranked
+    var v = row[coordColIdx];
+    players.push({
+      name:   row[col.name] || '',
+      email:  email,
+      myRank: (v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : ''
+    });
+  }
+  return { players: players, notAssigned: false };
+}
+
+function saveCoordinatorRankings(params) {
+  var coordEmail = (params.coordEmail || '').toLowerCase().trim();
+  var rankings   = JSON.parse(params.rankings || '[]');
+  var sheet      = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col        = getColMap(sheet);
+  var lastRow    = sheet.getLastRow();
+  var lastCol    = Math.max(sheet.getLastColumn(), col.totalCols);
+  var allData    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers    = allData[0];
+
+  var coordColIdx = -1;
+  for (var i = col.coordStart; i <= col.coordEnd; i++) {
+    if ((headers[i] || '').toString().toLowerCase().trim() === coordEmail) {
+      coordColIdx = i; break;
+    }
+  }
+  if (coordColIdx === -1) return { success: false, error: 'not_assigned' };
+
+  var rankMap = {};
+  rankings.forEach(function(item) {
+    var pe = (item.playerEmail || '').toLowerCase().trim();
+    if (pe) rankMap[pe] = (item.rank !== '' && item.rank !== null) ? parseInt(item.rank, 10) : '';
+  });
+
+  for (var row = 1; row < allData.length; row++) {
+    var pe = (allData[row][col.email] || '').toLowerCase().trim();
+    if (/^anita\.sub\d+@xgmail\.com$/i.test(pe)) continue; // scheduler-managed — never ranked
+    if (pe && rankMap.hasOwnProperty(pe)) {
+      allData[row][coordColIdx] = rankMap[pe];
+    }
+  }
+
+  var dataRows = allData.slice(1);
+  var ranksCol = dataRows.map(function(r) { return [r[coordColIdx]]; });
+  sheet.getRange(2, coordColIdx + 1, ranksCol.length, 1).setValues(ranksCol);
+  SpreadsheetApp.flush();
+
+  var recompute = _recomputeAllPlayerRatingsFromRankings();
+  return { success: true, updated: recompute.updated };
+}
+
+// Min and max get weight 1, everything strictly between gets weight 2 — same
+// trimmed-weighted-mean shape as the old rating average (saveCoordinatorRatings),
+// just applied to per-admin percentiles instead of raw 1-5 ratings.
+function _weightedTrimmedAverage(vals) {
+  if (vals.length === 1) return vals[0];
+  var sorted = vals.slice().sort(function(a, b) { return a - b; });
+  var wSum = 0, wTotal = 0;
+  sorted.forEach(function(v, i) {
+    var w = (i === 0 || i === sorted.length - 1) ? 1 : 2;
+    wSum += v * w; wTotal += w;
+  });
+  return wSum / wTotal;
+}
+
+// Peter Acklam's rational approximation of the inverse standard normal CDF
+// (probit function) — accurate to about 1.15e-9. Apps Script/JS has no native
+// inverse-normal function, and this is the standard public-domain algorithm
+// for it.
+function _percentileToZScore(p) {
+  if (p <= 0) p = 1e-10;
+  if (p >= 1) p = 1 - 1e-10;
+
+  var a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+             1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  var b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+             6.680131188771972e+01, -1.328068155288572e+01];
+  var c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+             -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  var d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+             3.754408661907416e+00];
+
+  var pLow  = 0.02425;
+  var pHigh = 1 - pLow;
+  var q, r;
+
+  if (p < pLow) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= pHigh) {
+    q = p - 0.5;
+    r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+             ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+}
+
+// The full pipeline: every coordinator's ranks -> per-admin percentiles ->
+// trimmed-weighted average percentile per player -> position (worst to best,
+// exact ties get the averaged position) -> percentile of position -> z-score
+// -> linearly rescaled to 1-5, written to column D (Rating) for every player.
+// Players nobody has ranked yet are left alone (existing Rating untouched).
+function _recomputeAllPlayerRatingsFromRankings() {
+  var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+  var col     = getColMap(sheet);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true, updated: 0 };
+
+  var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+  var allData = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = allData[0];
+
+  var coordCols = [];
+  for (var k = col.coordStart; k <= col.coordEnd; k++) {
+    if (headers[k]) coordCols.push(k);
+  }
+
+  var rowIndices = []; // indices into allData for real, non-Anita player rows
+  for (var r = 1; r < allData.length; r++) {
+    var email = (allData[r][col.email] || '').toLowerCase().trim();
+    if (!allData[r][col.name]) continue;
+    if (/^anita\.sub\d+@xgmail\.com$/i.test(email)) continue;
+    rowIndices.push(r);
+  }
+  if (!rowIndices.length) return { success: true, updated: 0 };
+
+  // Step 1: each coordinator's ranks -> percentiles, using that coordinator's
+  // own n (however many players they've ranked).
+  var percentilesByRowPos = rowIndices.map(function() { return []; });
+  coordCols.forEach(function(ci) {
+    var entries = [];
+    rowIndices.forEach(function(r, rowPos) {
+      var v = allData[r][ci];
+      if (v !== '' && !isNaN(parseFloat(v))) entries.push({ rowPos: rowPos, rank: parseFloat(v) });
+    });
+    var n = entries.length;
+    if (!n) return;
+    entries.forEach(function(item) {
+      percentilesByRowPos[item.rowPos].push((item.rank - 0.5) / n);
+    });
+  });
+
+  // Step 2: average percentiles per player (trimmed-weighted for 3+ raters).
+  var ranked = []; // { rowPos, avgPct }
+  rowIndices.forEach(function(r, rowPos) {
+    var vals = percentilesByRowPos[rowPos];
+    if (vals.length) ranked.push({ rowPos: rowPos, avgPct: _weightedTrimmedAverage(vals) });
+  });
+  if (!ranked.length) return { success: true, updated: 0 };
+
+  // Step 3: sort worst to best; exact ties (within floating-point noise) share
+  // the average of their positions instead of an arbitrary tie-break.
+  ranked.sort(function(a, b) { return a.avgPct - b.avgPct; });
+  var n = ranked.length;
+  var TIE_EPSILON = 1e-9;
+  var positions = new Array(n);
+  var i = 0;
+  while (i < n) {
+    var j = i;
+    while (j + 1 < n && Math.abs(ranked[j + 1].avgPct - ranked[i].avgPct) < TIE_EPSILON) j++;
+    var sumPos = 0;
+    for (var k2 = i; k2 <= j; k2++) sumPos += (k2 + 1); // 1-indexed position
+    var avgPos = sumPos / (j - i + 1);
+    for (var k3 = i; k3 <= j; k3++) positions[k3] = avgPos;
+    i = j + 1;
+  }
+
+  // Step 4/5: position -> percentile -> z-score -> rescale to 1-5.
+  var zScores = positions.map(function(pos) { return _percentileToZScore((pos - 0.5) / n); });
+  var zMin = Math.min.apply(null, zScores);
+  var zMax = Math.max.apply(null, zScores);
+  var zSpan = zMax - zMin;
+
+  var updated = 0;
+  ranked.forEach(function(item, idx) {
+    var rating = zSpan === 0 ? 3.0 : (1 + (zScores[idx] - zMin) / zSpan * 4);
+    rating = Math.round(rating * 100) / 100;
+    allData[rowIndices[item.rowPos]][col.rating] = rating;
+    updated++;
+  });
+
+  var dataRows   = allData.slice(1);
+  var ratingsCol = dataRows.map(function(row) { return [row[col.rating]]; });
+  sheet.getRange(2, col.rating + 1, ratingsCol.length, 1).setValues(ratingsCol);
+  SpreadsheetApp.flush();
+
+  return { success: true, updated: updated };
 }
 
 function getPlayersForAdmin() {

@@ -170,6 +170,8 @@
   @media (max-width: 640px) {
     .dispatch-table { font-size: 14px; }
     .players-table th:last-child, .players-table td:last-child { display: none; }
+    /* Ranking table's last column is Email, not a cosmetic preview — keep it visible. */
+    .ranking-table.players-table th:last-child, .ranking-table.players-table td:last-child { display: table-cell; }
   }
   .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
@@ -876,6 +878,27 @@
     border-color: var(--clay);
     box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
   }
+  .player-rank-input {
+    width: 56px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 6px 4px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    font-family: inherit;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .player-rank-input:focus {
+    outline: none;
+    border-color: var(--clay);
+    box-shadow: 0 0 0 3px rgba(224,122,90,0.12);
+  }
+  .ranking-row-unranked .player-name, .ranking-row-unranked .player-email { color: var(--ink-light); }
+  .ranking-drag-handle { cursor: grab; color: var(--ink-light); width: 24px; text-align: center; user-select: none; }
+  tr.ranking-drag-over { border-top: 2px solid var(--clay); }
   .no8am-check {
     width: 18px;
     height: 18px;
@@ -1957,21 +1980,19 @@
         </div>
 
         <div class="card mt8" style="padding:1rem 1.5rem;">
-          <p style="font-size:14px;color:var(--ink-mid);margin-bottom:0;">You are editing <strong>your ratings only</strong>. Other coordinators' ratings and the final average are not shown here.</p>
+          <p style="font-size:14px;color:var(--ink-mid);margin-bottom:0;">You are editing <strong>your ranking only</strong>. Other coordinators' rankings and the final computed rating are not shown here.</p>
         </div>
         <div id="players-loading" class="loading"><div class="spinner"></div>Loading players…</div>
         <div id="players-list" style="display:none;">
           <div style="margin:1.25rem 0 0.75rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-            <div style="font-size:13px;color:var(--ink-light);">Rate each player 1.0 – 5.0. Leave blank if unknown.</div>
+            <div style="font-size:13px;color:var(--ink-light);max-width:520px;">Rank every player from best (1) to worst — no ties. Drag a row to reorder, or type a new position number. Players you haven't ranked yet are listed at the bottom — drag one up or give it a position to add it to your ranking.</div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-secondary btn-sm" onclick="useNormDistRatings()" title="Replace your entered ratings with the normal distribution values shown in the Norm Dist column">Use norm dist</button>
-              <button class="btn btn-clay btn-sm" id="save-ratings-top" onclick="saveAllRatings()">Save all ratings</button>
+              <button class="btn btn-clay btn-sm" id="save-ranking-top" onclick="saveAllRankings()">Save ranking</button>
             </div>
           </div>
           <div id="players-grid"></div>
           <div style="margin-top:1rem;display:flex;justify-content:flex-end;gap:8px;">
-            <button class="btn btn-secondary btn-sm" onclick="useNormDistRatings()" title="Replace your entered ratings with the normal distribution values shown in the Norm Dist column">Use norm dist</button>
-            <button class="btn btn-clay" id="save-ratings-bottom" onclick="saveAllRatings()">Save all ratings</button>
+            <button class="btn btn-clay" id="save-ranking-bottom" onclick="saveAllRankings()">Save ranking</button>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;align-items:center;gap:10px;">
@@ -4461,7 +4482,7 @@ function unlockAdmin(name) {
   document.getElementById('admin-tab-settings').style.display  = 'none';
   checkDuplicateEmails();
   loadManagePlayers();
-  loadCoordinatorRatings();
+  loadCoordinatorRankings();
 }
 
 function adminSignOut() {
@@ -4491,7 +4512,7 @@ function showAdminTab(tab, btn) {
   document.getElementById('admin-tab-scheduler').style.display = tab === 'scheduler' ? '' : 'none';
   document.getElementById('admin-tab-settings').style.display  = tab === 'settings'  ? '' : 'none';
   if (tab === 'dispatch')  loadDispatch();
-  if (tab === 'players')   { checkDuplicateEmails(); loadManagePlayers(); loadCoordinatorRatings(); }
+  if (tab === 'players')   { checkDuplicateEmails(); loadManagePlayers(); loadCoordinatorRankings(); }
   if (tab === 'scheduler') loadScheduler();
   if (tab === 'settings')  loadSettingsConfig();
 }
@@ -4818,6 +4839,169 @@ async function saveAllRatings() {
   } catch(e) {
     showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
     saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save all ratings'; } });
+  }
+}
+
+// ══════════════════════════════════════════════════
+// PLAYER RANKINGS (replaces the 1-5 rating input above — see
+// getCoordinatorRatings/saveCoordinatorRatings/renderRatingsTable/
+// calcNormDistRatings/useNormDistRatings/saveAllRatings, all kept intact and
+// unused as an easy fallback). Each coordinator orders every player from best
+// to worst by dragging rows or typing a position number; position 1 = best.
+// Saving sends the equivalent statistical rank (1 = worst, n = best) for
+// every ranked player and the backend recomputes everyone's final 1-5 Rating.
+// ══════════════════════════════════════════════════
+let rankingList = []; // ordered: [0, rankedCount) = ranked best→worst, rest = unranked (alphabetical)
+let rankedCount = 0;
+let rankDragFromIndex = null;
+
+async function loadCoordinatorRankings(forceRefresh) {
+  const email = sessionStorage.getItem('adminEmail');
+  if (!email) return;
+  if (!forceRefresh && rankingList.length) {
+    document.getElementById('players-list').style.display = 'block';
+    return;
+  }
+  document.getElementById('players-loading').classList.remove('hidden');
+  document.getElementById('players-list').style.display = 'none';
+  document.getElementById('players-alert').classList.add('hidden');
+
+  try {
+    const result = await apiPost({ action: 'getCoordinatorRankings', email });
+    document.getElementById('players-loading').classList.add('hidden');
+
+    if (result.notAssigned) {
+      showAlert('players-alert', 'error', 'Your account is not assigned to a ranking slot. Ask the system admin to add your email to columns G–K in the Players sheet.');
+      return;
+    }
+
+    const players = result.players || [];
+    const ranked = players
+      .filter(p => p.myRank !== '' && p.myRank !== null)
+      .sort((a, b) => b.myRank - a.myRank); // highest rank value = best = position 1
+    const unranked = players
+      .filter(p => p.myRank === '' || p.myRank === null)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    rankingList = ranked.concat(unranked);
+    rankedCount = ranked.length;
+    renderRankingTable();
+  } catch(e) {
+    document.getElementById('players-loading').classList.add('hidden');
+    showAlert('players-alert', 'error', 'Failed to load players: ' + e.message);
+  }
+}
+
+function renderRankingTable() {
+  const grid = document.getElementById('players-grid');
+  if (!rankingList.length) {
+    grid.innerHTML = '<div class="empty"><span class="empty-icon">🎾</span>No players found.</div>';
+    document.getElementById('players-list').style.display = 'block';
+    return;
+  }
+  const rowsHtml = rankingList.map((p, i) => {
+    const isRanked = i < rankedCount;
+    const position = isRanked ? (i + 1) : '';
+    const divider = (i === rankedCount && rankedCount > 0 && rankedCount < rankingList.length)
+      ? '<tr class="ranking-divider"><td colspan="4" style="padding:8px 12px;font-size:12px;font-weight:700;color:var(--ink-light);background:var(--chalk);">Not yet ranked — drag up or enter a position to add</td></tr>'
+      : '';
+    return divider + `
+      <tr draggable="true" class="${isRanked ? '' : 'ranking-row-unranked'}"
+        ondragstart="onRankDragStart(event, ${i})" ondragover="onRankDragOver(event)" ondrop="onRankDrop(event, ${i})">
+        <td class="ranking-drag-handle" title="Drag to reorder">☰</td>
+        <td><input type="number" class="player-rank-input" min="1" max="${rankingList.length}" step="1"
+          value="${position}" placeholder="—"
+          onchange="onRankPositionChange(${i}, this.value)" /></td>
+        <td class="player-name">${p.name}</td>
+        <td class="player-email">${p.email}</td>
+      </tr>`;
+  }).join('');
+  grid.innerHTML = `
+    <table class="players-table ranking-table">
+      <thead><tr><th></th><th>Position</th><th>Name</th><th>Email</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+  document.getElementById('players-list').style.display = 'block';
+}
+
+function onRankDragStart(e, index) {
+  rankDragFromIndex = index;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(index)); } catch(err) {}
+}
+
+function onRankDragOver(e) { e.preventDefault(); }
+
+function onRankDrop(e, targetIndex) {
+  e.preventDefault();
+  const fromIndex = rankDragFromIndex !== null ? rankDragFromIndex : parseInt(e.dataTransfer.getData('text/plain'), 10);
+  rankDragFromIndex = null;
+  if (isNaN(fromIndex) || fromIndex === targetIndex) return;
+  moveRankingItem(fromIndex, targetIndex + 1);
+}
+
+function onRankPositionChange(index, value) {
+  const pos = parseInt(value, 10);
+  if (isNaN(pos)) { renderRankingTable(); return; }
+  moveRankingItem(index, pos);
+}
+
+// Moves the player at fromIndex to 1-based desiredPosition. A player already
+// ranked can only be reordered within the ranked group (position 1..rankedCount);
+// an unranked player can be moved into the ranked group at any position up to
+// and including one past its end (which grows rankedCount by one) — there's no
+// way to explicitly un-rank someone once ranked, which keeps this simple and
+// avoids ever silently dropping a coordinator's prior work.
+function moveRankingItem(fromIndex, desiredPosition1Based) {
+  const wasRanked   = fromIndex < rankedCount;
+  const maxPosition = wasRanked ? rankedCount : rankedCount + 1;
+  const clampedPos  = Math.max(1, Math.min(maxPosition, desiredPosition1Based));
+  const toIndex     = clampedPos - 1;
+
+  const [item] = rankingList.splice(fromIndex, 1);
+  let insertAt = toIndex;
+  if (fromIndex < toIndex) insertAt -= 1;
+  insertAt = Math.max(0, Math.min(rankingList.length, insertAt));
+  rankingList.splice(insertAt, 0, item);
+  if (!wasRanked) rankedCount++;
+  renderRankingTable();
+}
+
+async function saveAllRankings() {
+  const email = sessionStorage.getItem('adminEmail');
+  if (!email) return;
+  if (!rankedCount) {
+    showAlert('players-alert', 'error', 'Rank at least one player before saving.');
+    return;
+  }
+
+  // Position 1 (top, best) gets the highest statistical rank value; position
+  // rankedCount (bottom of the ranked group, worst) gets rank 1.
+  const rankings = rankingList.map((p, i) => ({
+    playerEmail: p.email,
+    rank: i < rankedCount ? (rankedCount - i) : ''
+  }));
+
+  const saveBtns = ['save-ranking-top', 'save-ranking-bottom'];
+  saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = true; b.textContent = 'Saving…'; } });
+
+  try {
+    // Use fetch, not JSONP — avoids the 30s JSONP timeout on a large payload.
+    const qs = `action=saveCoordinatorRankings&coordEmail=${encodeURIComponent(email)}&rankings=${encodeURIComponent(JSON.stringify(rankings))}`;
+    const resp = await fetch(`${SCRIPT_URL}?${qs}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const result = await resp.json();
+    if (!result.success) {
+      showAlert('players-alert', 'error', result.error === 'not_assigned'
+        ? 'Your account is not assigned to a ranking slot. Ask the system admin to add your email to columns G–K in the Players sheet.'
+        : (result.error || 'Failed to save.'));
+      saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save ranking'; } });
+      return;
+    }
+    saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.textContent = 'Saved ✓'; } });
+    setTimeout(() => { saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save ranking'; } }); }, 2000);
+  } catch(e) {
+    showAlert('players-alert', 'error', 'Failed to save: ' + e.message);
+    saveBtns.forEach(id => { const b = document.getElementById(id); if (b) { b.disabled = false; b.textContent = 'Save ranking'; } });
   }
 }
 
