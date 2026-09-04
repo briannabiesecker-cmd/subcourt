@@ -3961,8 +3961,6 @@ function renderDispatchConfigTable(cfg) {
             <td>Allow name change on delete <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="This allows players to delete a sub request and assign their spot to another player, bypassing Dispatch.">ⓘ</span></td><td>${chk('cfgd-allow-name-change', cfg.allowPlayerNameChangeOnDelete)}</td></tr>
         <tr><td>MTC email addresses <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="Only enter email addresses if MTC agrees to receive substitution confirmation emails">ⓘ</span></td><td>${txt('cfgd-mtc-email-1', cfg.mtcEmail1)}</td>
             <td></td><td>${txt('cfgd-mtc-email-2', cfg.mtcEmail2)}</td></tr>
-        <tr><td>Chelsea Import Enabled <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="When on, Rally automatically reads Chelsea's court-sheet email and applies the match times it contains. Turn off to stop automatic imports; the &quot;Check Court Sheet Now&quot; button on Settings still works either way.">ⓘ</span></td><td>${chk('cfgd-chelsea-import-enabled', cfg.chelseaImportEnabled)}</td>
-            <td></td><td></td></tr>
       </tbody>
     </table>
 
@@ -4050,7 +4048,6 @@ async function saveDispatchConfig() {
       allowPlayerNameChangeOnDelete: chkVal('cfgd-allow-name-change'),
       mtcEmail1: val('cfgd-mtc-email-1'),
       mtcEmail2: val('cfgd-mtc-email-2'),
-      chelseaImportEnabled: chkVal('cfgd-chelsea-import-enabled'),
       preScheduleThresholdHrs: val('cfgd-match-hrs-0'),
       skillWindowFarOut: val('cfgd-match-win-0'),
       urgentThresholdHrs: val('cfgd-match-hrs-1'),
@@ -5142,6 +5139,8 @@ function renderSettingsConfigTable(cfg) {
         <tr><td>Start time (ET)</td><td>${time('cfgs-chelsea-start', cfg.chelseaCheckStartTime)}</td>
             <td>End time (ET)</td><td>${time('cfgs-chelsea-end', cfg.chelseaCheckEndTime)}</td></tr>
         <tr><td>Email subject contains</td><td colspan="3">${txt('cfgs-chelsea-subject', cfg.chelseaCheckSubject, 260)}</td></tr>
+        <tr><td>Chelsea Import Enabled <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="When on, Rally automatically reads Chelsea's court-sheet email and applies the match times it contains. Turn off to stop automatic imports; the &quot;Check Court Sheet Now&quot; button below still works either way.">ⓘ</span></td><td>${chk('cfgs-chelsea-import-enabled', cfg.chelseaImportEnabled)}</td>
+            <td></td><td></td></tr>
       </tbody>
     </table>
 
@@ -5183,7 +5182,8 @@ async function saveSettingsConfig() {
       chelseaCheckStartTime: val('cfgs-chelsea-start'),
       chelseaCheckEndTime: val('cfgs-chelsea-end'),
       chelseaCheckFrequencyMinutes: val('cfgs-chelsea-freq'),
-      chelseaCheckSubject: val('cfgs-chelsea-subject')
+      chelseaCheckSubject: val('cfgs-chelsea-subject'),
+      chelseaImportEnabled: chkVal('cfgs-chelsea-import-enabled')
     });
     if (!result.success) throw new Error(result.error || 'Failed');
     configCache = null;

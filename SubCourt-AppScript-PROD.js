@@ -3989,9 +3989,6 @@ function saveDispatchConfigTable(params) {
   sheet.getRange('B63').setValue((params.mtcEmail1 || '').toString().trim());
   sheet.getRange('B64').setValue((params.mtcEmail2 || '').toString().trim());
 
-  var chelseaImportEnabled = params.chelseaImportEnabled === 'true' || params.chelseaImportEnabled === true;
-  sheet.getRange('B71').setValue(chelseaImportEnabled ? 'Yes' : 'No');
-
   sheet.getRange('B4').setValue(parseInt(params.preScheduleThresholdHrs)   || 72);
   sheet.getRange('C4').setValue(parseFloat(params.skillWindowFarOut)       || 0.5);
   sheet.getRange('B5').setValue(parseInt(params.urgentThresholdHrs)       || 48);
@@ -4057,6 +4054,7 @@ function saveSettingsConfigTable(params) {
   chelseaEndCell.setValue((params.chelseaCheckEndTime || '09:30').toString().trim());
   sheet.getRange('B69').setValue(parseInt(params.chelseaCheckFrequencyMinutes) || 15);
   sheet.getRange('B70').setValue((params.chelseaCheckSubject || 'Upcoming Court Sheet').toString().trim());
+  sheet.getRange('B71').setValue((params.chelseaImportEnabled === 'true' || params.chelseaImportEnabled === true) ? 'Yes' : 'No');
 
   SpreadsheetApp.flush();
   _configCache = null;
