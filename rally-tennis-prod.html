@@ -6036,7 +6036,7 @@ async function onSchedTimeChange(select, date, groupLetter) {
   select.disabled = false;
 }
 
-function renderPublishedSchedule(filterEmail, filterName) {
+async function renderPublishedSchedule(filterEmail, filterName) {
   const wrap  = document.getElementById('sch-table-wrap');
   const empty = document.getElementById('sch-empty');
   const tbl   = document.getElementById('sch-table');
@@ -6061,13 +6061,39 @@ function renderPublishedSchedule(filterEmail, filterName) {
       );
       return filteredGroups.length ? { ...d, groups: filteredGroups } : null;
     }).filter(Boolean);
+
+    // Also surface any date this player has an open (pending) volunteer record
+    // for — a separate thing from being scheduled to play, so it's marked
+    // distinctly below rather than folded into the match-group rows.
+    let myVolunteerDates = {}; // date -> times[]
+    try {
+      const allVolunteers = await getVolunteers();
+      allVolunteers.forEach(v => {
+        if (v.status !== 'pending' || v.date < todayStr) return;
+        const isMe = (filterEmailLower && v.email && v.email.toLowerCase() === filterEmailLower) ||
+                     (filterNameLower  && v.name  && v.name.toLowerCase()  === filterNameLower);
+        if (isMe) myVolunteerDates[v.date] = v.times || [];
+      });
+    } catch(e) {}
+
+    const dateMap = new Map(dates.map(d => [d.date, d]));
+    Object.keys(myVolunteerDates).forEach(date => {
+      if (dateMap.has(date)) {
+        dateMap.get(date).volunteerTimes = myVolunteerDates[date];
+      } else {
+        const entry = { date, groups: [], volunteerTimes: myVolunteerDates[date] };
+        dates.push(entry);
+        dateMap.set(date, entry);
+      }
+    });
+    dates.sort((a, b) => a.date.localeCompare(b.date));
   }
 
   if (!dates.length) {
     wrap.style.display  = 'none';
     document.getElementById('sch-alternates-wrap').style.display = 'none';
     empty.style.display = '';
-    empty.textContent   = 'No scheduled dates found for that name.';
+    empty.textContent   = 'No scheduled dates or open volunteer records found for that name.';
     return;
   }
 
@@ -6107,14 +6133,19 @@ function renderPublishedSchedule(filterEmail, filterName) {
     const dateStr = `${_dow}<br><span style="font-size:12px;color:var(--ink-mid);">${_mdd}</span>`;
     if (d.groups[0] && d.groups[0].sitOut)  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
     if (d.groups[0] && d.groups[0].sitOut2) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
+    const hasVolunteerRow = !!(d.volunteerTimes && d.volunteerTimes.length);
+    const rowSpan = d.groups.length + (hasVolunteerRow ? 1 : 0);
+    let dateCellWritten = false;
+    const dateCellHtml = () => {
+      dateCellWritten = true;
+      return `<td rowspan="${rowSpan}" class="date-cell" style="white-space:nowrap;line-height:1.4;">${dateStr}</td>`;
+    };
     d.groups.forEach((g, gi) => {
       const captain = g.players.find(p => p.isCaptain);
       const others  = g.players.filter(p => !p.isCaptain);
       const rowClass = gi === 0 ? 'date-first' : '';
       html += `<tr class="${rowClass}">`;
-      if (gi === 0) {
-        html += `<td rowspan="${d.groups.length}" class="date-cell" style="white-space:nowrap;line-height:1.4;">${dateStr}</td>`;
-      }
+      if (!dateCellWritten) html += dateCellHtml();
       html += _schedTimeCellHtml(d.date, g);
       html += `<td><span class="captain-badge">C</span>${mkName(captain)}</td>`;
       html += `<td style="text-align:center;">${mkName(others[0])}</td>`;
@@ -6122,6 +6153,13 @@ function renderPublishedSchedule(filterEmail, filterName) {
       html += `<td style="text-align:center;">${mkName(others[2])}</td>`;
       html += '</tr>';
     });
+    if (hasVolunteerRow) {
+      const timesLabel = d.volunteerTimes.map(t => TIME_LABELS_SHORT[t] || t).join(', ');
+      html += `<tr class="${dateCellWritten ? '' : 'date-first'}">`;
+      if (!dateCellWritten) html += dateCellHtml();
+      html += `<td colspan="5" style="color:var(--clay);font-style:italic;">Volunteered to sub — not a scheduled match — available at ${timesLabel}</td>`;
+      html += '</tr>';
+    }
   });
   html += '</tbody>';
   tbl.innerHTML = html;
