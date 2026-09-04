@@ -3727,19 +3727,40 @@ function runMatch(params) {
   });
   candidates = Array.from(seen.values());
 
-  // Enrich with rating diff
-  candidates = candidates.map(c => {
-    const p = players.find(p => p.email === c.email.toLowerCase());
-    return {
-      ...c,
-      ratingDiff: p ? Math.abs(p.rating - reqRating) : 99
-    };
-    // Note: rating itself is NOT included — only the diff
-  });
-
   // Within 48 hours: sort by closest rating (no skill restriction, so minimize variation).
   // Beyond 48 hours: FIFO — earliest submission first, rating as tiebreaker.
   var useRatingSort = phase === 'last-minute' || phase === 'urgent';
+
+  // Aged-volunteer override (Urgent/Last-Minute only): a volunteer record 30+
+  // days old whose skill match is within the tighter "A little urgent" window
+  // (skillWindowMid — narrower than the Urgent/Last-Minute window itself) takes
+  // priority over the normal candidate pool, so a long-waiting volunteer who is
+  // still a genuinely close match doesn't keep losing out to newer signups.
+  var AGED_VOLUNTEER_MS = 30 * 24 * 60 * 60 * 1000;
+  var agedCutoffTime = Date.now() - AGED_VOLUNTEER_MS;
+
+  // Enrich with rating diff
+  candidates = candidates.map(c => {
+    const p = players.find(p => p.email === c.email.toLowerCase());
+    const ratingDiff = p ? Math.abs(p.rating - reqRating) : 99;
+    return {
+      ...c,
+      ratingDiff,
+      // Note: rating itself is NOT included — only the diff
+      agedOverrideEligible: useRatingSort &&
+        ratingDiff <= config.skillWindowMid &&
+        new Date(c.timestamp).getTime() <= agedCutoffTime
+    };
+  });
+
+  var usedAgedOverride = false;
+  if (useRatingSort) {
+    var agedCandidates = candidates.filter(c => c.agedOverrideEligible);
+    if (agedCandidates.length) {
+      candidates = agedCandidates;
+      usedAgedOverride = true;
+    }
+  }
 
   candidates.sort((a, b) => {
     if (useRatingSort) {
@@ -3765,6 +3786,7 @@ function runMatch(params) {
     requireAllTimes,
     phase,
     noCandidateReason,
+    usedAgedOverride,
     matchTime: matchTime ? TIME_LABELS[matchTime] : null
   };
 }
