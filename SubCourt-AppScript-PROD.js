@@ -1065,6 +1065,14 @@ function getConfig() {
       sheet.getRange('A69').setValue('Check Frequency (minutes)');
       sheet.getRange('B69').setValue(15);
     }
+    // Chelsea import on/off — auto-init on first use (row 71). Defaults to
+    // No/suspended, since this was added specifically to let the import be
+    // switched off; an admin re-enables it from the Dispatch screen.
+    var b71 = sheet.getRange('B71').getValue();
+    if (b71 === '' || b71 === null) {
+      sheet.getRange('A71').setValue('Chelsea Import Enabled');
+      sheet.getRange('B71').setValue('No');
+    }
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -1108,6 +1116,7 @@ function getConfig() {
       chelseaCheckEndTime:          formatSheetTime(sheet.getRange('B68').getValue()) || '09:30',
       chelseaCheckFrequencyMinutes: parseInt(sheet.getRange('B69').getValue()) || 15,
       chelseaCheckSubject:          (sheet.getRange('B70').getValue() || 'Upcoming Court Sheet').toString().trim(),
+      chelseaImportEnabled:         (function() { var v = sheet.getRange('B71').getValue(); return v === 'Yes' || v === true; })(),
     };
     _configCache = cfg;
     return cfg;
@@ -1154,6 +1163,7 @@ function getConfig() {
       chelseaCheckEndTime: '09:30',
       chelseaCheckFrequencyMinutes: 15,
       chelseaCheckSubject: 'Upcoming Court Sheet',
+      chelseaImportEnabled: false,
     };
   }
 }
@@ -3954,7 +3964,8 @@ function getAdminConfigTables() {
     chelseaCheckStartTime:        config.chelseaCheckStartTime,
     chelseaCheckEndTime:          config.chelseaCheckEndTime,
     chelseaCheckFrequencyMinutes: config.chelseaCheckFrequencyMinutes,
-    chelseaCheckSubject:          config.chelseaCheckSubject
+    chelseaCheckSubject:          config.chelseaCheckSubject,
+    chelseaImportEnabled:         config.chelseaImportEnabled
   };
 }
 
@@ -3977,6 +3988,9 @@ function saveDispatchConfigTable(params) {
 
   sheet.getRange('B63').setValue((params.mtcEmail1 || '').toString().trim());
   sheet.getRange('B64').setValue((params.mtcEmail2 || '').toString().trim());
+
+  var chelseaImportEnabled = params.chelseaImportEnabled === 'true' || params.chelseaImportEnabled === true;
+  sheet.getRange('B71').setValue(chelseaImportEnabled ? 'Yes' : 'No');
 
   sheet.getRange('B4').setValue(parseInt(params.preScheduleThresholdHrs)   || 72);
   sheet.getRange('C4').setValue(parseFloat(params.skillWindowFarOut)       || 0.5);
@@ -4149,6 +4163,7 @@ var CHELSEA_TIMES = ['08:00', '09:30', '11:00', '12:30']; // must match frontend
 // manually-scheduled Match Day -2 "Time Reminder" flag.
 function checkChelseaCourtTimes() {
   var config = getConfig();
+  if (!config.chelseaImportEnabled) return;
   var tz  = Session.getScriptTimeZone();
   var now = new Date();
   var dow = parseInt(Utilities.formatDate(now, tz, 'u')); // 1=Mon...7=Sun
