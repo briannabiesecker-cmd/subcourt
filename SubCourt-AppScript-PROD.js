@@ -1301,6 +1301,10 @@ function updateChelseaCheckTrigger() {
     }
   });
   var config = getConfig();
+  if (!config.chelseaImportEnabled) {
+    Logger.log('Chelsea import is disabled. No trigger set.');
+    return;
+  }
   var allowed = [1, 5, 10, 15, 30];
   var freq = allowed.indexOf(config.chelseaCheckFrequencyMinutes) !== -1 ? config.chelseaCheckFrequencyMinutes : 15;
   ScriptApp.newTrigger('checkChelseaCourtTimes').timeBased().everyMinutes(freq).create();
