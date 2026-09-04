@@ -2973,6 +2973,15 @@ function _findMatchGroupRowByLetter(ss, matchDate, groupLetter) {
   return null;
 }
 
+// The three sources a player can trigger directly (as opposed to Chelsea
+// import or the Match Day -2 Overflow auto-mark, both automated) — only these
+// trigger the group notification email in _setMatchGroupTime below.
+var MANUAL_MATCH_TIME_SOURCES = [
+  'Ask match time (Volunteer to Sub / I CAN Sub)',
+  'Request a Sub form',
+  'View Schedule manual edit'
+];
+
 // Writes a MatchGroups row's time by date + group letter (not by email — used by
 // the Chelsea import and the View Schedule dropdown, which both already know the
 // letter). Returns { success, emails } so callers can cascade to SubRequests
@@ -3009,6 +3018,18 @@ function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerNam
         } catch(e) {
           Logger.log('_setMatchGroupTime: MatchTimeLog append failed: ' + e.message);
         }
+        // Only alert the group for an actual change to a time they already had —
+        // filling in a previously blank/TBD time for the first time isn't a
+        // "change" worth an email — and only for the manual sources a player
+        // can trigger directly; Chelsea import and the Match Day -2 Overflow
+        // auto-mark are routine/automated and would make this noisy.
+        if (oldTime && MANUAL_MATCH_TIME_SOURCES.indexOf(source) !== -1) {
+          try {
+            _sendMatchTimeChangeNotification(matchDate, oldTime, timeValue, source, playerName, playerEmail, emails);
+          } catch(e) {
+            Logger.log('_setMatchGroupTime: change notification failed: ' + e.message);
+          }
+        }
       }
       return { success: true, emails: emails };
     }
@@ -3027,6 +3048,42 @@ function getOrCreateMatchTimeLog() {
     sheet.getRange(1, 1, 1, 8).setFontWeight('bold');
   }
   return sheet;
+}
+
+// Tells the whole group when one of them changes a match time that was
+// already set to something real — the exact situation that caused the CB
+// Cook/group D mix-up this was built to catch. groupEmails is whatever
+// _setMatchGroupTime already scanned off the row, so no extra lookup needed.
+function _sendMatchTimeChangeNotification(matchDate, oldTime, newTime, source, playerName, playerEmail, groupEmails) {
+  if (!isEmailEnabled()) return;
+  if (!groupEmails || !groupEmails.length) return;
+
+  var dateStr    = formatDate(matchDate);
+  var oldLabel   = TIME_LABELS[oldTime] || oldTime;
+  var newLabel   = TIME_LABELS[newTime] || newTime;
+  var whoChanged = playerName || playerEmail || 'Someone';
+
+  var subject = 'MWF Tennis League — Match time changed for ' + dateStr;
+  var body =
+    'Hi all,\n\n' +
+    whoChanged + ' changed the match time for ' + dateStr + ' from ' + oldLabel + ' to ' + newLabel + '.\n\n' +
+    'Changed via: ' + source + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi all,<br><br>' +
+    '<strong>' + whoChanged + '</strong> changed the match time for <strong>' + dateStr + '</strong> from ' +
+    '<strong>' + oldLabel + '</strong> to <strong>' + newLabel + '</strong>.<br><br>' +
+    '<span style="color:#6b7280;font-size:13px;">Changed via: ' + source + '</span><br><br>' +
+    'MWF Tennis League';
+
+  sendLeagueEmail({
+    to:       groupEmails.join(','),
+    subject:  subject,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     'MWF Tennis League'
+  });
+  Logger.log('Match time change notification sent for ' + matchDate + ' (' + oldTime + ' -> ' + newTime + '), source=' + source);
 }
 
 // Pushes a group's time onto every still-open SubRequests row for that date whose
