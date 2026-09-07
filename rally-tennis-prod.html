@@ -3301,14 +3301,34 @@ function showPlayerEditModal(requestId) {
   cancelBtn.onclick = close;
   modal.onclick = e => { if (e.target === modal) close(); };
 
+  const oldTime = req.matchTime || '';
   saveBtn.onclick = async () => {
     const newTime = document.getElementById('pem-time').value;
+    if (newTime === oldTime) { close(); return; } // nothing changed
+
+    // A known time (real or Overflow) being changed — confirm first, same as
+    // View Schedule's editable dropdown. Blank/TBD needs no confirmation;
+    // that's filling it in for the first time, not a change.
+    let confirmedName = null;
+    if (oldTime) {
+      const { name: reqName } = getTypeaheadValue('req');
+      const answer = await askConfirmScheduleTimeChange(
+        formatDate(req.matchDate), TIME_LABELS[oldTime] || oldTime, TIME_LABELS[newTime] || newTime || 'TBD', reqName
+      );
+      if (!answer.confirmed) return;
+      confirmedName = answer.name;
+    }
+
     saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
     try {
+      const { name: reqName2, email: reqEmail } = getTypeaheadValue('req');
       await apiPost({
-        action:    'updateRequestTime',
-        rowIndex:  req.rowIndex,
-        matchTime: newTime
+        action:      'updateRequestTime',
+        rowIndex:    req.rowIndex,
+        matchTime:   newTime,
+        source:      'Edit Match Time (Request a Sub)',
+        playerName:  confirmedName || reqName2,
+        playerEmail: reqEmail
       });
       close();
       const { email } = getTypeaheadValue('req');

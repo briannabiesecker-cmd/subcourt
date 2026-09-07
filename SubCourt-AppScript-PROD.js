@@ -2955,11 +2955,39 @@ function updateRequest(params) {
   return { success: true };
 }
 
+// Editing a request's own match time (the "Edit Match Time" button on the
+// Request a Sub tab's My Requests table) is really editing the match's time —
+// so this also pushes the change into MatchGroups (which logs it to
+// MatchTimeLog and, since 'Edit Match Time (Request a Sub)' is a tracked
+// manual source, emails the group) and cascades it to any other open request
+// for the same group, exactly like View Schedule's editable dropdown does.
 function updateRequestTime(params) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
-  const cell  = sheet.getRange(parseInt(params.rowIndex), 6); // column F = matchTime
+  const sheet    = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+  const rowIndex = parseInt(params.rowIndex, 10);
+  const newTime  = (params.matchTime || '').toString().trim();
+  const source       = (params.source || 'Edit Match Time (Request a Sub)').toString().trim();
+  const playerName   = (params.playerName || '').toString().trim();
+  const playerEmail  = (params.playerEmail || '').toString().trim();
+
+  const cell = sheet.getRange(rowIndex, 6); // column F = matchTime
   cell.setNumberFormat('@');
-  cell.setValue(params.matchTime || '');
+  cell.setValue(newTime);
+
+  const rowData      = sheet.getRange(rowIndex, 1, 1, 11).getValues()[0];
+  const matchDate    = formatSheetDate(rowData[4]);
+  const groupLetter  = rowData[10] ? rowData[10].toString().trim() : '';
+
+  if (matchDate && groupLetter) {
+    try {
+      const setResult = _setMatchGroupTime(matchDate, groupLetter, newTime, source, playerName, playerEmail);
+      if (setResult.success) {
+        _syncGroupTimeToOpenRequests(matchDate, setResult.emails, newTime);
+      }
+    } catch (e) {
+      Logger.log('updateRequestTime: MatchGroups sync failed: ' + e.message);
+    }
+  }
+
   return { success: true };
 }
 
@@ -3205,13 +3233,14 @@ function _findMatchGroupRowByLetter(ss, matchDate, groupLetter) {
   return null;
 }
 
-// The three sources a player can trigger directly (as opposed to Chelsea
-// import or the Match Day -2 Overflow auto-mark, both automated) — only these
-// trigger the group notification email in _setMatchGroupTime below.
+// The sources a player can trigger directly (as opposed to Chelsea import or
+// the Match Day -2 Overflow auto-mark, both automated) — only these trigger
+// the group notification email in _setMatchGroupTime below.
 var MANUAL_MATCH_TIME_SOURCES = [
   'Ask match time (Volunteer to Sub / I CAN Sub)',
   'Request a Sub form',
-  'View Schedule manual edit'
+  'View Schedule manual edit',
+  'Edit Match Time (Request a Sub)'
 ];
 
 // Writes a MatchGroups row's time by date + group letter (not by email — used by
