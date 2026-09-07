@@ -6194,20 +6194,67 @@ function _schedTimeCellHtml(date, group) {
     .concat([`<option value="Overflow" ${time === 'Overflow' ? 'selected' : ''}>Overflow</option>`])
     .join('');
   const borderColor = time ? 'var(--court)' : 'var(--line)';
-  return `<td><select onchange="onSchedTimeChange(this,'${date}','${group.letter}')" style="font-size:12px;padding:3px 4px;border:1.5px solid ${borderColor};border-radius:6px;font-weight:600;color:var(--court);">${opts}</select></td>`;
+  return `<td><select onchange="onSchedTimeChange(this,'${date}','${group.letter}','${time}')" style="font-size:12px;padding:3px 4px;border:1.5px solid ${borderColor};border-radius:6px;font-weight:600;color:var(--court);">${opts}</select></td>`;
 }
 
-async function onSchedTimeChange(select, date, groupLetter) {
+// Asks the player to confirm a match-time change away from an already-known
+// time (blank/TBD needs no confirmation — that's just filling it in, not a
+// change) and to confirm/enter their name, so the MatchTimeLog entry and the
+// group notification email this triggers are attributed correctly. Resolves
+// { confirmed: false } on cancel, or { confirmed: true, name } on confirm.
+function askConfirmScheduleTimeChange(dateLabel, oldTimeLabel, newTimeLabel, prefilledName) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('sched-time-change-modal');
+    document.getElementById('sched-time-change-msg').textContent =
+      `Change the match time for ${dateLabel} from ${oldTimeLabel} to ${newTimeLabel}?`;
+    const nameInput = document.getElementById('sched-time-change-name');
+    nameInput.value = prefilledName || '';
+    modal.style.display = 'flex';
+    const confirmBtn = document.getElementById('sched-time-change-confirm');
+    const cancelBtn  = document.getElementById('sched-time-change-cancel');
+    const close = (result) => {
+      modal.style.display = 'none';
+      confirmBtn.onclick = null;
+      cancelBtn.onclick  = null;
+      modal.onclick      = null;
+      resolve(result);
+    };
+    confirmBtn.onclick = () => {
+      const name = nameInput.value.trim();
+      if (!name) { alert('Please enter your name.'); return; }
+      close({ confirmed: true, name });
+    };
+    cancelBtn.onclick = () => close({ confirmed: false });
+    modal.onclick = e => { if (e.target === modal) close({ confirmed: false }); };
+  });
+}
+
+async function onSchedTimeChange(select, date, groupLetter, oldTime) {
   const newTime = select.value;
+  let confirmedName = null;
+
+  // A known time (a real time or Overflow) being changed to something else —
+  // confirm first. Blank/TBD being filled in for the first time needs no
+  // confirmation; that's not a change and never triggers the group email.
+  if (oldTime) {
+    const { name: schName } = getTypeaheadValue('sch');
+    const answer = await askConfirmScheduleTimeChange(
+      formatDate(date), TIME_LABELS[oldTime] || oldTime, TIME_LABELS[newTime] || newTime || 'TBD', schName
+    );
+    if (!answer.confirmed) { select.value = oldTime; return; }
+    confirmedName = answer.name;
+  }
+
   select.disabled = true;
   try {
-    const { name: schName, email: schEmail } = getTypeaheadValue('sch');
+    const { name: schName2, email: schEmail } = getTypeaheadValue('sch');
     const result = await apiPost({
       action: 'updateMatchGroupTime', matchDate: date, groupLetter, matchTime: newTime,
-      source: 'View Schedule manual edit', playerName: schName, playerEmail: schEmail
+      source: 'View Schedule manual edit', playerName: confirmedName || schName2, playerEmail: schEmail
     });
     if (!result.success) {
       alert('Could not update court time: ' + (result.error || 'unknown error'));
+      select.value = oldTime || '';
     } else {
       const d = publishedSchedule?.dates?.find(dd => dd.date === date);
       const g = d?.groups?.find(gg => gg.letter === groupLetter);
@@ -6216,6 +6263,7 @@ async function onSchedTimeChange(select, date, groupLetter) {
     }
   } catch(e) {
     alert('Could not update court time. Please try again.');
+    select.value = oldTime || '';
   }
   select.disabled = false;
 }
@@ -6593,6 +6641,20 @@ function applyAvailConfigToHomeCard(config) {
     </select>
     <div class="confirm-modal-btns">
       <button class="confirm-modal-ok" id="vol-match-time-continue" style="background:var(--court);">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── View Schedule: confirm a match-time change away from an already-known time ── -->
+<div id="sched-time-change-modal" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div class="confirm-modal-box">
+    <div class="confirm-modal-msg" id="sched-time-change-msg"></div>
+    <label style="font-size:12px;font-weight:600;color:var(--ink-light);display:block;margin:12px 0 4px;">Your name</label>
+    <input type="text" id="sched-time-change-name" placeholder="Your name"
+      style="width:100%;padding:9px 10px;font-size:15px;border:1.5px solid var(--line);border-radius:8px;box-sizing:border-box;margin-bottom:1.25rem;">
+    <div class="confirm-modal-btns">
+      <button class="confirm-modal-ok" id="sched-time-change-confirm" style="background:var(--court);">Confirm change</button>
+      <button class="confirm-modal-cancel" id="sched-time-change-cancel">Cancel</button>
     </div>
   </div>
 </div>
