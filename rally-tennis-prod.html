@@ -116,6 +116,7 @@
   #view-schedule .selected-pill         { background: rgba(107,143,113,0.1); border-color: #6B8F71; color: #4A6B4F; }
   #view-schedule .captain-badge         { background: #6B8F71; }
   #view-schedule .section-title         { color: #4A6B4F; }
+  .sch-mine-only-toggle                 { margin-left: auto; }
 
   /* Directory — Mustard Yellow */
   #view-directory .btn-secondary        { background: #B8910A !important; color: white !important; border-color: #B8910A !important; }
@@ -628,6 +629,7 @@
     .stats-row { grid-template-columns: repeat(2, 1fr); }
     nav button { padding: 6px 12px; font-size: 13px; }
     .time-grid { grid-template-columns: repeat(2, 1fr); }
+    .sch-mine-only-toggle { margin-left: 0; flex-basis: 100%; margin-top: 6px; }
 
     /* Hide header nav; show bottom nav instead */
     header nav { display: none; }
@@ -1844,7 +1846,7 @@
     </div>
 
     <div class="card">
-      <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:8px;">
+      <div class="field" style="margin-bottom:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <label style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;">Find my dates</label>
         <div class="typeahead-wrap" style="flex:1;max-width:320px;">
           <div id="sch-selected-state" style="display:none;">
@@ -1864,7 +1866,7 @@
           </div>
         </div>
         <input type="email" id="sch-email" style="display:none;" />
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;margin-left:auto;cursor:pointer;">
+        <label class="sch-mine-only-toggle" style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;">
           <input type="checkbox" id="sch-mine-only" checked onchange="onSchMineOnlyToggle()" style="width:16px;height:16px;cursor:pointer;">
           Show my matches only
         </label>
