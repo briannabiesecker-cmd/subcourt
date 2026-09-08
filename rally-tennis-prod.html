@@ -2460,20 +2460,23 @@ function highlightMatch(name, query) {
 }
 
 // Prefixes whose selection is remembered as "the person using this device" —
-// switching among these to a different person requires email verification
-// (see selectTypeaheadPlayer) since it changes what the device auto-fills next launch.
+// picking anyone other than whoever is already remembered (including the very
+// first pick on a device with no remembered identity yet) requires email
+// verification (see selectTypeaheadPlayer) before it becomes what the device
+// auto-fills next launch.
 const IDENTITY_PERSIST_PREFIXES = ['req', 'vol', 'av'];
 
 let pendingIdentityChange = null; // { prefix, name, email, previousName } while a verify-code modal is open
 
 function selectTypeaheadPlayer(prefix, name, email) {
-  if (IDENTITY_PERSIST_PREFIXES.includes(prefix)) {
+  if (IDENTITY_PERSIST_PREFIXES.includes(prefix) && email) {
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem('rally_user_identity')); } catch(e) {}
-    if (stored && stored.email && email && stored.email.toLowerCase() !== email.toLowerCase()) {
+    const alreadyThisPlayer = stored && stored.email && stored.email.toLowerCase() === email.toLowerCase();
+    if (!alreadyThisPlayer) {
       clearTimeout(taBlurTimers[prefix]);
       document.getElementById(prefix + '-dropdown').style.display = 'none';
-      openIdentityVerifyModal(prefix, name, email, stored.name);
+      openIdentityVerifyModal(prefix, name, email, stored ? stored.name : '');
       return;
     }
   }
