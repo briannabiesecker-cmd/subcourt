@@ -1636,6 +1636,7 @@ function doGet(e) {
     else if (action === 'sendBroadcastFallbackToAdmin') result = sendBroadcastFallbackToAdmin(e.parameter);
     else if (action === 'backfillNo8amFlags')        result = backfillNo8amFlags();
     else if (action === 'backfillGroupLetters')      result = backfillGroupLetters();
+    else if (action === 'setEasternTimeZone')        result = setEasternTimeZone();
     else if (action === 'ping')            result = { version: 'V36', ts: new Date().toISOString() };
     else if (action === 'debugMatch') {
       const requestId = e.parameter.requestId;
@@ -2058,6 +2059,13 @@ function backfillGroupLetters() {
     }
   });
   return { success: true, updated: updated, notFound: notFound };
+}
+
+function setEasternTimeZone() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var before = ss.getSpreadsheetTimeZone();
+  ss.setSpreadsheetTimeZone('America/New_York');
+  return { success: true, before: before, after: ss.getSpreadsheetTimeZone() };
 }
 
 function submitRequest(params) {
