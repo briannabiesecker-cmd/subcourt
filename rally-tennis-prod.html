@@ -2170,6 +2170,28 @@
   </div>
 </div>
 
+<!-- ── Identity-change verification (switching the remembered player on this device) ── -->
+<div id="identity-verify-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:12px;padding:28px 28px 24px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.22);">
+    <div style="font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;">Confirm it's you</div>
+    <div id="identity-verify-msg" style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:16px;"></div>
+    <div id="identity-verify-alert" class="hidden" style="margin-bottom:12px;"></div>
+    <div id="identity-verify-code-section" style="display:none;">
+      <div class="field" style="margin-bottom:1rem;">
+        <label>Enter your 6-digit code</label>
+        <input type="text" id="identity-verify-code-input" placeholder="000000" maxlength="6" inputmode="numeric"
+          style="letter-spacing:0.3em;font-size:22px;font-weight:700;max-width:180px;"
+          oninput="this.value=this.value.replace(/\D/g,'')" />
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="cancelIdentityVerify()" style="font-size:15px;padding:10px 20px;">Cancel</button>
+      <button class="btn btn-secondary btn-sm" id="identity-verify-resend-btn" onclick="resendIdentityVerifyCode()" style="display:none;font-size:14px;">Resend code</button>
+      <button class="btn btn-primary" id="identity-verify-submit-btn" onclick="submitIdentityVerifyCode()" style="font-size:15px;padding:10px 24px;">Verify</button>
+    </div>
+  </div>
+</div>
+
 </main>
 
 <script>
@@ -2437,14 +2459,35 @@ function highlightMatch(name, query) {
     name.slice(idx + query.length);
 }
 
+// Prefixes whose selection is remembered as "the person using this device" —
+// switching among these to a different person requires email verification
+// (see selectTypeaheadPlayer) since it changes what the device auto-fills next launch.
+const IDENTITY_PERSIST_PREFIXES = ['req', 'vol', 'av'];
+
+let pendingIdentityChange = null; // { prefix, name, email, previousName } while a verify-code modal is open
+
 function selectTypeaheadPlayer(prefix, name, email) {
+  if (IDENTITY_PERSIST_PREFIXES.includes(prefix)) {
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem('rally_user_identity')); } catch(e) {}
+    if (stored && stored.email && email && stored.email.toLowerCase() !== email.toLowerCase()) {
+      clearTimeout(taBlurTimers[prefix]);
+      document.getElementById(prefix + '-dropdown').style.display = 'none';
+      openIdentityVerifyModal(prefix, name, email, stored.name);
+      return;
+    }
+  }
+  finalizeTypeaheadSelection(prefix, name, email);
+}
+
+function finalizeTypeaheadSelection(prefix, name, email) {
   clearTimeout(taBlurTimers[prefix]);
   document.getElementById(prefix + '-input-state').style.display = 'none';
   document.getElementById(prefix + '-selected-state').style.display = 'block';
   document.getElementById(prefix + '-selected-name').textContent = name;
   document.getElementById(prefix + '-email').value = email;
   document.getElementById(prefix + '-dropdown').style.display = 'none';
-  if (['req', 'vol', 'av'].includes(prefix)) {
+  if (IDENTITY_PERSIST_PREFIXES.includes(prefix)) {
     try { localStorage.setItem('rally_user_identity', JSON.stringify({ name, email })); } catch(e) {}
   }
   if (prefix === 'vol') {
@@ -2457,6 +2500,72 @@ function selectTypeaheadPlayer(prefix, name, email) {
   if (prefix === 'adm') document.getElementById('adm-send-btn').disabled = false;
   if (prefix === 'sch') renderPublishedSchedule(email, name);
   if (prefix === 'dir') dirLoadProfile(name, email);
+}
+
+// ── Identity-change verification (email a 6-digit code before letting a device
+// switch to a different remembered player) ─────────────────────────────────
+function openIdentityVerifyModal(prefix, name, email, previousName) {
+  pendingIdentityChange = { prefix, name, email, previousName };
+  document.getElementById('identity-verify-msg').innerHTML =
+    (previousName ? 'This device was last used on Rally as <strong>' + previousName + '</strong>. ' : '') +
+    'To switch to <strong>' + name + '</strong>, enter the 6-digit code we\'ll email to ' + email + '.';
+  document.getElementById('identity-verify-code-section').style.display = 'none';
+  document.getElementById('identity-verify-resend-btn').style.display = 'none';
+  document.getElementById('identity-verify-code-input').value = '';
+  document.getElementById('identity-verify-alert').classList.add('hidden');
+  document.getElementById('identity-verify-modal').style.display = 'flex';
+  sendIdentityVerifyCode();
+}
+
+async function sendIdentityVerifyCode() {
+  if (!pendingIdentityChange) return;
+  const { name, email, previousName } = pendingIdentityChange;
+  showAlert('identity-verify-alert', 'info', 'Sending code…');
+  try {
+    const result = await apiPost({ action: 'sendIdentityChangeCode', name, email, previousName: previousName || '' });
+    if (!result.success) {
+      showAlert('identity-verify-alert', 'error', result.error || 'Could not send code.');
+      return;
+    }
+    document.getElementById('identity-verify-code-section').style.display = 'block';
+    document.getElementById('identity-verify-resend-btn').style.display = 'inline-block';
+    showAlert('identity-verify-alert', 'success', 'Code sent — check your email.');
+    document.getElementById('identity-verify-code-input').focus();
+  } catch(e) {
+    showAlert('identity-verify-alert', 'error', 'Failed to send code: ' + e.message);
+  }
+}
+
+async function resendIdentityVerifyCode() {
+  await sendIdentityVerifyCode();
+}
+
+async function submitIdentityVerifyCode() {
+  if (!pendingIdentityChange) return;
+  const code = document.getElementById('identity-verify-code-input').value.trim();
+  if (code.length !== 6) {
+    showAlert('identity-verify-alert', 'error', 'Please enter the full 6-digit code.');
+    return;
+  }
+  try {
+    const result = await apiPost({ action: 'verifyIdentityChangeCode', email: pendingIdentityChange.email, code });
+    if (!result.success) {
+      showAlert('identity-verify-alert', 'error', result.error || 'Invalid code.');
+      return;
+    }
+    const { prefix, name, email } = pendingIdentityChange;
+    document.getElementById('identity-verify-modal').style.display = 'none';
+    pendingIdentityChange = null;
+    finalizeTypeaheadSelection(prefix, name, email);
+  } catch(e) {
+    showAlert('identity-verify-alert', 'error', 'Verification failed: ' + e.message);
+  }
+}
+
+function cancelIdentityVerify() {
+  document.getElementById('identity-verify-modal').style.display = 'none';
+  document.getElementById('identity-verify-code-input').value = '';
+  pendingIdentityChange = null;
 }
 
 function onTypeaheadTabSelect(prefix, event) {

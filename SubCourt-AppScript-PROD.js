@@ -1600,6 +1600,8 @@ function doGet(e) {
     else if (action === 'recalculateAnitaRatings')    result = recalculateAnitaRatings();
     else if (action === 'sendAdminCode')          result = sendAdminCode(e.parameter);
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
+    else if (action === 'sendIdentityChangeCode')   result = sendIdentityChangeCode(e.parameter);
+    else if (action === 'verifyIdentityChangeCode') result = verifyIdentityChangeCode(e.parameter);
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
@@ -2397,6 +2399,65 @@ function verifyAdminCode(params) {
   if (code !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
 
   props.deleteProperty('admin_code_' + email);
+  return { success: true };
+}
+
+// Sent when a device tries to switch its remembered player to someone else —
+// same one-time-code pattern as the admin login, but open to any registered
+// player rather than gated on the isAdmin flag.
+function sendIdentityChangeCode(params) {
+  var email        = (params.email || '').toLowerCase().trim();
+  var name         = (params.name || '').trim();
+  var previousName = (params.previousName || '').trim();
+  if (!email || !name) return { success: false, error: 'Name and email required.' };
+
+  var isPlayer = getPlayers().some(function(p) { return p.email === email; });
+  if (!isPlayer) return { success: false, error: 'Player not found.' };
+
+  var code   = Math.floor(100000 + Math.random() * 900000).toString();
+  var expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  PropertiesService.getScriptProperties()
+    .setProperty('identity_code_' + email, JSON.stringify({ code: code, expiry: expiry }));
+
+  var previousNote = previousName
+    ? 'This device was last used on Rally as ' + previousName + '. '
+    : '';
+
+  // Always sends regardless of the EMAIL_ENABLED testing flag — like the admin
+  // OTP, a silent no-op here would strand the player mid-switch with no code.
+  MailApp.sendEmail({
+    to: email,
+    subject: 'Rally — Confirm it\'s you',
+    name: 'MWF Tennis League',
+    body: 'Hi ' + name + ',\n\n' +
+          previousNote +
+          'To confirm you are switching this device to ' + name + ', enter this code in Rally:\n\n' +
+          code + '\n\n' +
+          'This code expires in 10 minutes.\n\n' +
+          'If you did not request this, please ignore this email — no change will be made.'
+  });
+
+  return { success: true };
+}
+
+function verifyIdentityChangeCode(params) {
+  var email = (params.email || '').toLowerCase().trim();
+  var code  = (params.code  || '').trim();
+  if (!email || !code) return { success: false, error: 'Email and code required.' };
+
+  var props  = PropertiesService.getScriptProperties();
+  var stored = props.getProperty('identity_code_' + email);
+  if (!stored) return { success: false, error: 'No code found. Please request a new one.' };
+
+  var data = JSON.parse(stored);
+  if (new Date() > new Date(data.expiry)) {
+    props.deleteProperty('identity_code_' + email);
+    return { success: false, error: 'Code expired. Please request a new one.' };
+  }
+  if (code !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
+
+  props.deleteProperty('identity_code_' + email);
   return { success: true };
 }
 
