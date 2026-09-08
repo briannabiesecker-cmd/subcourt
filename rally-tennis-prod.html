@@ -1864,6 +1864,10 @@
           </div>
         </div>
         <input type="email" id="sch-email" style="display:none;" />
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;margin-left:auto;cursor:pointer;">
+          <input type="checkbox" id="sch-mine-only" checked onchange="onSchMineOnlyToggle()" style="width:16px;height:16px;cursor:pointer;">
+          Show my matches only
+        </label>
       </div>
     </div>
 
@@ -6015,6 +6019,7 @@ async function loadScheduleView() {
     document.getElementById('sch-email').value                  = '';
   }
   document.getElementById('sch-dropdown').style.display       = 'none';
+  document.getElementById('sch-mine-only').checked             = true;
 
   loading.style.display = '';
   empty.style.display   = 'none';
@@ -6288,6 +6293,11 @@ async function onSchedTimeChange(select, date, groupLetter, oldTime) {
   select.disabled = false;
 }
 
+function onSchMineOnlyToggle() {
+  const { name, email } = getTypeaheadValue('sch');
+  renderPublishedSchedule(email || null, name || null);
+}
+
 async function renderPublishedSchedule(filterEmail, filterName) {
   const wrap  = document.getElementById('sch-table-wrap');
   const empty = document.getElementById('sch-empty');
@@ -6301,9 +6311,11 @@ async function renderPublishedSchedule(filterEmail, filterName) {
   const starHtml = '<strong style="color:var(--clay);font-size:11px;vertical-align:super;" title="No 8am">**</strong>';
 
   const todayStr = localDateStr();
+  const mineOnlyToggle = document.getElementById('sch-mine-only');
+  const mineOnly = mineOnlyToggle ? mineOnlyToggle.checked : true;
 
   let dates = publishedSchedule.dates.filter(d => d.date >= todayStr);
-  if (filterEmailLower || filterNameLower) {
+  if (mineOnly && (filterEmailLower || filterNameLower)) {
     dates = dates.map(d => {
       const filteredGroups = d.groups.filter(g =>
         g.players.some(p =>
