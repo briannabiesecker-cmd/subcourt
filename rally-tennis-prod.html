@@ -2192,6 +2192,13 @@
   </div>
 </div>
 
+<!-- ── "I CAN Sub" email deep-link confirmation ── -->
+<div id="vol-fromemail-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:12px;padding:28px 28px 24px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.22);">
+    <div id="vfe-body"></div>
+  </div>
+</div>
+
 </main>
 
 <script>
@@ -2293,6 +2300,7 @@ function navigateToView(name, btn) {
       } else {
         prefillIdentity('vol');
       }
+      maybeHandleVolFromEmailDeepLink();
     });
   }
   if (name === 'availability') {
@@ -2390,6 +2398,7 @@ const taBlurTimers = {};
 let dirEnrichedPlayers  = []; // from getPlayersForAdmin — includes rowIndex, phone, no8am
 let dirCurrentPlayer    = null; // player currently shown in My Info card
 let dirPendingEmailAll  = false; // set when arriving via #directory-emailall link
+let pendingVolFromEmailRequestId = null; // set when arriving via #volunteer-fromemail-<id> link
 let myRequestsData    = [];  // visible requests in loadMyRequests, keyed by id for modal lookup
 let epSelections      = {};  // {1..4} → {name, email} for player-edit-modal
 let epDropdownMatches = {};  // {1..4} → matches array for index-based selection
@@ -2497,6 +2506,7 @@ function finalizeTypeaheadSelection(prefix, name, email) {
     document.getElementById('my-vol-section').style.display = 'none';
     document.getElementById('my-vol-list').innerHTML = '';
     loadMySubmissions(email);
+    maybeHandleVolFromEmailDeepLink();
   }
   if (prefix === 'req') refreshRequestTab(email, name);
   if (prefix === 'av')  loadMyAvailability(email);
@@ -2569,6 +2579,168 @@ function cancelIdentityVerify() {
   document.getElementById('identity-verify-modal').style.display = 'none';
   document.getElementById('identity-verify-code-input').value = '';
   pendingIdentityChange = null;
+}
+
+// ── "I CAN Sub" email deep link (#volunteer-fromemail-<requestId>) ─────────
+// Lands on the Volunteer to Sub tab; once the device's identity is known
+// (already remembered, or just picked/verified) offers a one-tap confirm
+// instead of the calendar grid, reusing the same processVolunteerFromEmail
+// logic the standalone email-confirmation page uses.
+let volFromEmailReq    = null; // the request {id, matchDate, matchTime, ...} being confirmed
+let volFromEmailPlayer = null; // {name, email} confirming it
+
+async function maybeHandleVolFromEmailDeepLink() {
+  if (!pendingVolFromEmailRequestId) return;
+  const requestId = pendingVolFromEmailRequestId;
+  let req = null;
+  try {
+    const requests = await getRequests();
+    req = requests.find(r => r.id === requestId);
+  } catch(e) {}
+  if (!req) {
+    pendingVolFromEmailRequestId = null;
+    showAlert('vol-alert', 'error', 'That sub request could not be found. It may have already been filled.');
+    return;
+  }
+  const email = document.getElementById('vol-email').value;
+  if (!email) {
+    const timeLabel = TIME_LABELS[req.matchTime] || req.matchTime || '';
+    showAlert('vol-alert', 'info',
+      'You clicked "I CAN Sub" for ' + formatDate(req.matchDate) + (timeLabel ? ' at ' + timeLabel : '') +
+      '. Select your name above to confirm.');
+    return;
+  }
+  pendingVolFromEmailRequestId = null;
+  openVolFromEmailConfirm(req, { name: document.getElementById('vol-selected-name').textContent, email });
+}
+
+function openVolFromEmailConfirm(req, player) {
+  volFromEmailReq    = req;
+  volFromEmailPlayer = player;
+  renderVolFromEmailStep('confirm');
+  document.getElementById('vol-fromemail-modal').style.display = 'flex';
+}
+
+function closeVolFromEmailModal() {
+  document.getElementById('vol-fromemail-modal').style.display = 'none';
+  volFromEmailReq    = null;
+  volFromEmailPlayer = null;
+}
+
+function finishVolFromEmail() {
+  const email = volFromEmailPlayer ? volFromEmailPlayer.email : document.getElementById('vol-email').value;
+  closeVolFromEmailModal();
+  if (email) { clearCache(); buildCalendar().then(() => loadMySubmissions(email)); }
+}
+
+function renderVolFromEmailStep(step, data) {
+  const body    = document.getElementById('vfe-body');
+  const req     = volFromEmailReq;
+  const dateStr = formatDate(req.matchDate);
+  const timeStr = TIME_LABELS[req.matchTime] || req.matchTime || '';
+
+  if (step === 'confirm') {
+    body.innerHTML =
+      '<div style="font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;">I can sub' + (timeStr ? ' at ' + timeStr : '') + '</div>' +
+      '<div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:20px;">Confirm you\'re volunteering to sub' +
+        (timeStr ? ' at <strong>' + timeStr + '</strong>' : '') + ' on <strong>' + dateStr + '</strong>.</div>' +
+      '<div id="vfe-alert" class="hidden" style="margin-bottom:12px;"></div>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
+        '<button class="btn btn-secondary" onclick="closeVolFromEmailModal()" style="font-size:15px;padding:10px 20px;">Cancel</button>' +
+        '<button class="btn btn-primary" onclick="submitVolFromEmail()" style="font-size:15px;padding:10px 24px;">Yes, I Can Sub</button>' +
+      '</div>';
+  } else if (step === 'needsMatchTime') {
+    const timeOptions = TIMES.map(t => '<option value="' + t + '">' + TIME_LABELS[t] + '</option>').join('') +
+      '<option value="Overflow">Overflow</option>';
+    body.innerHTML =
+      '<div style="font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;">What time are you playing on ' + data.dateStr + '?</div>' +
+      '<div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:16px;">You are scheduled to play tennis that day. Please select your match time so Rally can check for a conflict.</div>' +
+      '<div id="vfe-alert" class="hidden" style="margin-bottom:12px;"></div>' +
+      '<select id="vfe-time-select" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box;">' +
+        '<option value="" selected disabled>Select a time…</option>' + timeOptions +
+      '</select>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
+        '<button class="btn btn-secondary" onclick="closeVolFromEmailModal()" style="font-size:15px;padding:10px 20px;">Cancel</button>' +
+        '<button class="btn btn-primary" onclick="submitVolFromEmailMatchTime()" style="font-size:15px;padding:10px 24px;">Continue</button>' +
+      '</div>';
+  } else if (step === 'needsPlayTwiceChoice') {
+    body.innerHTML =
+      '<div style="font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;">Play twice, or change your own match time?</div>' +
+      '<div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:20px;">You are scheduled to play at <strong>' +
+        data.ownMatchTimeLabel + '</strong> on ' + data.dateStr + '.</div>' +
+      '<div id="vfe-alert" class="hidden" style="margin-bottom:12px;"></div>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">' +
+        '<button class="btn btn-secondary" onclick="closeVolFromEmailModal()" style="font-size:15px;padding:10px 20px;">Cancel</button>' +
+        '<button class="btn btn-secondary" onclick="submitVolFromEmail(\'changeTimes\')" style="font-size:15px;padding:10px 20px;">Change Times</button>' +
+        '<button class="btn btn-primary" onclick="submitVolFromEmail(\'playTwice\')" style="font-size:15px;padding:10px 24px;">Play Twice</button>' +
+      '</div>';
+  } else if (step === 'success') {
+    const statusLine = data.alreadyFilled
+      ? '<p style="color:#c0392b;margin:0 0 4px;">Note: The ' + (timeStr ? timeStr + ' ' : '') + 'sub request on ' + formatDateShort(req.matchDate) +
+        ' ' + (data.filledNote || 'is no longer active') + '.</p><p style="margin:0;">However, a volunteer record has been created for you.</p>'
+      : '<p style="margin:0;">You will be notified if you are selected as a substitute.</p>';
+    const ownRequestLine = data.ownRequestCreated
+      ? '<p style="margin-top:12px;">Rally has also submitted a sub request for your own match on <strong>' + dateStr +
+        '</strong> at <strong>' + data.ownRequestTimeStr + '</strong>. You will be notified once a sub is found.</p>'
+      : '';
+    const n = data.playerName ? ', ' + data.playerName.split(' ')[0] : '';
+    body.innerHTML =
+      '<div style="font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;">Thank you' + n + '!</div>' +
+      '<div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:16px;">You have volunteered to sub on <strong>' +
+        dateStr + '</strong>' + (timeStr ? ' at <strong>' + timeStr + '</strong>' : '') + '.</div>' +
+      '<div style="font-size:15px;color:var(--ink-mid);line-height:1.6;margin-bottom:20px;">' + statusLine + ownRequestLine + '</div>' +
+      '<div style="display:flex;justify-content:flex-end;">' +
+        '<button class="btn btn-primary" onclick="finishVolFromEmail()" style="font-size:15px;padding:10px 24px;">Done</button>' +
+      '</div>';
+  }
+}
+
+function handleVolFromEmailResult(result) {
+  if (!result.success) {
+    if (result.needsMatchTime) { renderVolFromEmailStep('needsMatchTime', { dateStr: result.dateStr }); return; }
+    if (result.needsPlayTwiceChoice) {
+      renderVolFromEmailStep('needsPlayTwiceChoice', { dateStr: result.dateStr, ownMatchTimeLabel: result.ownMatchTimeLabel });
+      return;
+    }
+    showAlert('vfe-alert', 'error', result.error || 'An error occurred.');
+    return;
+  }
+  renderVolFromEmailStep('success', result);
+}
+
+async function submitVolFromEmail(playTwiceChoice) {
+  try {
+    const result = await apiPost({
+      action: 'volunteerFromEmailSubmit',
+      requestId: volFromEmailReq.id,
+      playerEmail: volFromEmailPlayer.email,
+      ownMatchTime: '',
+      playTwiceChoice: playTwiceChoice || ''
+    });
+    handleVolFromEmailResult(result);
+  } catch(e) {
+    showAlert('vfe-alert', 'error', 'Something went wrong. Please try again.');
+  }
+}
+
+async function submitVolFromEmailMatchTime() {
+  const sel = document.getElementById('vfe-time-select').value;
+  if (!sel) {
+    showAlert('vfe-alert', 'error', 'Please select a time.');
+    return;
+  }
+  try {
+    const result = await apiPost({
+      action: 'volunteerFromEmailSubmit',
+      requestId: volFromEmailReq.id,
+      playerEmail: volFromEmailPlayer.email,
+      ownMatchTime: sel,
+      playTwiceChoice: ''
+    });
+    handleVolFromEmailResult(result);
+  } catch(e) {
+    showAlert('vfe-alert', 'error', 'Something went wrong. Please try again.');
+  }
 }
 
 function onTypeaheadTabSelect(prefix, event) {
@@ -6650,8 +6822,13 @@ async function closeAvailWindow() {
 document.addEventListener('DOMContentLoaded', () => {
   // Navigate to view specified in URL hash (e.g. #directory from email links)
   const hash = location.hash.slice(1);
-  const baseHash = hash === 'directory-emailall' ? 'directory' : hash;
+  const volFromEmailMatch = hash.match(/^volunteer-fromemail-(.+)$/);
+  let baseHash = hash === 'directory-emailall' ? 'directory' : hash;
   if (hash === 'directory-emailall') dirPendingEmailAll = true;
+  if (volFromEmailMatch) {
+    baseHash = 'volunteer';
+    pendingVolFromEmailRequestId = decodeURIComponent(volFromEmailMatch[1]);
+  }
   if (baseHash && document.getElementById('view-' + baseHash)) {
     const btn = Array.from(document.querySelectorAll('nav button'))
       .find(b => (b.getAttribute('onclick') || '').includes("'" + baseHash + "'"));

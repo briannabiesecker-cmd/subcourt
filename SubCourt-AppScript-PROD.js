@@ -1602,6 +1602,8 @@ function doGet(e) {
     else if (action === 'verifyAdminCode')         result = verifyAdminCode(e.parameter);
     else if (action === 'sendIdentityChangeCode')   result = sendIdentityChangeCode(e.parameter);
     else if (action === 'verifyIdentityChangeCode') result = verifyIdentityChangeCode(e.parameter);
+    else if (action === 'volunteerFromEmailSubmit') result = processVolunteerFromEmail(
+      e.parameter.requestId, e.parameter.playerEmail, e.parameter.ownMatchTime, e.parameter.playTwiceChoice);
     else if (action === 'debugAdmin')              result = debugAdmin(e.parameter);
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
@@ -5243,7 +5245,7 @@ function _nextDispatchRunWindow() {
   return { start: _formatClockTime(start, tz), end: _formatClockTime(end, tz) };
 }
 
-function buildSubNeededEmailHtml(requests, scriptUrl) {
+function buildSubNeededEmailHtml(requests) {
   var dateStr    = formatDate(requests[0].matchDate);
   var headerRow =
     '<tr style="border-bottom:2px solid #e5e7eb;">' +
@@ -5257,7 +5259,10 @@ function buildSubNeededEmailHtml(requests, scriptUrl) {
     var otherNames = (req.groupPlayers || [])
       .filter(function(p) { return (p.email || '').toLowerCase() !== (req.email || '').toLowerCase(); })
       .map(function(p) { return p.name; }).join(', ');
-    var linkUrl = scriptUrl + '?action=volunteerFromEmail&requestId=' + encodeURIComponent(req.id);
+    // Routes into the Rally app itself (Volunteer to Sub tab) rather than the
+    // standalone confirmation page, so a device with an already-verified identity
+    // can confirm in one tap instead of typing an email address.
+    var linkUrl = APP_BASE_URL + '#volunteer-fromemail-' + encodeURIComponent(req.id);
     var buttonHtml = req.matchTime === 'Overflow'
       ? '<span style="display:inline-block;padding:7px 14px;background-color:#9ca3af;color:#f3f4f6;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</span>'
       : '<a href="' + linkUrl + '" style="display:inline-block;padding:7px 14px;background-color:#1a5c3a;color:#ffffff;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;white-space:nowrap;">I CAN Sub</a>';
@@ -5358,7 +5363,6 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
   var d         = new Date(targetDate + 'T12:00:00');
   var monthDay  = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   var subject   = 'MWF Tennis, subs needed ' + monthDay;
-  var scriptUrl = SCRIPT_URL;
   var players   = getPlayersWithRatings().filter(function(p) {
     return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
@@ -5370,7 +5374,7 @@ function sendUrgentSubBroadcast(openRequests, targetDate) {
     bcc:      bccList,
     subject:  subject,
     body:     buildSubNeededEmailText(openRequests, targetDate),
-    htmlBody: buildSubNeededEmailHtml(openRequests, scriptUrl),
+    htmlBody: buildSubNeededEmailHtml(openRequests),
     name:     'MWF Tennis League'
   });
   Logger.log('Urgent sub broadcast sent via BCC to ' + players.length + ' player(s) for ' + targetDate);
@@ -5874,7 +5878,6 @@ function sendTestSubAlertEmail() {
   var d        = new Date(targetDate + 'T12:00:00');
   var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   var subject  = 'MWF Tennis, subs needed ' + monthDay;
-  var scriptUrl = SCRIPT_URL;
 
   var sent = 0, errors = [];
   testPlayers.forEach(function(player) {
@@ -5883,7 +5886,7 @@ function sendTestSubAlertEmail() {
         to:       player.email,
         subject:  subject,
         body:     buildSubNeededEmailText(openReqs, targetDate),
-        htmlBody: buildSubNeededEmailHtml(openReqs, scriptUrl),
+        htmlBody: buildSubNeededEmailHtml(openReqs),
         name:     'MWF Tennis League'
       });
       sent++;
@@ -5913,7 +5916,7 @@ function sendBroadcastEmailToAdmin() {
       to:       'marobria@gmail.com',
       subject:  subject,
       body:     buildSubNeededEmailText(openReqs, targetDate),
-      htmlBody: buildSubNeededEmailHtml(openReqs, SCRIPT_URL),
+      htmlBody: buildSubNeededEmailHtml(openReqs),
       name:     'MWF Tennis League'
     });
     Logger.log('sendBroadcastEmailToAdmin: sent for ' + targetDate + ' (' + openReqs.length + ' open requests)');
@@ -6303,7 +6306,7 @@ function sendBroadcastFallbackToAdmin(params) {
 
   var body = buildSubNeededEmailText(openReqs, targetDate) +
     '\n\n---\nForward to (or BCC):\n' + addressList.join('\n');
-  var htmlBody = buildSubNeededEmailHtml(openReqs, SCRIPT_URL) +
+  var htmlBody = buildSubNeededEmailHtml(openReqs) +
     '<div style="margin-top:20px;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;">' +
     '<strong>Forward to (or BCC):</strong><br>' + addressList.map(function(a) { return a.replace(/</g, '&lt;').replace(/>/g, '&gt;'); }).join('<br>') +
     '</div>';
