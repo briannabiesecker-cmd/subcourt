@@ -1407,6 +1407,23 @@ function getDispatchStatus() {
   };
 }
 
+// Combined read for the Admin Dispatch tab — one round trip instead of the page
+// firing getAdminConfigTables + getDispatchLog + getRequests + getDispatchStatus
+// as four separate concurrent doGet executions. Those four hitting the same
+// script.google.com deployment at once could occasionally have one come back as
+// a failed script load (Google-side throttling under simultaneous requests),
+// which is what "Failed to load dispatch data: Script load failed" meant — not
+// a data problem, a request-count problem. Mirrors getRequestPageData's fix for
+// the same pattern on the Request a Sub tab.
+function getDispatchPageData() {
+  return {
+    cfgTable:  getAdminConfigTables(),
+    log:       getDispatchLog(),
+    requests:  getRequests(),
+    runStatus: getDispatchStatus()
+  };
+}
+
 // Scans up to 8 days ahead against all three dispatch schedules (Pre-Match Day,
 // Match Day -2, Friday auto-dispatch) and returns the single earliest upcoming run.
 // Apps Script's Trigger API doesn't expose a "next fire time" for time-based
@@ -1606,6 +1623,7 @@ function doGet(e) {
     else if (action === 'updateVolunteer')  result = updateVolunteer(e.parameter);
     else if (action === 'deleteVolunteer')  result = deleteVolunteer(e.parameter);
     else if (action === 'getDispatchLog')    result = getDispatchLog();
+    else if (action === 'getDispatchPageData') result = getDispatchPageData();
     else if (action === 'retireRequest')          result = retireRequest(e.parameter);
     else if (action === 'cancelRequest')          result = cancelRequest(e.parameter);
     else if (action === 'manuallyAssignSub')      result = manuallyAssignSub(e.parameter);

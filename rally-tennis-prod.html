@@ -4268,14 +4268,19 @@ async function loadDispatch() {
   document.getElementById('dispatch-filled-section').style.display = 'none';
   document.getElementById('dispatch-filled-list').innerHTML = '';
 
+  // One combined round trip instead of 4 concurrent doGet calls — firing that
+  // many simultaneous requests at the same Apps Script deployment could
+  // occasionally have one come back as a failed script load (Google-side
+  // throttling under concurrent load), which is what "Script load failed" here
+  // meant — not missing or stale data.
   let cfgTable, log, requests, runStatus;
   try {
-    [cfgTable, log, requests, runStatus] = await Promise.all([
-      apiPost({ action: 'getAdminConfigTables' }),
-      apiGet('getDispatchLog'),
-      getRequests(),
-      apiPost({ action: 'getDispatchStatus' })
-    ]);
+    const data = await apiPostWithRetry({ action: 'getDispatchPageData' });
+    cfgTable     = data.cfgTable;
+    log          = data.log;
+    requests     = data.requests;
+    runStatus    = data.runStatus;
+    requestCache = requests;
   } catch(e) {
     document.getElementById('dispatch-config-content').innerHTML =
       `<div class="alert alert-error">Failed to load dispatch data: ${e.message}</div>`;
