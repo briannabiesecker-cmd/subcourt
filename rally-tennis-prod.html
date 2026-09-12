@@ -2928,14 +2928,18 @@ async function refreshRequestTab(email, name) {
 
 async function getVolunteers() {
   if (volunteerCache) return volunteerCache;
-  volunteerCache = await apiGet('getVolunteers');
+  // Retried like getRequests() — this was a plain single-attempt apiGet, the
+  // only unretried read feeding the Volunteer to Sub calendar. Under a slow or
+  // loaded Apps Script deployment a single transient hiccup here silently reads
+  // as "you have no open volunteer records" with no error surfaced at all.
+  volunteerCache = await apiGetWithRetry({ action: 'getVolunteers' });
   return volunteerCache;
 }
 
 async function getAppConfig() {
   if (configCache) return configCache;
   try {
-    configCache = await apiGet('getConfig');
+    configCache = await apiGetWithRetry({ action: 'getConfig' });
   } catch(e) {
     configCache = { calendarLookaheadDays: 30 };
   }
