@@ -2282,7 +2282,14 @@ function navigateToView(name, btn) {
     reqScheduleData = {};
     const existingEmail = document.getElementById('req-email').value;
     if (existingEmail) {
-      // Name already selected — refresh their requests and schedule
+      // Name already selected — refresh their requests and schedule.
+      // getRequestPageData is a single combined fetch, but on a cold Apps Script
+      // start it can still take several seconds with no other feedback on this
+      // tab — show a spinner here so that wait doesn't look like the page is
+      // stuck (refreshRequestTab's own loaders replace this once each section
+      // has real content).
+      document.getElementById('my-req-list').innerHTML =
+        '<div class="loading"><div class="spinner"></div>Loading…</div>';
       const selName = document.getElementById('req-selected-name')?.textContent?.trim() || '';
       refreshRequestTab(existingEmail, selName);
     } else {
