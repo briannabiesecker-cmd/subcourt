@@ -3990,8 +3990,14 @@ async function loadMySubmissions(email) {
   nearScheduledDates.clear();
   scheduledGroupByDate = {};
   scheduledMatchTime   = {};
-  // Clear alert message and summary
-  document.getElementById('vol-alert').className = 'hidden';
+  // Clear alert message and summary. buildCalendar() already rendered every date
+  // row unchecked before this runs, so the calendar looks fully loaded — show a
+  // spinner here for the existing-submissions fetch below, otherwise any latency
+  // on that call (e.g. a cold Apps Script start) reads as "you have no open
+  // volunteer records" instead of "still loading".
+  const volAlert = document.getElementById('vol-alert');
+  volAlert.className = 'loading';
+  volAlert.innerHTML = '<div class="spinner"></div>Loading your existing availability…';
   document.getElementById('vol-summary').classList.add('hidden');
   // Reset calendar: unlock locked rows, remove match notes, clear all selections
   Object.keys(volSelections).forEach(k => {
@@ -4061,6 +4067,8 @@ async function loadMySubmissions(email) {
     });
     updateVolSummary();
     volSavedSnapshot = volSelectionsSnapshot();
+    volAlert.className = 'hidden';
+    volAlert.innerHTML = '';
 
     // Lock dates where the player is already scheduled to play (from MatchGroups)
     try {
@@ -4087,6 +4095,8 @@ async function loadMySubmissions(email) {
     } catch(e) {}
   } catch(e) {
     console.error('loadMySubmissions error:', e);
+    volAlert.className = 'hidden';
+    volAlert.innerHTML = '';
   }
 }
 
