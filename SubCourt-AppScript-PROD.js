@@ -16,6 +16,17 @@ function authorizeApp() {
 // Execution-level cache for getConfig() — resets between trigger/HTTP invocations.
 var _configCache = null;
 
+// CacheService keys/TTLs (seconds) — a cross-request cache layer on top of the
+// execution-level ones above, since Apps Script rarely reuses global state
+// between separate Web App requests. Short TTLs so staleness stays negligible
+// for an app this size; getConfig's cache is invalidated explicitly on save,
+// getPublishedSchedule's on any match-time write (see _setMatchGroupTime).
+var CONFIG_CACHE_KEY             = 'rallyConfigCache';
+var CONFIG_CACHE_TTL_SEC         = 45;
+var PUBLISHED_SCHEDULE_CACHE_KEY = 'rallyPublishedScheduleCache';
+var PUBLISHED_SCHEDULE_CACHE_TTL_SEC = 20;
+var MATCH_TIME_NOTIFY_QUEUE_KEY  = 'matchTimeNotifyQueue';
+
 // deploy.sh replaces 'rally-tennis-prod.html' with 'rally-tennis-prod.html' when pushing to prod.
 const APP_BASE_URL  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html';
 const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbzb3EnQsxBt5dLTaQpg7VJjtoBtHTyGpB2VgpfJ9TDuvezk0ihjhn5oW48a9oKiIAyYMg/exec';
@@ -922,6 +933,15 @@ const TIME_LABELS = {
 function getConfig() {
   if (_configCache) return _configCache;
   try {
+    var cached = CacheService.getScriptCache().get(CONFIG_CACHE_KEY);
+    if (cached) {
+      _configCache = JSON.parse(cached);
+      return _configCache;
+    }
+  } catch(e) {
+    Logger.log('getConfig: CacheService read failed, falling back to sheet: ' + e.message);
+  }
+  try {
     const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
     // Write labels/defaults for B31–B32 on first use (cells empty)
     var b31 = sheet.getRange('B31').getValue();
@@ -1119,6 +1139,7 @@ function getConfig() {
       chelseaImportEnabled:         (function() { var v = sheet.getRange('B71').getValue(); return v === 'Yes' || v === true; })(),
     };
     _configCache = cfg;
+    try { CacheService.getScriptCache().put(CONFIG_CACHE_KEY, JSON.stringify(cfg), CONFIG_CACHE_TTL_SEC); } catch(e) {}
     return cfg;
   } catch(e) {
     // If Config tab is missing or unreadable, return safe defaults
@@ -3076,9 +3097,13 @@ function updateMatchGroupTime(params) {
   if (!_isTomorrowOrDayAfterTomorrow(matchDate)) {
     return { success: false, error: 'Court times can only be set within 2 days of the match.' };
   }
-  var setResult = _setMatchGroupTime(matchDate, groupLetter, matchTime, source, playerName, playerEmail);
+  // One shared spreadsheet handle for the whole write — this used to reopen the
+  // spreadsheet separately inside _setMatchGroupTime, getOrCreateMatchTimeLog, and
+  // _syncGroupTimeToOpenRequests (3 separate opens for one user action).
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var setResult = _setMatchGroupTime(matchDate, groupLetter, matchTime, source, playerName, playerEmail, ss);
   if (!setResult.success) return { success: false, error: 'No matching MatchGroups row found.' };
-  var updatedRequests = _syncGroupTimeToOpenRequests(matchDate, setResult.emails, matchTime);
+  var updatedRequests = _syncGroupTimeToOpenRequests(matchDate, setResult.emails, matchTime, ss);
   return { success: true, updatedRequests: updatedRequests };
 }
 
@@ -3322,8 +3347,8 @@ var MANUAL_MATCH_TIME_SOURCES = [
 // audit row (appended below, only when the value actually changes) records
 // who/what made the change and why, since this cell otherwise leaves no trace
 // of who touched it.
-function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerName, playerEmail) {
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerName, playerEmail, ss) {
+  ss = ss || SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { success: false, emails: [] };
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 17).getValues();
@@ -3342,8 +3367,11 @@ function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerNam
         if (em) emails.push(em);
       }
       if (oldTime !== timeValue) {
+        // Invalidate the cross-request schedule cache (see getPublishedSchedule)
+        // so the change is visible immediately instead of up to CACHE_TTL later.
+        try { CacheService.getScriptCache().remove(PUBLISHED_SCHEDULE_CACHE_KEY); } catch(e) {}
         try {
-          getOrCreateMatchTimeLog().appendRow([
+          getOrCreateMatchTimeLog(ss).appendRow([
             nowEasternISO(), matchDate, groupLetter, oldTime, timeValue,
             source || 'unknown', playerName || '', playerEmail || ''
           ]);
@@ -3355,11 +3383,15 @@ function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerNam
         // "change" worth an email — and only for the manual sources a player
         // can trigger directly; Chelsea import and the Match Day -2 Overflow
         // auto-mark are routine/automated and would make this noisy.
+        // Scheduled via a one-off trigger instead of sent inline here — sending
+        // inline meant the doGet call (and the browser waiting on it) blocked on
+        // a live Brevo/MailApp round trip, which is what made "update court
+        // time" occasionally hang or fail with a timeout.
         if (oldTime && MANUAL_MATCH_TIME_SOURCES.indexOf(source) !== -1) {
           try {
-            _sendMatchTimeChangeNotification(matchDate, oldTime, timeValue, source, playerName, playerEmail, emails);
+            _scheduleMatchTimeChangeNotification(matchDate, oldTime, timeValue, source, playerName, playerEmail, emails);
           } catch(e) {
-            Logger.log('_setMatchGroupTime: change notification failed: ' + e.message);
+            Logger.log('_setMatchGroupTime: scheduling change notification failed: ' + e.message);
           }
         }
       }
@@ -3369,8 +3401,53 @@ function _setMatchGroupTime(matchDate, groupLetter, timeValue, source, playerNam
   return { success: false, emails: [] };
 }
 
-function getOrCreateMatchTimeLog() {
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+// Queues a match-time-change notification email to be sent from a separate,
+// short-delay trigger execution instead of inline — so the write that triggered
+// it (_setMatchGroupTime, via updateMatchGroupTime) can return to the browser
+// right away instead of blocking on sendLeagueEmail's Brevo/MailApp call.
+// Queued (not one-trigger-per-call) so a burst of near-simultaneous time changes
+// coalesces onto whichever trigger fires first; sendLeagueEmail's own throttle
+// (identical content within the same day) guards against the rare case where two
+// triggers both drain the queue before either finishes.
+function _scheduleMatchTimeChangeNotification(matchDate, oldTime, newTime, source, playerName, playerEmail, groupEmails) {
+  var props = PropertiesService.getScriptProperties();
+  var raw   = props.getProperty(MATCH_TIME_NOTIFY_QUEUE_KEY);
+  var queue = [];
+  if (raw) { try { queue = JSON.parse(raw); } catch(e) { queue = []; } }
+  queue.push({
+    matchDate: matchDate, oldTime: oldTime, newTime: newTime, source: source,
+    playerName: playerName, playerEmail: playerEmail, groupEmails: groupEmails
+  });
+  props.setProperty(MATCH_TIME_NOTIFY_QUEUE_KEY, JSON.stringify(queue));
+  // One-off trigger; Apps Script deletes it automatically once it has run.
+  ScriptApp.newTrigger('_runScheduledMatchTimeChangeNotifications').timeBased().after(1000).create();
+}
+
+function _runScheduledMatchTimeChangeNotifications() {
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty(MATCH_TIME_NOTIFY_QUEUE_KEY);
+  if (!raw) return; // another trigger already drained the queue
+  props.deleteProperty(MATCH_TIME_NOTIFY_QUEUE_KEY);
+  var queue;
+  try { queue = JSON.parse(raw); } catch(e) {
+    Logger.log('_runScheduledMatchTimeChangeNotifications: bad queue JSON: ' + e.message);
+    return;
+  }
+  queue.forEach(function(item) {
+    try {
+      _sendMatchTimeChangeNotification(
+        item.matchDate, item.oldTime, item.newTime, item.source,
+        item.playerName, item.playerEmail, item.groupEmails
+      );
+    } catch(err) {
+      Logger.log('_runScheduledMatchTimeChangeNotifications: send failed for ' +
+        item.matchDate + '/' + item.source + ': ' + err.message);
+    }
+  });
+}
+
+function getOrCreateMatchTimeLog(ss) {
+  ss = ss || SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName('MatchTimeLog');
   if (!sheet) {
     sheet = ss.insertSheet('MatchTimeLog');
@@ -3420,8 +3497,8 @@ function _sendMatchTimeChangeNotification(matchDate, oldTime, newTime, source, p
 
 // Pushes a group's time onto every still-open SubRequests row for that date whose
 // requester is one of the group's players.
-function _syncGroupTimeToOpenRequests(matchDate, groupEmails, timeValue) {
-  var reqSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.requests);
+function _syncGroupTimeToOpenRequests(matchDate, groupEmails, timeValue, ss) {
+  var reqSheet = (ss || SpreadsheetApp.openById(SHEET_ID)).getSheetByName(TABS.requests);
   if (!reqSheet || reqSheet.getLastRow() < 2) return 0;
   var emailSet = {};
   (groupEmails || []).forEach(function(e) { if (e) emailSet[e.toLowerCase().trim()] = true; });
@@ -4430,6 +4507,7 @@ function saveDispatchConfigTable(params) {
 
   SpreadsheetApp.flush();
   _configCache = null;
+  try { CacheService.getScriptCache().remove(CONFIG_CACHE_KEY); } catch(e) {}
 
   try { updateDispatchTrigger(enabled, time); } catch(e) { Logger.log('updateDispatchTrigger error: ' + e.message); }
   try { updatePreMatchDayTriggers(); } catch(e) { Logger.log('updatePreMatchDayTriggers error: ' + e.message); }
@@ -4473,6 +4551,7 @@ function saveSettingsConfigTable(params) {
 
   SpreadsheetApp.flush();
   _configCache = null;
+  try { CacheService.getScriptCache().remove(CONFIG_CACHE_KEY); } catch(e) {}
 
   try { updateChelseaCheckTrigger(); } catch(e) { Logger.log('updateChelseaCheckTrigger error: ' + e.message); }
 
@@ -7502,6 +7581,12 @@ function publishScheduleSlot(params) {
 // Returns the most recently published month's schedule
 // grouped by date → groups.
 function getPublishedSchedule() {
+  try {
+    var cached = CacheService.getScriptCache().get(PUBLISHED_SCHEDULE_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch(e) {
+    Logger.log('getPublishedSchedule: CacheService read failed, falling back to sheet: ' + e.message);
+  }
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName(TABS.matchGroups);
   if (!sheet || sheet.getLastRow() < 2) return { month: null, dates: [] };
@@ -7581,7 +7666,13 @@ function getPublishedSchedule() {
     };
   });
 
-  return { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
+  var result = { month: latestMonth, dates: dates, no8amEmails: no8amEmails };
+  try {
+    CacheService.getScriptCache().put(PUBLISHED_SCHEDULE_CACHE_KEY, JSON.stringify(result), PUBLISHED_SCHEDULE_CACHE_TTL_SEC);
+  } catch(e) {
+    Logger.log('getPublishedSchedule: CacheService write failed: ' + e.message);
+  }
+  return result;
 }
 
 // Builds a CSV schedule attachment that opens in Excel.
