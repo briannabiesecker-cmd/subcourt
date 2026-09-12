@@ -2954,20 +2954,19 @@ function updatePlayer(params) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
   var col = getColMap(sheet);
-  var oldName  = sheet.getRange(rowIndex, col.name  + 1).getValue();
   var oldEmail = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
   sheet.getRange(rowIndex, col.name  + 1).setValue(name);
   sheet.getRange(rowIndex, col.email + 1).setValue(email);
   if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
   sortPlayersSheet(sheet);
+  // Editing an existing player's email isn't a roster add/remove, so this
+  // doesn't call notifyGroupRosterChange — that's reserved for addPlayer. The
+  // old address may still need swapping for the new one in the Players Email
+  // Group, but that's a routine profile edit, not something needing an alert.
   if (oldEmail && oldEmail !== email) {
     try { propagateEmailChange({ oldEmail: oldEmail, newEmail: email }); }
     catch(e) { Logger.log('propagateEmailChange failed: ' + e.message); }
-    notifyGroupRosterChange({
-      remove: [{ name: oldName, email: oldEmail }],
-      add:    [{ name: name, email: email }]
-    });
   }
   return { success: true };
 }
@@ -3043,11 +3042,7 @@ function deletePlayer(params) {
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
-  var col   = getColMap(sheet);
-  var name  = sheet.getRange(rowIndex, col.name  + 1).getValue();
-  var email = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
   sheet.deleteRow(rowIndex);
-  if (email) notifyGroupRosterChange({ remove: [{ name: name, email: email }] });
   return { success: true };
 }
 
