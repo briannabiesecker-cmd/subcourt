@@ -2502,6 +2502,11 @@ function highlightMatch(name, query) {
 // auto-fills next launch.
 const IDENTITY_PERSIST_PREFIXES = ['req', 'vol', 'av'];
 
+// Skips the email-verification code entirely when this is the device's current
+// identity switching to someone else — requested so Mark doesn't have to verify
+// every time he switches players on this device.
+const IDENTITY_VERIFY_BYPASS_EMAIL = 'marobria@gmail.com';
+
 let pendingIdentityChange = null; // { prefix, name, email, previousName } while a verify-code modal is open
 
 function selectTypeaheadPlayer(prefix, name, email) {
@@ -2509,7 +2514,8 @@ function selectTypeaheadPlayer(prefix, name, email) {
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem('rally_user_identity')); } catch(e) {}
     const alreadyThisPlayer = stored && stored.email && stored.email.toLowerCase() === email.toLowerCase();
-    if (!alreadyThisPlayer) {
+    const bypassVerification = stored && (stored.email || '').toLowerCase() === IDENTITY_VERIFY_BYPASS_EMAIL;
+    if (!alreadyThisPlayer && !bypassVerification) {
       clearTimeout(taBlurTimers[prefix]);
       document.getElementById(prefix + '-dropdown').style.display = 'none';
       openIdentityVerifyModal(prefix, name, email, stored ? stored.name : '');
