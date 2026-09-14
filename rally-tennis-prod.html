@@ -3983,22 +3983,28 @@ async function submitVolunteer() {
       });
     }
     const savedCount = toUpdate.length + toCreate.length;
-    const tbdNote = tbdSkippedDates.size
-      ? ` Match time for ${[...tbdSkippedDates].map(d => formatDate(d)).join(', ')} isn't set yet — come back and submit once Chelsea sets it.`
-      : '';
-    let msg, alertType;
-    if (!savedCount && !toDelete.length && tbdSkippedDates.size) {
-      msg = `Your match time for ${[...tbdSkippedDates].map(d => formatDate(d)).join(', ')} hasn't been set yet. Wait until Chelsea sets it, then come back and submit your availability for that day.`;
-      alertType = 'info';
-    } else {
-      msg = (toDelete.length && !finalEntries.length
-        ? `${toDelete.length} date(s) removed.`
-        : `Saved ${savedCount} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`) + tbdNote;
-      alertType = 'success';
+    // A vol-alert message here gets raced by the refresh below: loadMySubmissions
+    // overwrites vol-alert with its own loading spinner as soon as it starts,
+    // which can happen before this message ever paints if the refresh resolves
+    // fast (e.g. served from cache). The TBD case is real instructional info the
+    // player needs to actually see, so it goes in a modal they must dismiss
+    // instead — that's unaffected by whatever vol-alert does in the background.
+    if (tbdSkippedDates.size) {
+      const label = [...tbdSkippedDates].map(d => formatDate(d)).join(', ');
+      showWarningModal(
+        `Your match time for ${label} hasn't been set yet. Wait until Chelsea sets it, then come back and submit your availability for that day.`
+      );
     }
-    showAlert('vol-alert', alertType, msg);
-    setBtns('✓ Saved', false, true);
-    setTimeout(() => setBtns('Submit availability', false, false), 3000);
+    if (savedCount || toDelete.length) {
+      const msg = toDelete.length && !finalEntries.length
+        ? `${toDelete.length} date(s) removed.`
+        : `Saved ${savedCount} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`;
+      showAlert('vol-alert', 'success', msg);
+      setBtns('✓ Saved', false, true);
+      setTimeout(() => setBtns('Submit availability', false, false), 3000);
+    } else {
+      setBtns('Submit availability', false, false);
+    }
     clearCache();
     buildCalendar().then(() => loadMySubmissions(email));
   } catch(e) {
