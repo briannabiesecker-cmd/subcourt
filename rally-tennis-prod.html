@@ -3937,18 +3937,26 @@ async function submitVolunteer() {
     // Dates the player is already scheduled to play (the 2-day warn window, where
     // volunteering is still allowed) need the schedule-conflict flow resolved first
     // — it can strip their own match time out of the entry, so re-read the (possibly
-    // reduced) selections afterward rather than the pre-conflict `times`.
+    // reduced) selections afterward rather than the pre-conflict `times`. If the
+    // match time itself is still unknown, this is also where that gets asked (with
+    // a TBD option) — choosing TBD means leave this date's volunteer record
+    // completely untouched (no create, no update, no delete) rather than guessing.
+    const tbdSkippedDates = new Set();
     for (const [date, times] of entries) {
       if (!nearScheduledDates.has(date)) continue;
-      volSelections[date] = await _resolveScheduledConflict(date, times, email, name);
+      const resolved = await _resolveScheduledConflict(date, times, email, name);
+      if (resolved === null) tbdSkippedDates.add(date);
+      else volSelections[date] = resolved;
     }
     const finalEntries = entries
+      .filter(([date]) => !tbdSkippedDates.has(date))
       .map(([date]) => [date, volSelections[date]])
       .filter(([, v]) => v && v.length > 0);
     // A date whose only selected time was the player's own match time now has no
     // times left — if it had an existing pending record, that record should be
     // removed rather than left stale, same as if the player had cleared it by hand.
     entries.forEach(([date]) => {
+      if (tbdSkippedDates.has(date)) return;
       if (finalEntries.some(([d]) => d === date)) return;
       const ex = myVolunteerMap[date];
       if (ex && ex.status === 'pending' && !toDelete.some(([d]) => d === date)) toDelete.push([date, ex]);
@@ -3974,10 +3982,21 @@ async function submitVolunteer() {
         entries: toCreate.map(({ date, times }) => ({ date, times: times.map(t => t.replace(':', '_')) }))
       });
     }
-    const msg = toDelete.length && !finalEntries.length
-      ? `${toDelete.length} date(s) removed.`
-      : `Saved ${toUpdate.length + toCreate.length} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`;
-    showAlert('vol-alert', 'success', msg);
+    const savedCount = toUpdate.length + toCreate.length;
+    const tbdNote = tbdSkippedDates.size
+      ? ` Match time for ${[...tbdSkippedDates].map(d => formatDate(d)).join(', ')} isn't set yet — come back and submit once Chelsea sets it.`
+      : '';
+    let msg, alertType;
+    if (!savedCount && !toDelete.length && tbdSkippedDates.size) {
+      msg = `Your match time for ${[...tbdSkippedDates].map(d => formatDate(d)).join(', ')} hasn't been set yet. Wait until Chelsea sets it, then come back and submit your availability for that day.`;
+      alertType = 'info';
+    } else {
+      msg = (toDelete.length && !finalEntries.length
+        ? `${toDelete.length} date(s) removed.`
+        : `Saved ${savedCount} date(s).${toDelete.length ? ` ${toDelete.length} removed.` : ''} Thank you!`) + tbdNote;
+      alertType = 'success';
+    }
+    showAlert('vol-alert', alertType, msg);
     setBtns('✓ Saved', false, true);
     setTimeout(() => setBtns('Submit availability', false, false), 3000);
     clearCache();
@@ -4132,34 +4151,27 @@ function lockScheduledDateRow(k) {
   }
 }
 
-// Handles one date (≤2 days away) the player is already scheduled to play. If the
-// match's court time is still blank/TBD, collects it from the player right away
-// (no TBD option — a real time is required) and saves it to MatchGroups. Once the
-// time is known: an Overflow match has no fixed court time yet, so all slots stay
-// open; a real match time blocks just that one slot so the player can't double
-// book it, leaving the others open (no arbitrary cap on how many they can pick).
-async function warnScheduledDateRow(k, group) {
+// Handles one date (≤2 days away) the player is already scheduled to play. Only
+// informs here — never asks for the match time or writes anything. If the
+// match's court time is still blank/TBD, that prompt happens lazily, only if the
+// player actually tries to submit a volunteer record for this date (see
+// _resolveScheduledConflict) — not just from opening this tab, since asking
+// immediately on page load interrupted every visit whether or not the player was
+// about to volunteer for this date at all. Once the time is known: an Overflow
+// match has no fixed court time yet, so all slots stay open; a real match time
+// blocks just that one slot so the player can't double book it, leaving the
+// others open (no arbitrary cap on how many they can pick).
+function warnScheduledDateRow(k, group) {
   const row = document.getElementById('daterow-' + k);
   if (!row) return;
   if (row.querySelector('.matched-note')) return;
   nearScheduledDates.add(k);
   scheduledGroupByDate[k] = group;
 
-  let matchTime = (group.time || '').toString().trim();
-  if (!matchTime) {
-    matchTime = await askVolMatchTimeModal(formatDate(k));
-    try {
-      const { name: askedName, email: askedEmail } = getTypeaheadValue('vol');
-      const result = await apiPost({
-        action: 'updateMatchGroupTime', matchDate: k, groupLetter: group.letter, matchTime,
-        source: 'Ask match time (Volunteer to Sub)', playerName: askedName, playerEmail: askedEmail
-      });
-      if (result.success) group.time = matchTime;
-    } catch(e) {}
-  }
-  scheduledMatchTime[k] = matchTime;
+  const matchTime = (group.time || '').toString().trim();
+  scheduledMatchTime[k] = matchTime; // '' means still TBD — resolved lazily at submit time
 
-  if (!isOverflowTime(matchTime)) {
+  if (matchTime && !isOverflowTime(matchTime)) {
     const chip = document.getElementById('chip-' + k + '-' + matchTime);
     if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
     const arr = volSelections[k];
@@ -4174,7 +4186,9 @@ async function warnScheduledDateRow(k, group) {
     const note = document.createElement('div');
     note.className = 'near-scheduled-note';
     note.style.cssText = 'font-size:12px;color:var(--warn);font-style:italic;margin-top:4px;width:100%;';
-    note.textContent = `You are scheduled to play at ${TIME_LABELS[matchTime] || matchTime}.`;
+    note.textContent = matchTime
+      ? `You are scheduled to play at ${TIME_LABELS[matchTime] || matchTime}.`
+      : 'You are scheduled to play, but your match time is still TBD.';
     row.appendChild(note);
   }
 }
@@ -4718,7 +4732,8 @@ function askVolMatchTimeModal(dateLabel) {
     const sel = document.getElementById('vol-match-time-select');
     sel.innerHTML = '<option value="" selected disabled>Select a time…</option>' +
       TIMES.map(t => `<option value="${t}">${TIME_LABELS[t]}</option>`).join('') +
-      '<option value="Overflow">Overflow</option>';
+      '<option value="Overflow">Overflow</option>' +
+      '<option value="TBD">Not set yet</option>';
     modal.style.display = 'flex';
     const btn = document.getElementById('vol-match-time-continue');
     btn.onclick = () => {
@@ -4733,14 +4748,36 @@ function askVolMatchTimeModal(dateLabel) {
 
 // Handles the "already scheduled to play" conflict for one date the player is
 // volunteering for (only reachable in the 2-day warn window, where volunteering
-// is still allowed alongside their own match). The match time itself was already
-// collected/confirmed up front by warnScheduledDateRow, so this just asks whether
-// the player wants to play twice or have Rally look for a sub at their own match
-// time instead. Returns the (possibly reduced) times array to submit for this date.
+// is still allowed alongside their own match). If the match time is still
+// unknown, asks for it now — offering TBD, since the player may genuinely not
+// know it yet — rather than at page load (see warnScheduledDateRow). Choosing
+// TBD returns null: the caller should leave this date's volunteer record
+// untouched and tell the player to come back once the time is set. Otherwise
+// asks whether the player wants to play twice or have Rally look for a sub at
+// their own match time instead, and returns the (possibly reduced) times array
+// to submit for this date.
 async function _resolveScheduledConflict(date, times, email, name) {
-  const group     = scheduledGroupByDate[date];
-  const matchTime = scheduledMatchTime[date];
-  if (!group || !matchTime) return times; // shouldn't happen — fail open rather than block the submission
+  const group = scheduledGroupByDate[date];
+  if (!group) return times; // shouldn't happen — fail open rather than block the submission
+
+  let matchTime = scheduledMatchTime[date];
+  if (!matchTime) {
+    const chosen = await askVolMatchTimeModal(formatDate(date));
+    if (chosen === 'TBD') return null;
+    matchTime = chosen;
+    scheduledMatchTime[date] = matchTime;
+    try {
+      const result = await apiPost({
+        action: 'updateMatchGroupTime', matchDate: date, groupLetter: group.letter, matchTime,
+        source: 'Ask match time (Volunteer to Sub)', playerName: name, playerEmail: email
+      });
+      if (result.success) group.time = matchTime;
+    } catch(e) {}
+    if (!isOverflowTime(matchTime)) {
+      const chip = document.getElementById('chip-' + date + '-' + matchTime);
+      if (chip) { chip.disabled = true; chip.style.cursor = 'not-allowed'; chip.onclick = null; }
+    }
+  }
 
   const emailLower = email.toLowerCase();
   const remainingTimes = times.filter(t => t !== matchTime);
