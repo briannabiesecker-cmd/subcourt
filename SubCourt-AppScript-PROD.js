@@ -5530,7 +5530,35 @@ function _groupTimeLabel(g) {
   return g.time ? (TIME_LABELS[g.time] || g.time) : g.letter;
 }
 
-function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
+// Matches each just-cancelled "no sub found" request to its MatchGroups row (by the
+// requester's own email appearing among that group's 4 players) so the leftover-
+// volunteers email can flag it — the requester's name in red with a marker, plus a
+// footnote with a mailto: link addressed to all 4 group members. Multiple unfilled
+// groups on the same date get *, **, *** etc. in order.
+function _buildUnfilledGroupNotes(unfilledRequests, groups) {
+  var markers = ['*', '**', '***', '****', '*****'];
+  var notes = [];
+  (unfilledRequests || []).forEach(function(req) {
+    var reqEmailLower = (req.email || '').toLowerCase();
+    if (!reqEmailLower) return;
+    var group = (groups || []).find(function(g) {
+      return g.players.some(function(p) { return p.email && p.email.toLowerCase() === reqEmailLower; });
+    });
+    if (!group) return;
+    var emails = group.players.map(function(p) { return p.email; }).filter(Boolean);
+    if (!emails.length) return;
+    notes.push({
+      marker:        markers[notes.length] || '*',
+      groupLetter:   group.letter,
+      requesterName: req.name || 'The requester',
+      requesterEmail: req.email,
+      mailtoUrl:     'mailto:' + emails.join(',')
+    });
+  });
+  return notes;
+}
+
+function buildLeftoverVolunteersEmailHtml(volunteers, groups, unfilledNotes) {
   var introText = 'No more sub requests can be filled for tomorrow. The following players are available if needed.';
   var dataRows = volunteers.length
     ? volunteers.map(function(v) {
@@ -5546,8 +5574,19 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
         '<td colspan="4" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">None</td>' +
         '</tr>';
 
+  var noteByLetter = {};
+  (unfilledNotes || []).forEach(function(n) { noteByLetter[n.groupLetter] = n; });
+
   var groupRows = (groups || []).map(function(g) {
-    var names = g.players.map(function(p) { return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name; }).join(', ');
+    var note = noteByLetter[g.letter];
+    var names = g.players.map(function(p) {
+      var isRequester = note && p.email && note.requesterEmail &&
+        p.email.toLowerCase() === note.requesterEmail.toLowerCase();
+      if (isRequester) {
+        return '<span style="color:#DC2626;font-weight:700;">' + p.name + note.marker + '</span>';
+      }
+      return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name;
+    }).join(', ');
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
       '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;font-weight:600;">' + _groupTimeLabel(g) + '</td>' +
       '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + names + '</td>' +
@@ -5562,6 +5601,15 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
       '<th style="text-align:left;padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Players</th>' +
       '</tr>' + groupRows +
       '</table></td></tr>'
+    : '';
+
+  var footnotesHtml = (unfilledNotes || []).length
+    ? '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#DC2626;">' +
+        unfilledNotes.map(function(n) {
+          return n.marker + ' ' + n.requesterName + ' could not find a sub. If you can play twice, click on this ' +
+            '<a href="' + n.mailtoUrl + '" style="color:#DC2626;">link</a> to email the group. Otherwise, this group is cancelled.';
+        }).join('<br>') +
+      '</td></tr>'
     : '';
 
   return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
@@ -5587,6 +5635,7 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
     '</tr>' + dataRows +
     '</table></td></tr>' +
     groupsSection +
+    footnotesHtml +
     '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
     '</table></td></tr>' +
     '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
@@ -5594,7 +5643,7 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
     '</table></td></tr></table></body></html>';
 }
 
-function buildLeftoverVolunteersEmailText(volunteers, groups) {
+function buildLeftoverVolunteersEmailText(volunteers, groups, unfilledNotes) {
   var lines = [];
   lines.push('No more sub requests can be filled for tomorrow. The following players are available if needed.');
   lines.push('');
@@ -5607,11 +5656,25 @@ function buildLeftoverVolunteersEmailText(volunteers, groups) {
     lines.push('None');
   }
   if (groups && groups.length) {
+    var noteByLetter = {};
+    (unfilledNotes || []).forEach(function(n) { noteByLetter[n.groupLetter] = n; });
     lines.push('');
     lines.push('Groups playing tomorrow:');
     groups.forEach(function(g) {
-      var names = g.players.map(function(p) { return p.name; }).join(', ');
+      var note = noteByLetter[g.letter];
+      var names = g.players.map(function(p) {
+        var isRequester = note && p.email && note.requesterEmail &&
+          p.email.toLowerCase() === note.requesterEmail.toLowerCase();
+        return isRequester ? (p.name + note.marker) : p.name;
+      }).join(', ');
       lines.push('  ' + _groupTimeLabel(g) + ': ' + names);
+    });
+  }
+  if (unfilledNotes && unfilledNotes.length) {
+    lines.push('');
+    unfilledNotes.forEach(function(n) {
+      lines.push(n.marker + ' ' + n.requesterName + ' could not find a sub. If you can play twice, click on this ' +
+        'link (' + n.mailtoUrl + ') to email the group. Otherwise, this group is cancelled.');
     });
   }
   lines.push('');
@@ -5713,7 +5776,9 @@ function _sendLateVolunteerNotification(req, volunteerName, volunteerEmail) {
   Logger.log('Late-volunteer notification sent: ' + reqEmail + ' <- ' + volunteerName + ' (' + req.id + ')');
 }
 
-function sendLeftoverVolunteersEmail(targetDate) {
+// unfilledRequests — the SubRequests (now status 'cancelled') that the caller just
+// gave up on for lack of a sub, if any. Used to flag their group in this email.
+function sendLeftoverVolunteersEmail(targetDate, unfilledRequests) {
   if (!isEmailEnabled()) return;
   var volunteers = getLeftoverVolunteersForDate(targetDate);
 
@@ -5740,6 +5805,7 @@ function sendLeftoverVolunteersEmail(targetDate) {
   });
 
   var groups = getMatchGroupsForDate(targetDate);
+  var unfilledNotes = _buildUnfilledGroupNotes(unfilledRequests, groups);
 
   var config  = getConfig();
   var dateStr = formatDate(targetDate);
@@ -5747,8 +5813,8 @@ function sendLeftoverVolunteersEmail(targetDate) {
   var emailParams = {
     to:       toList.join(','),
     subject:  'MWF Tennis League — Players available for ' + dateStr + ' if needed',
-    body:     buildLeftoverVolunteersEmailText(volunteersWithPhone, groups),
-    htmlBody: buildLeftoverVolunteersEmailHtml(volunteersWithPhone, groups),
+    body:     buildLeftoverVolunteersEmailText(volunteersWithPhone, groups, unfilledNotes),
+    htmlBody: buildLeftoverVolunteersEmailHtml(volunteersWithPhone, groups, unfilledNotes),
     name:     'MWF Tennis League'
   };
   if (config.senderEmail) emailParams.cc = config.senderEmail;
@@ -5875,7 +5941,9 @@ function runPreMatchDayDispatch() {
     }
     // Independent of whether every request got filled — a volunteer can go unused
     // even with an open request if their rating falls outside the match's skill window.
-    try { sendLeftoverVolunteersEmail(targetDate); } catch(e) {
+    // openReqs here are the ones just marked 'cancelled' above — pass them through so
+    // sendLeftoverVolunteersEmail can flag their group in red with a footnote.
+    try { sendLeftoverVolunteersEmail(targetDate, openReqs); } catch(e) {
       Logger.log('Leftover volunteers notify failed for ' + targetDate + ': ' + e.message);
     }
   }
