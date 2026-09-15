@@ -2912,9 +2912,9 @@ let requestCache   = null;
 let volunteerCache = null;
 let configCache    = null;
 
-async function getRequests() {
+async function getRequests(retries = 2) {
   if (requestCache) return requestCache;
-  requestCache = await apiGetWithRetry({ action: 'getRequests' });
+  requestCache = await apiGetWithRetry({ action: 'getRequests' }, retries);
   return requestCache;
 }
 
@@ -2925,7 +2925,10 @@ async function getRequests() {
 // so loadMyRequests/loadReqSchedule can skip their own fetch.
 async function refreshRequestTab(email, name) {
   try {
-    const data = await apiGetWithRetry({ action: 'getRequestPageData' });
+    // Only 1 retry (not the default 2) — this is the fast/common path, and if it's
+    // still failing after one retry the fallback below is more likely to help than
+    // burning another ~60s here.
+    const data = await apiGetWithRetry({ action: 'getRequestPageData' }, 1);
     requestCache      = data.requests;
     publishedSchedule = data.publishedSchedule;
     await loadMyRequests(email, name, false);
@@ -2933,11 +2936,17 @@ async function refreshRequestTab(email, name) {
     await loadReqFilledRequests(email, name);
   } catch(e) {
     // Combined fetch failed — fall back to each section fetching independently.
+    // No retries here: each retry a caller does compounds with every other
+    // sequential call below, and this fallback used to re-run the full
+    // 2-retry/3-attempt cycle (~90s) for each of 3 sections in turn — up to
+    // ~6 minutes of "Loading…" on a slow/flaky Apps Script deployment before
+    // anything showed an error. Fail fast instead so the user sees a real
+    // error (or success) within seconds of the combined call giving up.
     requestCache      = null;
     publishedSchedule = null;
-    await loadMyRequests(email, name, true);
-    await loadReqSchedule(email, name, true);
-    await loadReqFilledRequests(email, name);
+    await loadMyRequests(email, name, true, 0);
+    await loadReqSchedule(email, name, true, 0);
+    await loadReqFilledRequests(email, name, 0);
   }
 }
 
@@ -3185,7 +3194,7 @@ function clearRequestForm() {
   reqScheduleData = {};
 }
 
-async function loadReqSchedule(email, name, forceRefresh = true) {
+async function loadReqSchedule(email, name, forceRefresh = true, retries = 2) {
   const section   = document.getElementById('req-schedule-section');
   const loading   = document.getElementById('req-schedule-loading');
   const empty     = document.getElementById('req-schedule-empty');
@@ -3201,7 +3210,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
 
   try {
     if (!publishedSchedule) {
-      publishedSchedule = await apiGetWithRetry({ action: 'getPublishedSchedule' });
+      publishedSchedule = await apiGetWithRetry({ action: 'getPublishedSchedule' }, retries);
     }
     if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) {
       loading.style.display = 'none';
@@ -3211,7 +3220,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
     }
 
     if (forceRefresh) requestCache = null;
-    const requests = await getRequests();
+    const requests = await getRequests(retries);
     const myRequests = requests.filter(r =>
       r.email.toLowerCase() === email.toLowerCase() && r.status !== 'cancelled'
     );
@@ -3293,7 +3302,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
 // Shows this player's own sub requests that already have a volunteer assigned —
 // i.e. "who's covering my spot" for upcoming matches. Only requests they personally
 // submitted (r.email === them), not teammates' requests for the same group.
-async function loadReqFilledRequests(email, name) {
+async function loadReqFilledRequests(email, name, retries = 2) {
   const section   = document.getElementById('req-filled-section');
   const loading   = document.getElementById('req-filled-loading');
   const empty     = document.getElementById('req-filled-empty');
@@ -3307,7 +3316,7 @@ async function loadReqFilledRequests(email, name) {
   tbody.innerHTML         = '';
 
   try {
-    const [requests] = await Promise.all([getRequests(), loadPlayerList()]);
+    const [requests] = await Promise.all([getRequests(retries), loadPlayerList()]);
     const todayStr   = localDateStr();
     const emailLower = email.toLowerCase();
 
@@ -3506,7 +3515,7 @@ async function _submitScheduleCheckRequest(el, key, slot, name, email, retryHtml
   }
 }
 
-async function loadMyRequests(email, playerName, forceRefresh = true) { // v2
+async function loadMyRequests(email, playerName, forceRefresh = true, retries = 2) { // v2
   const el      = document.getElementById('my-req-list');
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
@@ -3515,7 +3524,7 @@ async function loadMyRequests(email, playerName, forceRefresh = true) { // v2
 
   try {
     if (forceRefresh) requestCache = null;
-    const requests = await getRequests();
+    const requests = await getRequests(retries);
 
     // Today's date string for comparison (YYYY-MM-DD)
     const todayStr     = localDateStr();
