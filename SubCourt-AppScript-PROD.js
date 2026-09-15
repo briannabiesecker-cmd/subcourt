@@ -4583,6 +4583,7 @@ function sendRetirementEmail(req) {
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
     '  Date: ' + dateStr + '\n' +
     '  Time: ' + timeStr + '\n\n' +
+    'For the rest of the group, unless you hear otherwise from ' + req.name + ', you should assume this match is cancelled.\n\n' +
     'If you\'d like to launch an email to the entire group, visit the Directory page: ' + directoryUrl + '\n\n' +
     'MWF Tennis League';
   var htmlBody =
@@ -4590,6 +4591,7 @@ function sendRetirementEmail(req) {
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
     '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
     '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
+    'For the rest of the group, unless you hear otherwise from ' + req.name + ', you should assume this match is cancelled.<br><br>' +
     'Click on <a href="' + directoryUrl + '">Directory</a>, if you\'d like to launch an email to the entire group.<br><br>' +
     'MWF Tennis League';
   var groupPlayers = req.groupPlayers || [];
