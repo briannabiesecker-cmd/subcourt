@@ -1895,35 +1895,41 @@ function getColMap(sheet) {
 
     // Detect actual coordEnd by finding the last column from coordStart with an @-email header.
     // This handles sheets with more or fewer than the default 5 coordinator columns.
+    // Test and Inactive are both trailing flag columns after the coordinators — keep
+    // scanning past either one instead of stopping, so a sheet with Test already
+    // present still gets Inactive auto-detected/placed right after it.
     var coordEnd = coordStart - 1; // default: none found
-    var testCol  = -1;
+    var testCol     = -1;
+    var inactiveCol = -1;
     for (var i = coordStart; i < hdr.length; i++) {
-      var h = (hdr[i] || '').toString().trim();
+      var h = (hdr[i] || '').toString().trim().toLowerCase();
       if (h.indexOf('@') > 0) {
         coordEnd = i;                         // coordinator column
-      } else if (h.toLowerCase() === 'test') {
+      } else if (h === 'test') {
         testCol = i;                          // Test column already exists
-        break;
+      } else if (h === 'inactive') {
+        inactiveCol = i;                      // Inactive column already exists
       } else if (h) {
-        break;                                // non-empty, non-coordinator header — stop
+        break;                                // non-empty, unrecognized header — stop
       }
     }
     if (coordEnd < coordStart) coordEnd = hasPhone ? 10 : 9; // fallback to default 5-slot end
     if (testCol === -1) testCol = coordEnd + 1;              // place Test right after last coordinator
+    if (inactiveCol === -1) inactiveCol = testCol + 1;       // place Inactive right after Test
 
     return hasPhone ? {
       name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
-      coordStart: 6, coordEnd: coordEnd, testCol: testCol,
-      totalCols: Math.min(testCol + 1, maxCols)
+      coordStart: 6, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol,
+      totalCols: Math.min(inactiveCol + 1, maxCols)
     } : {
       name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-      coordStart: 5, coordEnd: coordEnd, testCol: testCol,
-      totalCols: Math.min(testCol + 1, maxCols)
+      coordStart: 5, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol,
+      totalCols: Math.min(inactiveCol + 1, maxCols)
     };
   } catch(e) {
-    // Safe fallback: classic layout with Test at column L
+    // Safe fallback: classic layout with Test at column L, Inactive at column M
     return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-             coordStart: 5, coordEnd: 9, testCol: 11, totalCols: 12 };
+             coordStart: 5, coordEnd: 9, testCol: 11, inactiveCol: 12, totalCols: 13 };
   }
 }
 
@@ -1937,6 +1943,12 @@ function _resolveEmail(name, storedEmail, players) {
   return (match && match.email) ? match.email : (storedEmail || '');
 }
 
+// Excludes Inactive players — this is the general "pickable player" list behind
+// typeahead, Directory, availability/scheduler broadcasts, and dispatch lookups,
+// so pausing someone here is what actually stops new picks and mass emails from
+// reaching them. Existing records that already have their email baked in (an open
+// request, a groupPlayers snapshot) are unaffected — _resolveEmail falls back to
+// the stored email when a player isn't found in this list.
 function getPlayers() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet) return [];
@@ -1944,12 +1956,15 @@ function getPlayers() {
   const rows = sheet.getDataRange().getValues();
   if (rows.length < 2) return [];
   rows.shift(); // remove header
-  return rows.map(r => ({
-    name:    r[col.name]  || '',
-    email:   (r[col.email] || '').toLowerCase(),
-    phone:   col.phone >= 0 ? (r[col.phone] || '') : '',
-    isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin] || '').toUpperCase() === 'TRUE'
-  })).filter(p => p.name || p.email);
+  return rows
+    .filter(r => !(r[col.inactiveCol] === true || String(r[col.inactiveCol] || '').toUpperCase() === 'YES'))
+    .map(r => ({
+      name:    r[col.name]  || '',
+      email:   (r[col.email] || '').toLowerCase(),
+      phone:   col.phone >= 0 ? (r[col.phone] || '') : '',
+      isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin] || '').toUpperCase() === 'TRUE'
+    }))
+    .filter(p => p.name || p.email);
 }
 
 // Combined home-page bootstrap call — returns players + availConfig in one round trip.
@@ -1989,10 +2004,16 @@ function getPlayersWithRatings() {
   if (rows.length > 0 && (rows[0].length <= col.testCol || !rows[0][col.testCol])) {
     sheet.getRange(1, col.testCol + 1).setValue('Test');
   }
+  // Auto-init Inactive column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.inactiveCol || !rows[0][col.inactiveCol])) {
+    sheet.getRange(1, col.inactiveCol + 1).setValue('Inactive');
+  }
   rows.shift();
   const seen = {};
   return rows.reduce(function(acc, r) {
     const email = (r[col.email] || '').toLowerCase();
+    const inactive = r[col.inactiveCol] === true || String(r[col.inactiveCol] || '').toUpperCase() === 'YES';
+    if (inactive) return acc; // paused — excluded from scheduling, ratings tools, and broadcasts
     if (email && !seen[email]) {
       seen[email] = true;
       acc.push({
@@ -2906,14 +2927,18 @@ function getPlayersForAdmin() {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet || sheet.getLastRow() < 2) return [];
   var col  = getColMap(sheet);
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  // Unlike getPlayers()/getPlayersWithRatings(), this deliberately does NOT filter
+  // out Inactive players — the admin Manage Players panel needs to see everyone
+  // to toggle Active/Inactive back and forth.
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(5, col.inactiveCol + 1)).getValues();
   return rows.map(function(r, i) {
     return {
       rowIndex: i + 2,
-      name:  r[col.name]  || '',
-      email: (r[col.email] || '').toLowerCase(),
-      phone: col.phone >= 0 ? (r[col.phone] || '') : '',
-      no8am: r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE'
+      name:     r[col.name]  || '',
+      email:    (r[col.email] || '').toLowerCase(),
+      phone:    col.phone >= 0 ? (r[col.phone] || '') : '',
+      no8am:    r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE',
+      inactive: r[col.inactiveCol] === true || (r[col.inactiveCol] || '').toString().toUpperCase() === 'YES'
     };
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
@@ -2948,7 +2973,8 @@ function updatePlayer(params) {
   var name     = (params.name  || '').trim();
   var email    = (params.email || '').toLowerCase().trim();
   var phone    = (params.phone || '').trim();
-  var no8am    = params.no8am === 'true' || params.no8am === true;
+  var no8am    = params.no8am    === 'true' || params.no8am    === true;
+  var inactive = params.inactive === 'true' || params.inactive === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
@@ -2959,6 +2985,8 @@ function updatePlayer(params) {
   sheet.getRange(rowIndex, col.email + 1).setValue(email);
   if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
+  sheet.getRange(rowIndex, col.inactiveCol + 1).setValue(inactive ? 'YES' : '');
+  // Header auto-inits from getPlayersWithRatings()'s own self-heal on the next read.
   sortPlayersSheet(sheet);
   // Editing an existing player's email isn't a roster add/remove, so this
   // doesn't call notifyGroupRosterChange — that's reserved for addPlayer. The
