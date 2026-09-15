@@ -4974,7 +4974,11 @@ let mpCurrentPlayer = null; // the player currently loaded in the form (null = n
 
 async function loadManagePlayers() {
   try {
-    adminPlayers = await apiPost({ action: 'getPlayersForAdmin' });
+    // Retried — a pure read, safe to resend, and this is the one place a
+    // post-deploy cold-start spike (Apps Script occasionally exceeds its usual
+    // ~7s right after a new version goes live) stranded the admin with a bare
+    // "Request timed out" and no automatic recovery.
+    adminPlayers = await apiPostWithRetry({ action: 'getPlayersForAdmin' });
     adminPlayers.sort((a, b) => a.name.localeCompare(b.name));
     const sel = document.getElementById('mp-select');
     if (!sel) return;
