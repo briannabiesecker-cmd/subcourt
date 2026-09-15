@@ -72,37 +72,6 @@ function getAdminEmails() {
     .filter(function(e) { return e; });
 }
 
-// Notifies admins that the Players Email Group needs a manual membership update.
-// changes: { add: [{name, email}], remove: [{name, email}] }
-function notifyGroupRosterChange(changes) {
-  if (!isEmailEnabled()) return;
-  var add    = changes.add    || [];
-  var remove = changes.remove || [];
-  if (!add.length && !remove.length) return;
-
-  var config   = getConfig();
-  var groupEmail = config.playersGroupEmail || '';
-  var manageLink = groupEmail
-    ? 'https://groups.google.com/g/' + groupEmail.split('@')[0] + '/members'
-    : '';
-
-  var lines = ['The Players list changed — update the Players Email Group membership:', ''];
-  add.forEach(function(p)    { lines.push('Add:    ' + p.name + ' <' + p.email + '>'); });
-  remove.forEach(function(p) { lines.push('Remove: ' + p.name + ' <' + p.email + '>'); });
-  if (manageLink) {
-    lines.push('', 'Manage members: ' + manageLink);
-  }
-
-  var admins = getAdminEmails();
-  if (!admins.length) return;
-  sendLeagueEmail({
-    to: admins.join(', '),
-    subject: 'Rally — Players Email Group update needed',
-    body: lines.join('\n'),
-    name: 'MWF Tennis League'
-  });
-}
-
 function sendBrevoEmail(params) {
   // params: { apiKey, recipients: [{email, name}], cc, bcc, subject, htmlContent, textContent, attachments, replyTo: {email, name} }
   var payload = {
@@ -1110,8 +1079,6 @@ function getConfig() {
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B59').getValue()) || '13:00',
       // Sender email — row 30
       senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
-      // Players Email Group — row 33
-      playersGroupEmail: (sheet.getRange('B33').getValue() || '').toString().trim(),
       // Brevo — rows 35, 37
       brevoApiKey:            (sheet.getRange('B35').getValue() || '').toString().trim(),
       brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
@@ -1155,7 +1122,6 @@ function getConfig() {
       autoDispatchEnabled:      false,
       autoDispatchTimeET:       '08:00',
       senderEmail: '',
-      playersGroupEmail: '',
       brevoApiKey: '',
       brevoScheduleEmail: false,
       urgentSubEmailsEnabled: true,
@@ -2964,7 +2930,6 @@ function addPlayer(params) {
     : [name, email, '', no8am, false];          // classic:    name,email,rating,no8am,isAdmin
   sheet.appendRow(newRow);
   sortPlayersSheet(sheet);
-  notifyGroupRosterChange({ add: [{ name: name, email: email }] });
   return { success: true };
 }
 
@@ -2988,10 +2953,6 @@ function updatePlayer(params) {
   sheet.getRange(rowIndex, col.inactiveCol + 1).setValue(inactive ? 'YES' : '');
   // Header auto-inits from getPlayersWithRatings()'s own self-heal on the next read.
   sortPlayersSheet(sheet);
-  // Editing an existing player's email isn't a roster add/remove, so this
-  // doesn't call notifyGroupRosterChange — that's reserved for addPlayer. The
-  // old address may still need swapping for the new one in the Players Email
-  // Group, but that's a routine profile edit, not something needing an alert.
   if (oldEmail && oldEmail !== email) {
     try { propagateEmailChange({ oldEmail: oldEmail, newEmail: email }); }
     catch(e) { Logger.log('propagateEmailChange failed: ' + e.message); }
