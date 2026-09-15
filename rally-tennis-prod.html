@@ -2571,6 +2571,7 @@ async function sendIdentityVerifyCode() {
     const result = await apiPost({ action: 'sendIdentityChangeCode', name, email, previousName: previousName || '' });
     if (!result.success) {
       showAlert('identity-verify-alert', 'error', result.error || 'Could not send code.');
+      document.getElementById('identity-verify-resend-btn').style.display = 'inline-block';
       return;
     }
     document.getElementById('identity-verify-code-section').style.display = 'block';
@@ -2578,7 +2579,15 @@ async function sendIdentityVerifyCode() {
     showAlert('identity-verify-alert', 'success', 'Code sent — check your email.');
     document.getElementById('identity-verify-code-input').focus();
   } catch(e) {
-    showAlert('identity-verify-alert', 'error', 'Failed to send code: ' + e.message);
+    // A JSONP script-load failure/timeout here doesn't mean the backend call
+    // never went through — the email may have been sent anyway (see the
+    // apiGetWithParams/getDispatchPageData comments above on this transport's
+    // flakiness). Leave the user a way to enter a code that arrived regardless,
+    // or resend, instead of stranding them with only Cancel.
+    document.getElementById('identity-verify-code-section').style.display = 'block';
+    document.getElementById('identity-verify-resend-btn').style.display = 'inline-block';
+    showAlert('identity-verify-alert', 'error',
+      'Failed to send code: ' + e.message + ' — if you got an email anyway, enter the code below. Otherwise, resend.');
   }
 }
 
