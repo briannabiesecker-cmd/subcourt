@@ -1981,6 +1981,10 @@
               <input type="checkbox" id="mp-active" checked style="width:15px;height:15px;cursor:pointer;">
               Active
             </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;" title="Sub-only players are excluded from the normal-distribution rating calculation. Their rating instead copies whichever regular player's rank is closest to theirs.">
+              <input type="checkbox" id="mp-subonly" style="width:15px;height:15px;cursor:pointer;">
+              Sub Only
+            </label>
             <button class="btn btn-clay btn-sm" onclick="mpSave()">Save</button>
             <button class="btn btn-sm" id="mp-delete-btn"
               style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;opacity:0.4;cursor:not-allowed;font-size:12px;padding:4px 10px;"
@@ -4983,7 +4987,7 @@ async function loadManagePlayers() {
     const sel = document.getElementById('mp-select');
     if (!sel) return;
     sel.innerHTML = '<option value="">— New player —</option>' +
-      adminPlayers.map(p => `<option value="${p.email}">${p.name}${p.inactive ? ' (Inactive)' : ''}</option>`).join('');
+      adminPlayers.map(p => `<option value="${p.email}">${p.name}${p.inactive ? ' (Inactive)' : ''}${p.subOnly ? ' (Sub Only)' : ''}</option>`).join('');
     mpClear();
   } catch(e) {
     showAlert('manage-players-alert', 'error', 'Failed to load players: ' + e.message);
@@ -4998,8 +5002,9 @@ function mpSelectPlayer(email) {
   document.getElementById('mp-name').value    = p.name;
   document.getElementById('mp-email').value   = p.email;
   document.getElementById('mp-phone').value   = p.phone || '';
-  document.getElementById('mp-no8am').checked  = !!p.no8am;
-  document.getElementById('mp-active').checked = !p.inactive;
+  document.getElementById('mp-no8am').checked   = !!p.no8am;
+  document.getElementById('mp-active').checked  = !p.inactive;
+  document.getElementById('mp-subonly').checked = !!p.subOnly;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = false;
   delBtn.style.opacity = '1';
@@ -5008,12 +5013,13 @@ function mpSelectPlayer(email) {
 
 function mpClear() {
   mpCurrentPlayer = null;
-  document.getElementById('mp-select').value   = '';
-  document.getElementById('mp-name').value     = '';
-  document.getElementById('mp-email').value    = '';
-  document.getElementById('mp-phone').value    = '';
-  document.getElementById('mp-no8am').checked  = false;
-  document.getElementById('mp-active').checked = true;
+  document.getElementById('mp-select').value    = '';
+  document.getElementById('mp-name').value      = '';
+  document.getElementById('mp-email').value     = '';
+  document.getElementById('mp-phone').value     = '';
+  document.getElementById('mp-no8am').checked   = false;
+  document.getElementById('mp-active').checked  = true;
+  document.getElementById('mp-subonly').checked = false;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = true;
   delBtn.style.opacity = '0.4';
@@ -5027,11 +5033,12 @@ async function mpSave() {
   const phone = document.getElementById('mp-phone').value.trim();
   const no8am   = document.getElementById('mp-no8am').checked;
   const inactive = !document.getElementById('mp-active').checked;
+  const subOnly  = document.getElementById('mp-subonly').checked;
   if (!name || !email) { showAlert('manage-players-alert', 'error', 'Name and email are required.'); return; }
   try {
     let result;
     if (mpCurrentPlayer) {
-      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone, no8am, inactive });
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone, no8am, inactive, subOnly });
     } else {
       result = await apiPost({ action: 'addPlayer', name, email, phone, no8am });
     }

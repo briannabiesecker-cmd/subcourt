@@ -1861,12 +1861,13 @@ function getColMap(sheet) {
 
     // Detect actual coordEnd by finding the last column from coordStart with an @-email header.
     // This handles sheets with more or fewer than the default 5 coordinator columns.
-    // Test and Inactive are both trailing flag columns after the coordinators — keep
-    // scanning past either one instead of stopping, so a sheet with Test already
-    // present still gets Inactive auto-detected/placed right after it.
+    // Test, Inactive and SubOnly are all trailing flag columns after the coordinators —
+    // keep scanning past any of them instead of stopping, so a sheet with some already
+    // present still gets the others auto-detected/placed right after the last one.
     var coordEnd = coordStart - 1; // default: none found
     var testCol     = -1;
     var inactiveCol = -1;
+    var subOnlyCol  = -1;
     for (var i = coordStart; i < hdr.length; i++) {
       var h = (hdr[i] || '').toString().trim().toLowerCase();
       if (h.indexOf('@') > 0) {
@@ -1875,6 +1876,8 @@ function getColMap(sheet) {
         testCol = i;                          // Test column already exists
       } else if (h === 'inactive') {
         inactiveCol = i;                      // Inactive column already exists
+      } else if (h === 'sub only') {
+        subOnlyCol = i;                       // Sub Only column already exists
       } else if (h) {
         break;                                // non-empty, unrecognized header — stop
       }
@@ -1882,20 +1885,21 @@ function getColMap(sheet) {
     if (coordEnd < coordStart) coordEnd = hasPhone ? 10 : 9; // fallback to default 5-slot end
     if (testCol === -1) testCol = coordEnd + 1;              // place Test right after last coordinator
     if (inactiveCol === -1) inactiveCol = testCol + 1;       // place Inactive right after Test
+    if (subOnlyCol === -1) subOnlyCol = inactiveCol + 1;     // place Sub Only right after Inactive
 
     return hasPhone ? {
       name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
-      coordStart: 6, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol,
-      totalCols: Math.min(inactiveCol + 1, maxCols)
+      coordStart: 6, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol, subOnlyCol: subOnlyCol,
+      totalCols: Math.min(subOnlyCol + 1, maxCols)
     } : {
       name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-      coordStart: 5, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol,
-      totalCols: Math.min(inactiveCol + 1, maxCols)
+      coordStart: 5, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol, subOnlyCol: subOnlyCol,
+      totalCols: Math.min(subOnlyCol + 1, maxCols)
     };
   } catch(e) {
-    // Safe fallback: classic layout with Test at column L, Inactive at column M
+    // Safe fallback: classic layout with Test at column L, Inactive at M, Sub Only at N
     return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-             coordStart: 5, coordEnd: 9, testCol: 11, inactiveCol: 12, totalCols: 13 };
+             coordStart: 5, coordEnd: 9, testCol: 11, inactiveCol: 12, subOnlyCol: 13, totalCols: 14 };
   }
 }
 
@@ -1973,6 +1977,10 @@ function getPlayersWithRatings() {
   // Auto-init Inactive column header if missing
   if (rows.length > 0 && (rows[0].length <= col.inactiveCol || !rows[0][col.inactiveCol])) {
     sheet.getRange(1, col.inactiveCol + 1).setValue('Inactive');
+  }
+  // Auto-init Sub Only column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.subOnlyCol || !rows[0][col.subOnlyCol])) {
+    sheet.getRange(1, col.subOnlyCol + 1).setValue('Sub Only');
   }
   rows.shift();
   const seen = {};
@@ -2802,6 +2810,14 @@ function _percentileToZScore(p) {
 // exact ties get the averaged position) -> percentile of position -> z-score
 // -> linearly rescaled to 1-5, written to column D (Rating) for every player.
 // Players nobody has ranked yet are left alone (existing Rating untouched).
+//
+// Sub Only players are still ranked by coordinators (their avgPct below is
+// computed the same as everyone else's, from the exact same rank inputs), but
+// they don't take part in the distribution itself — the z-score/rescale-to-1-5
+// math below runs only over the non-Sub-Only ("regular") players, so a cluster
+// of subs sitting at the bottom doesn't skew the spread computed for the
+// regulars. Each Sub Only player then simply copies the rating of whichever
+// regular player's avgPct is closest to their own.
 function _recomputeAllPlayerRatingsFromRankings() {
   var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   var col     = getColMap(sheet);
@@ -2853,13 +2869,25 @@ function _recomputeAllPlayerRatingsFromRankings() {
   // Step 3: sort worst to best; exact ties (within floating-point noise) share
   // the average of their positions instead of an arbitrary tie-break.
   ranked.sort(function(a, b) { return a.avgPct - b.avgPct; });
-  var n = ranked.length;
+
+  // Split into the "regular" pool the distribution is built from, and the Sub
+  // Only players who'll just copy a regular player's rating afterward. Order is
+  // preserved (both are filtered from the already-sorted `ranked`).
+  var regular = [], subOnly = [];
+  ranked.forEach(function(item) {
+    var isSubOnly = allData[rowIndices[item.rowPos]][col.subOnlyCol] === true ||
+      (allData[rowIndices[item.rowPos]][col.subOnlyCol] || '').toString().toUpperCase() === 'YES';
+    (isSubOnly ? subOnly : regular).push(item);
+  });
+  if (!regular.length) return { success: true, updated: 0 }; // nothing to build a distribution from
+
+  var n = regular.length;
   var TIE_EPSILON = 1e-9;
   var positions = new Array(n);
   var i = 0;
   while (i < n) {
     var j = i;
-    while (j + 1 < n && Math.abs(ranked[j + 1].avgPct - ranked[i].avgPct) < TIE_EPSILON) j++;
+    while (j + 1 < n && Math.abs(regular[j + 1].avgPct - regular[i].avgPct) < TIE_EPSILON) j++;
     var sumPos = 0;
     for (var k2 = i; k2 <= j; k2++) sumPos += (k2 + 1); // 1-indexed position
     var avgPos = sumPos / (j - i + 1);
@@ -2867,17 +2895,31 @@ function _recomputeAllPlayerRatingsFromRankings() {
     i = j + 1;
   }
 
-  // Step 4/5: position -> percentile -> z-score -> rescale to 1-5.
+  // Step 4/5: position -> percentile -> z-score -> rescale to 1-5 (regular pool only).
   var zScores = positions.map(function(pos) { return _percentileToZScore((pos - 0.5) / n); });
   var zMin = Math.min.apply(null, zScores);
   var zMax = Math.max.apply(null, zScores);
   var zSpan = zMax - zMin;
 
   var updated = 0;
-  ranked.forEach(function(item, idx) {
+  regular.forEach(function(item, idx) {
     var rating = zSpan === 0 ? 3.0 : (1 + (zScores[idx] - zMin) / zSpan * 4);
     rating = Math.round(rating * 100) / 100;
+    item.rating = rating;
     allData[rowIndices[item.rowPos]][col.rating] = rating;
+    updated++;
+  });
+
+  // Sub Only players: copy the rating of whichever regular player's avgPct is
+  // closest to their own (regular is already sorted by avgPct).
+  subOnly.forEach(function(item) {
+    var closest = regular[0];
+    var bestDiff = Math.abs(closest.avgPct - item.avgPct);
+    for (var ri = 1; ri < regular.length; ri++) {
+      var diff = Math.abs(regular[ri].avgPct - item.avgPct);
+      if (diff < bestDiff) { bestDiff = diff; closest = regular[ri]; }
+    }
+    allData[rowIndices[item.rowPos]][col.rating] = closest.rating;
     updated++;
   });
 
@@ -2896,7 +2938,7 @@ function getPlayersForAdmin() {
   // Unlike getPlayers()/getPlayersWithRatings(), this deliberately does NOT filter
   // out Inactive players — the admin Manage Players panel needs to see everyone
   // to toggle Active/Inactive back and forth.
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(5, col.inactiveCol + 1)).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(5, col.subOnlyCol + 1)).getValues();
   return rows.map(function(r, i) {
     return {
       rowIndex: i + 2,
@@ -2904,7 +2946,8 @@ function getPlayersForAdmin() {
       email:    (r[col.email] || '').toLowerCase(),
       phone:    col.phone >= 0 ? (r[col.phone] || '') : '',
       no8am:    r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE',
-      inactive: r[col.inactiveCol] === true || (r[col.inactiveCol] || '').toString().toUpperCase() === 'YES'
+      inactive: r[col.inactiveCol] === true || (r[col.inactiveCol] || '').toString().toUpperCase() === 'YES',
+      subOnly:  r[col.subOnlyCol] === true || (r[col.subOnlyCol] || '').toString().toUpperCase() === 'YES'
     };
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
@@ -2940,22 +2983,33 @@ function updatePlayer(params) {
   var phone    = (params.phone || '').trim();
   var no8am    = params.no8am    === 'true' || params.no8am    === true;
   var inactive = params.inactive === 'true' || params.inactive === true;
+  var subOnly  = params.subOnly  === 'true' || params.subOnly  === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
   var col = getColMap(sheet);
   var oldEmail = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
+  var oldSubOnlyVal = sheet.getRange(rowIndex, col.subOnlyCol + 1).getValue();
+  var oldSubOnly = oldSubOnlyVal === true || (oldSubOnlyVal || '').toString().toUpperCase() === 'YES';
   sheet.getRange(rowIndex, col.name  + 1).setValue(name);
   sheet.getRange(rowIndex, col.email + 1).setValue(email);
   if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
   sheet.getRange(rowIndex, col.inactiveCol + 1).setValue(inactive ? 'YES' : '');
+  sheet.getRange(rowIndex, col.subOnlyCol + 1).setValue(subOnly ? 'YES' : '');
   // Header auto-inits from getPlayersWithRatings()'s own self-heal on the next read.
   sortPlayersSheet(sheet);
   if (oldEmail && oldEmail !== email) {
     try { propagateEmailChange({ oldEmail: oldEmail, newEmail: email }); }
     catch(e) { Logger.log('propagateEmailChange failed: ' + e.message); }
+  }
+  // Sub Only controls who counts toward the normal-distribution rating calc — a
+  // flag flip changes that pool, so ratings need to be recomputed immediately,
+  // the same as saveCoordinatorRankings already does after a ranking edit.
+  if (subOnly !== oldSubOnly) {
+    try { _recomputeAllPlayerRatingsFromRankings(); }
+    catch(e) { Logger.log('_recomputeAllPlayerRatingsFromRankings failed after Sub Only toggle: ' + e.message); }
   }
   return { success: true };
 }
