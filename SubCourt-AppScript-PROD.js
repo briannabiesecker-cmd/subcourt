@@ -552,6 +552,52 @@ function _excludeFromBcc(emails, toEmail) {
   return (emails || []).filter(function(e) { return e && e.toLowerCase() !== skip; });
 }
 
+// Primary (lowercased) -> Secondary Email, cached per script execution (cleared by
+// updatePlayer whenever a secondary email actually changes). Secondary Email is
+// never used for matching/identity/dedup anywhere else in the app — this map exists
+// solely to widen the recipient list at actual send time, in _expandSecondaryEmails.
+var _secondaryEmailMapCache = null;
+function _getSecondaryEmailMap() {
+  if (_secondaryEmailMapCache) return _secondaryEmailMapCache;
+  var map = {};
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+    if (sheet && sheet.getLastRow() >= 2) {
+      var col     = getColMap(sheet);
+      var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+      var rows    = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+      rows.forEach(function(r) {
+        var primary   = (r[col.email] || '').toString().toLowerCase().trim();
+        var secondary = (r[col.secondaryEmailCol] || '').toString().trim();
+        if (primary && secondary) map[primary] = secondary;
+      });
+    }
+  } catch(e) {
+    Logger.log('_getSecondaryEmailMap failed: ' + e.message);
+  }
+  _secondaryEmailMapCache = map;
+  return map;
+}
+
+// Widens a comma-separated address list so every address that has a Secondary
+// Email also gets that address included, deduped.
+function _expandSecondaryEmails(addrListStr) {
+  if (!addrListStr) return addrListStr;
+  var map  = _getSecondaryEmailMap();
+  var seen = {};
+  var out  = [];
+  _splitAddrList(addrListStr).forEach(function(addr) {
+    var key = addr.toLowerCase();
+    if (!seen[key]) { seen[key] = true; out.push(addr); }
+    var secondary = map[key];
+    if (secondary) {
+      var sKey = secondary.toLowerCase();
+      if (!seen[sKey]) { seen[sKey] = true; out.push(secondary); }
+    }
+  });
+  return out.join(', ');
+}
+
 // Unified email sender for every real Rally email — routes through Brevo when
 // configured (own quota, unaffected by MailApp's), falling back to MailApp otherwise
 // or if Brevo itself fails.
@@ -563,6 +609,18 @@ function _excludeFromBcc(emails, toEmail) {
 // rejection Brevo's own automatic retries never recover from. MailApp (Google's own
 // sending infrastructure) is a separate reputation path that isn't affected by it.
 function sendLeagueEmail(params) {
+  // Widen to/cc/bcc with each recipient's Secondary Email, if any, before anything
+  // else touches these lists (comcast split, Brevo/MailApp routing, BCC chunking) —
+  // so a secondary address is just carried along transparently from here on.
+  if (params.to || params.cc || params.bcc) {
+    var expanded = {};
+    for (var k in params) expanded[k] = params[k];
+    if (params.to)  expanded.to  = _expandSecondaryEmails(params.to);
+    if (params.cc)  expanded.cc  = _expandSecondaryEmails(params.cc);
+    if (params.bcc) expanded.bcc = _expandSecondaryEmails(params.bcc);
+    params = expanded;
+  }
+
   var props = PropertiesService.getScriptProperties();
   var throttleKey = 'emailThrottle:' + _getEmailThrottleDateKey(new Date()) + ':' + _buildEmailContentSignature(params);
   if (props.getProperty(throttleKey)) {
@@ -1861,13 +1919,15 @@ function getColMap(sheet) {
 
     // Detect actual coordEnd by finding the last column from coordStart with an @-email header.
     // This handles sheets with more or fewer than the default 5 coordinator columns.
-    // Test, Inactive and SubOnly are all trailing flag columns after the coordinators —
-    // keep scanning past any of them instead of stopping, so a sheet with some already
-    // present still gets the others auto-detected/placed right after the last one.
+    // Test, Inactive, Sub Only and Secondary Email are all trailing columns after the
+    // coordinators — keep scanning past any of them instead of stopping, so a sheet
+    // with some already present still gets the others auto-detected/placed after the
+    // last one.
     var coordEnd = coordStart - 1; // default: none found
-    var testCol     = -1;
-    var inactiveCol = -1;
-    var subOnlyCol  = -1;
+    var testCol          = -1;
+    var inactiveCol       = -1;
+    var subOnlyCol        = -1;
+    var secondaryEmailCol = -1;
     for (var i = coordStart; i < hdr.length; i++) {
       var h = (hdr[i] || '').toString().trim().toLowerCase();
       if (h.indexOf('@') > 0) {
@@ -1878,28 +1938,33 @@ function getColMap(sheet) {
         inactiveCol = i;                      // Inactive column already exists
       } else if (h === 'sub only') {
         subOnlyCol = i;                       // Sub Only column already exists
+      } else if (h === 'secondary email') {
+        secondaryEmailCol = i;                // Secondary Email column already exists
       } else if (h) {
         break;                                // non-empty, unrecognized header — stop
       }
     }
     if (coordEnd < coordStart) coordEnd = hasPhone ? 10 : 9; // fallback to default 5-slot end
-    if (testCol === -1) testCol = coordEnd + 1;              // place Test right after last coordinator
-    if (inactiveCol === -1) inactiveCol = testCol + 1;       // place Inactive right after Test
-    if (subOnlyCol === -1) subOnlyCol = inactiveCol + 1;     // place Sub Only right after Inactive
+    if (testCol === -1) testCol = coordEnd + 1;                       // place Test right after last coordinator
+    if (inactiveCol === -1) inactiveCol = testCol + 1;                // place Inactive right after Test
+    if (subOnlyCol === -1) subOnlyCol = inactiveCol + 1;              // place Sub Only right after Inactive
+    if (secondaryEmailCol === -1) secondaryEmailCol = subOnlyCol + 1; // place Secondary Email right after Sub Only
 
     return hasPhone ? {
       name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
       coordStart: 6, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol, subOnlyCol: subOnlyCol,
-      totalCols: Math.min(subOnlyCol + 1, maxCols)
+      secondaryEmailCol: secondaryEmailCol, totalCols: Math.min(secondaryEmailCol + 1, maxCols)
     } : {
       name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
       coordStart: 5, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol, subOnlyCol: subOnlyCol,
-      totalCols: Math.min(subOnlyCol + 1, maxCols)
+      secondaryEmailCol: secondaryEmailCol, totalCols: Math.min(secondaryEmailCol + 1, maxCols)
     };
   } catch(e) {
-    // Safe fallback: classic layout with Test at column L, Inactive at M, Sub Only at N
+    // Safe fallback: classic layout with Test at L, Inactive at M, Sub Only at N,
+    // Secondary Email at O
     return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-             coordStart: 5, coordEnd: 9, testCol: 11, inactiveCol: 12, subOnlyCol: 13, totalCols: 14 };
+             coordStart: 5, coordEnd: 9, testCol: 11, inactiveCol: 12, subOnlyCol: 13,
+             secondaryEmailCol: 14, totalCols: 15 };
   }
 }
 
@@ -1981,6 +2046,10 @@ function getPlayersWithRatings() {
   // Auto-init Sub Only column header if missing
   if (rows.length > 0 && (rows[0].length <= col.subOnlyCol || !rows[0][col.subOnlyCol])) {
     sheet.getRange(1, col.subOnlyCol + 1).setValue('Sub Only');
+  }
+  // Auto-init Secondary Email column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.secondaryEmailCol || !rows[0][col.secondaryEmailCol])) {
+    sheet.getRange(1, col.secondaryEmailCol + 1).setValue('Secondary Email');
   }
   rows.shift();
   const seen = {};
@@ -2938,16 +3007,17 @@ function getPlayersForAdmin() {
   // Unlike getPlayers()/getPlayersWithRatings(), this deliberately does NOT filter
   // out Inactive players — the admin Manage Players panel needs to see everyone
   // to toggle Active/Inactive back and forth.
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(5, col.subOnlyCol + 1)).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(5, col.secondaryEmailCol + 1)).getValues();
   return rows.map(function(r, i) {
     return {
-      rowIndex: i + 2,
-      name:     r[col.name]  || '',
-      email:    (r[col.email] || '').toLowerCase(),
-      phone:    col.phone >= 0 ? (r[col.phone] || '') : '',
-      no8am:    r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE',
-      inactive: r[col.inactiveCol] === true || (r[col.inactiveCol] || '').toString().toUpperCase() === 'YES',
-      subOnly:  r[col.subOnlyCol] === true || (r[col.subOnlyCol] || '').toString().toUpperCase() === 'YES'
+      rowIndex:      i + 2,
+      name:          r[col.name]  || '',
+      email:         (r[col.email] || '').toLowerCase(),
+      phone:         col.phone >= 0 ? (r[col.phone] || '') : '',
+      no8am:         r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE',
+      inactive:      r[col.inactiveCol] === true || (r[col.inactiveCol] || '').toString().toUpperCase() === 'YES',
+      subOnly:       r[col.subOnlyCol] === true || (r[col.subOnlyCol] || '').toString().toUpperCase() === 'YES',
+      secondaryEmail: (r[col.secondaryEmailCol] || '').toString().trim()
     };
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
@@ -2976,34 +3046,53 @@ function addPlayer(params) {
   return { success: true };
 }
 
+// Reads a boolean flag cell as it's stored today (true or 'YES').
+function _readFlagCell(sheet, rowIndex, colIdx) {
+  var v = sheet.getRange(rowIndex, colIdx + 1).getValue();
+  return v === true || (v || '').toString().toUpperCase() === 'YES';
+}
+
+// name/email/phone are always supplied by every caller (Admin Manage Players,
+// Directory self-edit) and required outright. no8am/inactive/subOnly/
+// secondaryEmail are NOT sent by every caller — Directory's self-edit only ever
+// sends name/email/phone — so each one falls back to its EXISTING stored value
+// when the param is missing entirely, rather than being silently reset to
+// false/blank. A param that IS present (including an explicit empty string for
+// secondaryEmail, meaning "clear it") always wins.
 function updatePlayer(params) {
   var rowIndex = parseInt(params.rowIndex);
   var name     = (params.name  || '').trim();
   var email    = (params.email || '').toLowerCase().trim();
   var phone    = (params.phone || '').trim();
-  var no8am    = params.no8am    === 'true' || params.no8am    === true;
-  var inactive = params.inactive === 'true' || params.inactive === true;
-  var subOnly  = params.subOnly  === 'true' || params.subOnly  === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
   var col = getColMap(sheet);
+
   var oldEmail = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
-  var oldSubOnlyVal = sheet.getRange(rowIndex, col.subOnlyCol + 1).getValue();
-  var oldSubOnly = oldSubOnlyVal === true || (oldSubOnlyVal || '').toString().toUpperCase() === 'YES';
+  var oldSubOnly = _readFlagCell(sheet, rowIndex, col.subOnlyCol);
+  var oldSecondaryEmail = (sheet.getRange(rowIndex, col.secondaryEmailCol + 1).getValue() || '').toString().trim();
+
+  var no8am    = params.no8am    !== undefined ? (params.no8am    === 'true' || params.no8am    === true) : _readFlagCell(sheet, rowIndex, col.no8am);
+  var inactive = params.inactive !== undefined ? (params.inactive === 'true' || params.inactive === true) : _readFlagCell(sheet, rowIndex, col.inactiveCol);
+  var subOnly  = params.subOnly  !== undefined ? (params.subOnly  === 'true' || params.subOnly  === true) : oldSubOnly;
+  var secondaryEmail = params.secondaryEmail !== undefined ? params.secondaryEmail.trim() : oldSecondaryEmail;
+
   sheet.getRange(rowIndex, col.name  + 1).setValue(name);
   sheet.getRange(rowIndex, col.email + 1).setValue(email);
   if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
   sheet.getRange(rowIndex, col.inactiveCol + 1).setValue(inactive ? 'YES' : '');
   sheet.getRange(rowIndex, col.subOnlyCol + 1).setValue(subOnly ? 'YES' : '');
+  sheet.getRange(rowIndex, col.secondaryEmailCol + 1).setValue(secondaryEmail);
   // Header auto-inits from getPlayersWithRatings()'s own self-heal on the next read.
   sortPlayersSheet(sheet);
   if (oldEmail && oldEmail !== email) {
     try { propagateEmailChange({ oldEmail: oldEmail, newEmail: email }); }
     catch(e) { Logger.log('propagateEmailChange failed: ' + e.message); }
   }
+  if (secondaryEmail !== oldSecondaryEmail) _secondaryEmailMapCache = null; // invalidate this execution's cache
   // Sub Only controls who counts toward the normal-distribution rating calc — a
   // flag flip changes that pool, so ratings need to be recomputed immediately,
   // the same as saveCoordinatorRankings already does after a ranking edit.

@@ -1805,11 +1805,8 @@
         <input type="hidden" id="dir-email" />
         <div id="dir-profile-fields" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
           <input type="email" id="dir-profile-email" placeholder="Email" style="width:200px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;" />
+          <input type="email" id="dir-secondary-email" placeholder="Secondary email (optional)" style="width:200px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;" />
           <input type="tel" id="dir-phone" placeholder="Phone" style="width:130px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;" />
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
-            <input type="checkbox" id="dir-no8am" style="width:15px;height:15px;cursor:pointer;accent-color:#B8910A;">
-            No 8 am
-          </label>
           <button class="btn btn-secondary" onclick="dirSaveMyInfo()" id="dir-save-btn" style="font-size:13px;padding:4px 12px;">Save</button>
           <span id="dir-save-msg" style="font-size:12px;color:var(--success);display:none;">Saved!</span>
           <span id="dir-save-err" style="font-size:12px;color:var(--danger);display:none;"></span>
@@ -1968,6 +1965,8 @@
             <input type="text" id="mp-name" placeholder="Name"
               style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:120px;">
             <input type="email" id="mp-email" placeholder="Email"
+              style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:160px;">
+            <input type="email" id="mp-secondary-email" placeholder="Secondary email (optional)"
               style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:160px;">
             <input type="tel" id="mp-phone" placeholder="Phone"
               style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:130px;">
@@ -5001,6 +5000,7 @@ function mpSelectPlayer(email) {
   mpCurrentPlayer = p;
   document.getElementById('mp-name').value    = p.name;
   document.getElementById('mp-email').value   = p.email;
+  document.getElementById('mp-secondary-email').value = p.secondaryEmail || '';
   document.getElementById('mp-phone').value   = p.phone || '';
   document.getElementById('mp-no8am').checked   = !!p.no8am;
   document.getElementById('mp-active').checked  = !p.inactive;
@@ -5016,6 +5016,7 @@ function mpClear() {
   document.getElementById('mp-select').value    = '';
   document.getElementById('mp-name').value      = '';
   document.getElementById('mp-email').value     = '';
+  document.getElementById('mp-secondary-email').value = '';
   document.getElementById('mp-phone').value     = '';
   document.getElementById('mp-no8am').checked   = false;
   document.getElementById('mp-active').checked  = true;
@@ -5030,6 +5031,7 @@ function mpClear() {
 async function mpSave() {
   const name  = document.getElementById('mp-name').value.trim();
   const email = document.getElementById('mp-email').value.trim();
+  const secondaryEmail = document.getElementById('mp-secondary-email').value.trim();
   const phone = document.getElementById('mp-phone').value.trim();
   const no8am   = document.getElementById('mp-no8am').checked;
   const inactive = !document.getElementById('mp-active').checked;
@@ -5038,7 +5040,7 @@ async function mpSave() {
   try {
     let result;
     if (mpCurrentPlayer) {
-      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone, no8am, inactive, subOnly });
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, secondaryEmail, phone, no8am, inactive, subOnly });
     } else {
       result = await apiPost({ action: 'addPlayer', name, email, phone, no8am });
     }
@@ -6562,9 +6564,9 @@ async function dirLoadProfile(name, email) {
   const p = dirEnrichedPlayers.find(x => x.email === email.toLowerCase());
   if (!p) return;
   dirCurrentPlayer = p;
-  document.getElementById('dir-profile-email').value = p.email || '';
-  document.getElementById('dir-phone').value          = p.phone || '';
-  document.getElementById('dir-no8am').checked        = !!p.no8am;
+  document.getElementById('dir-profile-email').value     = p.email || '';
+  document.getElementById('dir-secondary-email').value   = p.secondaryEmail || '';
+  document.getElementById('dir-phone').value              = p.phone || '';
   document.getElementById('dir-save-msg').style.display = 'none';
   document.getElementById('dir-save-err').style.display = 'none';
   document.getElementById('dir-profile-fields').style.display = 'flex';
@@ -6576,8 +6578,8 @@ async function dirSaveMyInfo() {
   const msg   = document.getElementById('dir-save-msg');
   const err   = document.getElementById('dir-save-err');
   const email = document.getElementById('dir-profile-email').value.trim();
+  const secondaryEmail = document.getElementById('dir-secondary-email').value.trim();
   const phone = document.getElementById('dir-phone').value.trim();
-  const no8am = document.getElementById('dir-no8am').checked;
   const name  = document.getElementById('dir-selected-name').textContent.trim();
 
   msg.style.display = 'none';
@@ -6586,18 +6588,21 @@ async function dirSaveMyInfo() {
   btn.textContent = 'Saving…';
 
   try {
+    // no8am/inactive/subOnly are deliberately omitted — updatePlayer preserves
+    // whatever they already are when the param isn't sent, so a player editing
+    // their own contact info here can't accidentally clear an admin-set flag.
     const result = await apiPost({
       action: 'updatePlayer',
       rowIndex: dirCurrentPlayer.rowIndex,
       name,
       email,
-      phone,
-      no8am
+      secondaryEmail,
+      phone
     });
     if (result && result.success) {
       dirCurrentPlayer.email = email.toLowerCase();
+      dirCurrentPlayer.secondaryEmail = secondaryEmail;
       dirCurrentPlayer.phone = phone;
-      dirCurrentPlayer.no8am = no8am;
       document.getElementById('dir-email').value = email.toLowerCase();
       msg.style.display = '';
       setTimeout(() => { msg.style.display = 'none'; }, 3000);
