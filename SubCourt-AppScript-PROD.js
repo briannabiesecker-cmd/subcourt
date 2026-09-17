@@ -13,6 +13,32 @@ function authorizeApp() {
   Logger.log('authorizeApp: no-op. If you see this line, authorization succeeded.');
 }
 
+// Lists the files in the Rally Instructions Drive folder — name, view link, type,
+// last-modified — so the Instructions page can build its cards live instead of
+// from a hardcoded list. Returns [] on any failure (e.g. the drive.readonly scope
+// hasn't been re-authorized yet) rather than erroring the page.
+function getInstructionsFiles() {
+  try {
+    var folder = DriveApp.getFolderById(INSTRUCTIONS_FOLDER_ID);
+    var iter = folder.getFiles();
+    var out = [];
+    while (iter.hasNext()) {
+      var f = iter.next();
+      out.push({
+        name:     f.getName(),
+        url:      f.getUrl(),
+        mimeType: f.getMimeType(),
+        updated:  f.getLastUpdated().toISOString()
+      });
+    }
+    out.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    return out;
+  } catch(e) {
+    Logger.log('getInstructionsFiles failed: ' + e.message);
+    return [];
+  }
+}
+
 // Execution-level cache for getConfig() — resets between trigger/HTTP invocations.
 var _configCache = null;
 
@@ -30,6 +56,14 @@ var MATCH_TIME_NOTIFY_QUEUE_KEY  = 'matchTimeNotifyQueue';
 // deploy.sh replaces 'rally-tennis-prod.html' with 'rally-tennis-prod.html' when pushing to prod.
 const APP_BASE_URL  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html';
 const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbzb3EnQsxBt5dLTaQpg7VJjtoBtHTyGpB2VgpfJ9TDuvezk0ihjhn5oW48a9oKiIAyYMg/exec';
+
+// The "Rally Instructions" Drive folder (K:\My Drive\Rally Instructions) — the
+// Instructions page lists whatever's in here live, so adding/removing/renaming a
+// file there needs no code change. Requires the drive.readonly scope in
+// appsscript.json (added alongside this); after that scope is added, someone with
+// edit access to the Apps Script project must re-run/re-authorize once (e.g. the
+// authorizeApp() function below) before this will work.
+const INSTRUCTIONS_FOLDER_ID = '1UXeDixmjGS57l9j22UZEA7-uhNwsW_iN';
 
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
@@ -1689,6 +1723,7 @@ function doGet(e) {
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
     else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
+    else if (action === 'getInstructionsFiles')     result = getInstructionsFiles();
     else if (action === 'addPlayer')               result = addPlayer(e.parameter);
     else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
     else if (action === 'propagateEmailChange')    result = propagateEmailChange(e.parameter);
