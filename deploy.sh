@@ -20,6 +20,7 @@ fi
 
 echo "→ Deploying to PROD..."
 cp "$SCRIPT_DIR/SubCourt-AppScript-PROD.js" "$SCRIPT_DIR/clasp/prod/Code.js"
+cp "$SCRIPT_DIR/appsscript.json" "$SCRIPT_DIR/clasp/prod/appsscript.json"
 cd "$SCRIPT_DIR/clasp/prod"
 clasp push --force
 if [ -n "$DESCRIPTION" ]; then
