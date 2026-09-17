@@ -4354,6 +4354,22 @@ function runMatch(params) {
 //   Future Substitute Confirm (>2 days out): adds the Chelsea "Confirm #" instruction line.
 //   Urgent Substitute Confirm (<=2 days out): CCs MTC contacts if any are set, and swaps
 //   the Chelsea instruction line for a manual-update prompt.
+// The Sub Reminder re-send (isReminder=true) needs the live MatchGroups roster,
+// not the request's original groupPlayers snapshot — that snapshot lists whoever
+// was in the group when the sub request was FILED, before the sub swapped in and
+// the original requester dropped out, so it's the wrong 3 partners as of the
+// reminder. Matches by the confirmed sub's email actually being a member of a
+// group that day — unambiguous even when several groups share the same time slot.
+function _getCurrentGroupEmailsForMatch(matchDate, subEmail, players) {
+  var groups = getMatchGroupsForDate(matchDate);
+  var subLower = (subEmail || '').toLowerCase();
+  var group = groups.find(function(g) {
+    return g.players.some(function(p) { return p.email && p.email.toLowerCase() === subLower; });
+  });
+  if (!group) return null;
+  return group.players.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
+}
+
 function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   groupPlayers = groupPlayers || [];
   const players    = getPlayers();
@@ -4361,31 +4377,50 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
   const senderName = 'MWF Tennis League';
 
-  // To: requestor + sub   CC: group partners — always resolve against current Players sheet
   const resolvedRequestorEmail = _resolveEmail(data.requestorName, data.requestorEmail, players);
   const resolvedSubEmail       = _resolveEmail(data.subName,       data.subEmail,       players);
-  const toAddresses = [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean).join(', ');
-  const groupCcList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
-  // CC anyone who volunteered for this date/time slot when the match is tomorrow or the day after,
-  // so near-term volunteers see it's already filled.
-  var volunteerCcList = [];
-  if (_isTomorrowOrDayAfterTomorrow(data.matchDate)) {
-    volunteerCcList = _getVolunteerCcEmailsForMatch(data.matchDate, data.matchTime, players);
+
+  var toAddresses, ccList;
+
+  if (isReminder) {
+    // Only the 4 players currently scheduled in this group — not the original
+    // requester (already swapped out) and not every player with an unrelated
+    // open volunteer record for the same date/time.
+    var currentGroupEmails = _getCurrentGroupEmailsForMatch(data.matchDate, resolvedSubEmail, players);
+    toAddresses = (currentGroupEmails && currentGroupEmails.length)
+      ? currentGroupEmails.join(', ')
+      // Fall back to the old to/cc shape if the live group can't be found for
+      // some reason, rather than silently sending to nobody.
+      : [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean)
+          .concat(groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean))
+          .join(', ');
+    ccList = [];
+  } else {
+    // To: requestor + sub   CC: group partners — always resolve against current Players sheet
+    toAddresses = [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean).join(', ');
+    var groupCcList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
+    // CC anyone who volunteered for this date/time slot when the match is tomorrow or the day after,
+    // so near-term volunteers see it's already filled.
+    var volunteerCcList = [];
+    if (_isTomorrowOrDayAfterTomorrow(data.matchDate)) {
+      volunteerCcList = _getVolunteerCcEmailsForMatch(data.matchDate, data.matchTime, players);
+    }
+    ccList = groupCcList.concat(volunteerCcList);
   }
 
   var chelseaLine     = 'Make updates in Chelsea as required.';
   var chelseaLineHtml = 'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.';
-  var mtcCcList     = [];
   var extraLine     = null;
   var extraLineHtml = null;
 
   if (!isReminder) {
     if (_daysUntilMatch(data.matchDate) <= 2) {
       var config = getConfig();
-      mtcCcList = [config.mtcEmail1, config.mtcEmail2].filter(Boolean);
+      var mtcCcList = [config.mtcEmail1, config.mtcEmail2].filter(Boolean);
       if (mtcCcList.length) {
         chelseaLine     = 'MTC Admin: please update Chelsea per the information above';
         chelseaLineHtml = chelseaLine;
+        ccList = ccList.concat(mtcCcList);
       } else {
         chelseaLine     = 'Call MTC to change the player name in Chelsea';
         chelseaLineHtml = chelseaLine;
@@ -4396,10 +4431,9 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     }
   }
 
-  const ccList = groupCcList.concat(volunteerCcList).concat(mtcCcList).filter(function(email, index, arr) {
+  const ccAddresses = ccList.filter(function(email, index, arr) {
     return email && arr.map(function(item) { return String(item).toLowerCase(); }).indexOf(String(email).toLowerCase()) === index;
-  });
-  const ccAddresses = ccList.join(', ');
+  }).join(', ');
 
   const subject =
     (subjectPrefix || '') + 'MWF Tennis League — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
