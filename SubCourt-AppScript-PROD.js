@@ -72,6 +72,24 @@ function getAdminEmails() {
     .filter(function(e) { return e; });
 }
 
+// Lets admins know a new player joined the roster. This used to be part of
+// notifyGroupRosterChange (removed along with the unused Players Email Group —
+// Brevo replaced it for actual sending), but that bundled two different things:
+// a Google Group membership nudge (genuinely obsolete) and a heads-up that a
+// new player was added (still wanted, independent of the Group). This restores
+// just the latter, with no Group-related content.
+function _notifyAdminsOfNewPlayer(name, email) {
+  if (!isEmailEnabled()) return;
+  var admins = getAdminEmails();
+  if (!admins.length) return;
+  sendLeagueEmail({
+    to:      admins.join(', '),
+    subject: 'Rally — New player added: ' + name,
+    body:    name + ' <' + email + '> was just added to the Players list.',
+    name:    'MWF Tennis League'
+  });
+}
+
 function sendBrevoEmail(params) {
   // params: { apiKey, recipients: [{email, name}], cc, bcc, subject, htmlContent, textContent, attachments, replyTo: {email, name} }
   var payload = {
@@ -3043,6 +3061,8 @@ function addPlayer(params) {
     : [name, email, '', no8am, false];          // classic:    name,email,rating,no8am,isAdmin
   sheet.appendRow(newRow);
   sortPlayersSheet(sheet);
+  try { _notifyAdminsOfNewPlayer(name, email); }
+  catch(e) { Logger.log('_notifyAdminsOfNewPlayer failed: ' + e.message); }
   return { success: true };
 }
 
