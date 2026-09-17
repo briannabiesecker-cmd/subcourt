@@ -114,13 +114,35 @@ function getAdminEmails() {
 // just the latter, with no Group-related content.
 function _notifyAdminsOfNewPlayer(name, email) {
   if (!isEmailEnabled()) return;
-  var admins = getAdminEmails();
-  if (!admins.length) return;
+  var toList = getAdminEmails().slice();
+  var emailLower = (email || '').toLowerCase();
+  if (email && toList.map(function(e) { return e.toLowerCase(); }).indexOf(emailLower) === -1) {
+    toList.push(email);
+  }
+  if (!toList.length) return;
+
+  var chelseaWelcomeUrl = 'https://midlothian.chelseareservations.com/tennis/TNWelcome2.aspx';
+
+  var body =
+    name + ', Welcome to the MWF Tennis League. Match rosters are assigned by Rally. ' +
+    'Court times are assigned by Chelsea. In Rally, you can click on the \'Instructions\' tab ' +
+    'for more information showing how Rally works.\n\n' +
+    'Admins, ' + name + ' has been added to the Player List.';
+
+  var htmlBody =
+    name + ', Welcome to the MWF Tennis League. Match rosters are assigned by ' +
+    '<a href="' + APP_BASE_URL + '">Rally</a>. Court times are assigned by ' +
+    '<a href="' + chelseaWelcomeUrl + '">Chelsea</a>. In <a href="' + APP_BASE_URL + '">Rally</a>, ' +
+    'you can click on the \'Instructions\' tab for more information showing how ' +
+    '<a href="' + APP_BASE_URL + '">Rally</a> works.<br><br>' +
+    'Admins, ' + name + ' has been added to the Player List.';
+
   sendLeagueEmail({
-    to:      admins.join(', '),
-    subject: 'Rally — New player added: ' + name,
-    body:    name + ' <' + email + '> was just added to the Players list.',
-    name:    'MWF Tennis League'
+    to:       toList.join(', '),
+    subject:  'Rally — New player added: ' + name,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     'MWF Tennis League'
   });
 }
 
