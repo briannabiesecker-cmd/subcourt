@@ -1973,16 +1973,12 @@
           </div>
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
-              <input type="checkbox" id="mp-no8am" style="width:15px;height:15px;cursor:pointer;">
-              No 8am
-            </label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;" title="Uncheck to pause this player — hides them from name pickers, the scheduler, and all automated emails, without losing their history. Check to bring them back.">
               <input type="checkbox" id="mp-active" checked style="width:15px;height:15px;cursor:pointer;">
-              Active
+              Active <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="An inactive player will still be in Rally but will receive no emails.">ⓘ</span>
             </label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;" title="Sub-only players are excluded from the normal-distribution rating calculation. Their rating instead copies whichever regular player's rank is closest to theirs.">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
               <input type="checkbox" id="mp-subonly" style="width:15px;height:15px;cursor:pointer;">
-              Sub Only
+              Sub Only <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="A Sub Only player must still be ranked, but their ranking will not skew the normal distribution of the group's ratings.">ⓘ</span>
             </label>
             <button class="btn btn-clay btn-sm" onclick="mpSave()">Save</button>
             <button class="btn btn-sm" id="mp-delete-btn"
@@ -5002,7 +4998,6 @@ function mpSelectPlayer(email) {
   document.getElementById('mp-email').value   = p.email;
   document.getElementById('mp-secondary-email').value = p.secondaryEmail || '';
   document.getElementById('mp-phone').value   = p.phone || '';
-  document.getElementById('mp-no8am').checked   = !!p.no8am;
   document.getElementById('mp-active').checked  = !p.inactive;
   document.getElementById('mp-subonly').checked = !!p.subOnly;
   const delBtn = document.getElementById('mp-delete-btn');
@@ -5018,7 +5013,6 @@ function mpClear() {
   document.getElementById('mp-email').value     = '';
   document.getElementById('mp-secondary-email').value = '';
   document.getElementById('mp-phone').value     = '';
-  document.getElementById('mp-no8am').checked   = false;
   document.getElementById('mp-active').checked  = true;
   document.getElementById('mp-subonly').checked = false;
   const delBtn = document.getElementById('mp-delete-btn');
@@ -5033,19 +5027,19 @@ async function mpSave() {
   const email = document.getElementById('mp-email').value.trim();
   const secondaryEmail = document.getElementById('mp-secondary-email').value.trim();
   const phone = document.getElementById('mp-phone').value.trim();
-  const no8am   = document.getElementById('mp-no8am').checked;
   const inactive = !document.getElementById('mp-active').checked;
   const subOnly  = document.getElementById('mp-subonly').checked;
   if (!name || !email) { showAlert('manage-players-alert', 'error', 'Name and email are required.'); return; }
+  const isNewPlayer = !mpCurrentPlayer;
   try {
     let result;
     if (mpCurrentPlayer) {
-      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, secondaryEmail, phone, no8am, inactive, subOnly });
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, secondaryEmail, phone, inactive, subOnly });
     } else {
-      result = await apiPost({ action: 'addPlayer', name, email, phone, no8am });
+      result = await apiPost({ action: 'addPlayer', name, email, phone });
     }
     if (!result.success) throw new Error(result.error || 'Failed');
-    showAlert('manage-players-alert', 'success', mpCurrentPlayer ? 'Player updated.' : 'Player added.');
+    showAlert('manage-players-alert', 'success', isNewPlayer ? "New player saved. Now set the player's rank below." : 'Player updated.');
     await loadManagePlayers();
     // Re-select if editing so the form stays populated
     if (email) {
