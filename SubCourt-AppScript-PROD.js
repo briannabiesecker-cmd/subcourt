@@ -2034,10 +2034,10 @@ function getColMap(sheet) {
         testCol = i;                          // Test column already exists
       } else if (h === 'inactive') {
         inactiveCol = i;                      // Inactive column already exists
-      } else if (h === 'sub only') {
-        subOnlyCol = i;                       // Sub Only column already exists
-      } else if (h === 'secondary email') {
-        secondaryEmailCol = i;                // Secondary Email column already exists
+      } else if (h === 'sub only' || h === 'subonly') {
+        subOnlyCol = i;                       // Sub Only column already exists (or its shortened rename)
+      } else if (h === 'secondary email' || h === 'second email') {
+        secondaryEmailCol = i;                // Secondary Email column already exists (or its shortened rename)
       } else if (h === 'duplicate email') {
         duplicateEmailCol = i;                // Duplicate Email column already exists
       } else if (h) {
