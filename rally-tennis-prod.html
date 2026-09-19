@@ -1980,6 +1980,10 @@
               <input type="checkbox" id="mp-subonly" style="width:15px;height:15px;cursor:pointer;">
               Sub Only <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="A Sub Only player must still be ranked, but their ranking will not skew the normal distribution of the group's ratings.">ⓘ</span>
             </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
+              <input type="checkbox" id="mp-dupemail" style="width:15px;height:15px;cursor:pointer;">
+              Duplicate email <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="Turn this on if a player has a Comcast address or indicates they are not receiving emails.">ⓘ</span>
+            </label>
             <button class="btn btn-clay btn-sm" onclick="mpSave()">Save</button>
             <button class="btn btn-sm" id="mp-delete-btn"
               style="background:#FEECEC;color:#A32D2D;border:1px solid #FCBABA;opacity:0.4;cursor:not-allowed;font-size:12px;padding:4px 10px;"
@@ -5000,6 +5004,7 @@ function mpSelectPlayer(email) {
   document.getElementById('mp-phone').value   = p.phone || '';
   document.getElementById('mp-active').checked  = !p.inactive;
   document.getElementById('mp-subonly').checked = !!p.subOnly;
+  document.getElementById('mp-dupemail').checked = !!p.duplicateEmail;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = false;
   delBtn.style.opacity = '1';
@@ -5015,6 +5020,7 @@ function mpClear() {
   document.getElementById('mp-phone').value     = '';
   document.getElementById('mp-active').checked  = true;
   document.getElementById('mp-subonly').checked = false;
+  document.getElementById('mp-dupemail').checked = false;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = true;
   delBtn.style.opacity = '0.4';
@@ -5029,12 +5035,13 @@ async function mpSave() {
   const phone = document.getElementById('mp-phone').value.trim();
   const inactive = !document.getElementById('mp-active').checked;
   const subOnly  = document.getElementById('mp-subonly').checked;
+  const duplicateEmail = document.getElementById('mp-dupemail').checked;
   if (!name || !email) { showAlert('manage-players-alert', 'error', 'Name and email are required.'); return; }
   const isNewPlayer = !mpCurrentPlayer;
   try {
     let result;
     if (mpCurrentPlayer) {
-      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, secondaryEmail, phone, inactive, subOnly });
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, secondaryEmail, phone, inactive, subOnly, duplicateEmail });
     } else {
       result = await apiPost({ action: 'addPlayer', name, email, phone });
     }
