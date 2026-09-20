@@ -4552,41 +4552,60 @@ function runMatch(params) {
 //   Future Substitute Confirm (>2 days out): adds the Chelsea "Confirm #" instruction line.
 //   Urgent Substitute Confirm (<=2 days out): CCs MTC contacts if any are set, and swaps
 //   the Chelsea instruction line for a manual-update prompt.
-// The Sub Reminder re-send (isReminder=true) needs the live MatchGroups roster,
-// not the request's original groupPlayers snapshot — that snapshot lists whoever
-// was in the group when the sub request was FILED, before the sub swapped in and
-// the original requester dropped out, so it's the wrong 3 partners as of the
-// reminder. Matches by the confirmed sub's email actually being a member of a
-// group that day — unambiguous even when several groups share the same time slot.
-function _getCurrentGroupEmailsForMatch(matchDate, subEmail, players) {
+// The Sub Reminder re-send (isReminder=true) needs the live MatchGroups roster
+// and the live court time — not the request's original groupPlayers snapshot
+// (stale once the sub swaps in and the original requester drops out) or its own
+// matchTime column, which only ever gets synced while the request is still
+// 'open' (see _syncGroupTimeToOpenRequests) — so a request that was TBD when
+// filled stays TBD in SubRequests forever, even once Chelsea assigns a real
+// time. Matches by the confirmed sub's email actually being a member of a
+// group that day — unambiguous even when several groups share the same time
+// slot. Returns null if no matching group is found.
+function _getCurrentGroupInfoForMatch(matchDate, subEmail, players) {
   var groups = getMatchGroupsForDate(matchDate);
   var subLower = (subEmail || '').toLowerCase();
   var group = groups.find(function(g) {
     return g.players.some(function(p) { return p.email && p.email.toLowerCase() === subLower; });
   });
   if (!group) return null;
-  return group.players.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
+  var resolved = group.players
+    .map(function(p) { return { name: p.name, email: _resolveEmail(p.name, p.email, players) }; })
+    .filter(function(p) { return p.email; });
+  if (!resolved.length) return null;
+  return {
+    emails: resolved.map(function(p) { return p.email; }),
+    names:  resolved.map(function(p) { return p.name; }),
+    time:   group.time || ''
+  };
+}
+
+// "A and B" for 2, "A, B, and C" for 3+, the name itself for 1.
+function _joinWithAnd(list) {
+  if (!list.length) return '';
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return list[0] + ' and ' + list[1];
+  return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1];
 }
 
 function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   groupPlayers = groupPlayers || [];
   const players    = getPlayers();
   const dateStr    = formatDate(data.matchDate);
-  const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
   const senderName = 'MWF Tennis League';
 
   const resolvedRequestorEmail = _resolveEmail(data.requestorName, data.requestorEmail, players);
   const resolvedSubEmail       = _resolveEmail(data.subName,       data.subEmail,       players);
 
   var toAddresses, ccList;
+  var currentGroupInfo = null;
 
   if (isReminder) {
     // Only the 4 players currently scheduled in this group — not the original
     // requester (already swapped out) and not every player with an unrelated
     // open volunteer record for the same date/time.
-    var currentGroupEmails = _getCurrentGroupEmailsForMatch(data.matchDate, resolvedSubEmail, players);
-    toAddresses = (currentGroupEmails && currentGroupEmails.length)
-      ? currentGroupEmails.join(', ')
+    currentGroupInfo = _getCurrentGroupInfoForMatch(data.matchDate, resolvedSubEmail, players);
+    toAddresses = (currentGroupInfo && currentGroupInfo.emails.length)
+      ? currentGroupInfo.emails.join(', ')
       // Fall back to the old to/cc shape if the live group can't be found for
       // some reason, rather than silently sending to nobody.
       : [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean)
@@ -4606,10 +4625,27 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     ccList = groupCcList.concat(volunteerCcList);
   }
 
-  var chelseaLine     = 'Make updates in Chelsea as required.';
-  var chelseaLineHtml = 'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.';
+  // For the reminder, prefer the live court time from the matched group over
+  // data.matchTime — that column only gets synced while the request is still
+  // 'open' (see _syncGroupTimeToOpenRequests), so it's stuck at blank/TBD
+  // forever on a request that was TBD when filled, even after Chelsea assigns
+  // a real time. That's exactly the case the reminder needs to correct.
+  const timeStr = (isReminder && currentGroupInfo && currentGroupInfo.time)
+    ? (TIME_LABELS[currentGroupInfo.time] || currentGroupInfo.time)
+    : (data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD');
+
+  var chelseaLine, chelseaLineHtml;
   var extraLine     = null;
   var extraLineHtml = null;
+
+  if (isReminder && currentGroupInfo && currentGroupInfo.names.length) {
+    var fourPlayersLine = 'The four players are ' + _joinWithAnd(currentGroupInfo.names);
+    chelseaLine     = fourPlayersLine;
+    chelseaLineHtml = fourPlayersLine;
+  } else {
+    chelseaLine     = 'Make updates in Chelsea as required.';
+    chelseaLineHtml = 'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.';
+  }
 
   if (!isReminder) {
     if (_daysUntilMatch(data.matchDate) <= 2) {
@@ -4674,7 +4710,14 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
 
 // Runs daily at 3:00 AM ET (see setupSubReminderTrigger). Only does anything on
 // Sun/Tue/Thu — the night before a Mon/Wed/Fri match day — when it re-sends the
-// dispatch confirmation email for every filled request on the next match date.
+// dispatch confirmation email for every filled request on the next match date
+// whose matchTime is still blank/TBD. A request that already had a real time
+// when it was filled had a complete confirmation email the first time — the
+// reminder's whole purpose is to tell everyone the court time that wasn't
+// known yet at fill time (see _syncGroupTimeToOpenRequests: matchTime only
+// ever syncs onto 'open' requests, so a request that was TBD when filled
+// stays TBD in SubRequests forever, even once Chelsea assigns a real time —
+// sendConfirmationEmails looks that real time up live instead).
 function runSubReminder() {
   var tz  = Session.getScriptTimeZone();
   var now = new Date();
@@ -4690,6 +4733,7 @@ function runSubReminder() {
     if (req.status !== 'filled') return;
     if (req.matchDate !== tomorrowStr) return;
     if (!req.assignedSub) return;
+    if (req.matchTime) return; // already had a real time when filled — no new info to send
 
     var subPlayer = players.find(function(p) { return p.email && p.email.toLowerCase() === req.assignedSub.toLowerCase(); });
     var data = {
