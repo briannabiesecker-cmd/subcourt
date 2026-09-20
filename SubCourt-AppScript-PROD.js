@@ -723,9 +723,71 @@ function _restrictToDuplicateEmailRecipients(params) {
   return p;
 }
 
+// Lowercased-email -> true for every Inactive player, keyed by BOTH their
+// primary and Secondary Email (so a secondary alias doesn't slip through
+// suppression). Cached per script execution, same pattern as
+// _getDuplicateEmailSet. Inactive is purely an email-suppression flag — see
+// sendLeagueEmail/_suppressInactiveRecipients — not a pause on scheduling,
+// picking, or being matched as a substitute (see getPlayers/getPlayersWithRatings).
+var _inactiveEmailSetCache = null;
+function _getInactiveEmailSet() {
+  if (_inactiveEmailSetCache) return _inactiveEmailSetCache;
+  var set = {};
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+    if (sheet && sheet.getLastRow() >= 2) {
+      var col     = getColMap(sheet);
+      var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+      var rows    = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+      rows.forEach(function(r) {
+        var flag = r[col.inactiveCol];
+        var isInactive = flag === true || (flag || '').toString().toUpperCase() === 'YES';
+        if (!isInactive) return;
+        var primary   = (r[col.email] || '').toString().toLowerCase().trim();
+        var secondary = (r[col.secondaryEmailCol] || '').toString().toLowerCase().trim();
+        if (primary)   set[primary] = true;
+        if (secondary) set[secondary] = true;
+      });
+    }
+  } catch(e) {
+    Logger.log('_getInactiveEmailSet failed: ' + e.message);
+  }
+  _inactiveEmailSetCache = set;
+  return set;
+}
+
+// Drops Inactive-player addresses out of an email's to/cc/bcc. Returns the
+// filtered params, or null if every recipient was suppressed (caller should
+// skip the send entirely rather than call Brevo/MailApp with nothing to send).
+function _suppressInactiveRecipients(params) {
+  var inactiveSet = _getInactiveEmailSet();
+  if (!inactiveSet || !Object.keys(inactiveSet).length) return params;
+
+  var keep    = function(a) { return !inactiveSet[a.toLowerCase()]; };
+  var toList  = _splitAddrList(params.to).filter(keep);
+  var ccList  = _splitAddrList(params.cc).filter(keep);
+  var bccList = _splitAddrList(params.bcc).filter(keep);
+  if (!toList.length && !ccList.length && !bccList.length) return null;
+
+  if (!toList.length) toList = bccList.length ? [bccList.shift()] : (ccList.length ? [ccList.shift()] : []);
+  if (!toList.length) return null; // nothing left to address "to" at all
+
+  var p = {};
+  for (var k in params) p[k] = params[k];
+  p.to  = toList.join(', ');
+  p.cc  = ccList.length  ? ccList.join(', ')  : undefined;
+  p.bcc = bccList.length ? bccList.join(', ') : undefined;
+  return p;
+}
+
 // Unified email sender for every real Rally email — routes through Brevo when
 // configured (own quota, unaffected by MailApp's), falling back to MailApp for
 // everyone if Brevo isn't configured or fails outright.
+//
+// Inactive players (Admin Player Profile toggle) are suppressed from every
+// email's recipients by default — pass allowInactiveRecipients: true (as
+// sendConfirmationEmails does) for the email types that should still reach
+// them regardless, like a sub confirmation for their own request.
 //
 // Duplicate Email players (Admin Player Profile toggle) additionally get a
 // second copy via MailApp on top of the Brevo send — a manually-controlled
@@ -743,6 +805,15 @@ function sendLeagueEmail(params) {
     if (params.cc)  expanded.cc  = _expandSecondaryEmails(params.cc);
     if (params.bcc) expanded.bcc = _expandSecondaryEmails(params.bcc);
     params = expanded;
+  }
+
+  if (!params.allowInactiveRecipients) {
+    var subjectForLog = params.subject || '';
+    params = _suppressInactiveRecipients(params);
+    if (!params) {
+      Logger.log('Skipping email — every recipient is Inactive: ' + subjectForLog);
+      return;
+    }
   }
 
   var props = PropertiesService.getScriptProperties();
@@ -2081,12 +2152,11 @@ function _resolveEmail(name, storedEmail, players) {
   return (match && match.email) ? match.email : (storedEmail || '');
 }
 
-// Excludes Inactive players — this is the general "pickable player" list behind
-// typeahead, Directory, availability/scheduler broadcasts, and dispatch lookups,
-// so pausing someone here is what actually stops new picks and mass emails from
-// reaching them. Existing records that already have their email baked in (an open
-// request, a groupPlayers snapshot) are unaffected — _resolveEmail falls back to
-// the stored email when a player isn't found in this list.
+// The general "pickable player" list behind typeahead, Directory, the scheduler,
+// and dispatch lookups. Deliberately does NOT filter by Inactive — Inactive is
+// purely an email-suppression flag (see sendLeagueEmail/_getInactiveEmailSet),
+// not a pause on scheduling, picking, or being matched as a sub. An inactive
+// player is otherwise a completely normal player.
 function getPlayers() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet) return [];
@@ -2095,7 +2165,6 @@ function getPlayers() {
   if (rows.length < 2) return [];
   rows.shift(); // remove header
   return rows
-    .filter(r => !(r[col.inactiveCol] === true || String(r[col.inactiveCol] || '').toUpperCase() === 'YES'))
     .map(r => ({
       name:    r[col.name]  || '',
       email:   (r[col.email] || '').toLowerCase(),
@@ -2173,8 +2242,10 @@ function getPlayersWithRatings() {
   const seen = {};
   return rows.reduce(function(acc, r) {
     const email = (r[col.email] || '').toLowerCase();
-    const inactive = r[col.inactiveCol] === true || String(r[col.inactiveCol] || '').toUpperCase() === 'YES';
-    if (inactive) return acc; // paused — excluded from scheduling, ratings tools, and broadcasts
+    // Inactive is NOT filtered here — it's purely an email-suppression flag
+    // (see sendLeagueEmail/_getInactiveEmailSet), not a pause on being scheduled,
+    // rated, or matched as a substitute. An inactive player's own open requests
+    // still need to be processed by Dispatch like anyone else's.
     if (email && !seen[email]) {
       seen[email] = true;
       acc.push({
@@ -3219,6 +3290,7 @@ function updatePlayer(params) {
   }
   if (secondaryEmail !== oldSecondaryEmail) _secondaryEmailMapCache = null; // invalidate this execution's cache
   _duplicateEmailSetCache = null; // invalidate this execution's cache regardless — cheap either way
+  _inactiveEmailSetCache  = null; // same — cheap to invalidate unconditionally
   // Sub Only controls who counts toward the normal-distribution rating calc — a
   // flag flip changes that pool, so ratings need to be recomputed immediately,
   // the same as saveCoordinatorRankings already does after a ranking edit.
@@ -4588,7 +4660,12 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     subject:  subject,
     body:     body,
     htmlBody: htmlBody,
-    name:     senderName
+    name:     senderName,
+    // Sub confirmations (and their night-before reminder) are directly
+    // actionable for anyone on them — an Inactive requester/sub/groupmate
+    // still needs to know their match is covered, so this reaches them
+    // regardless of the usual Inactive email suppression.
+    allowInactiveRecipients: true
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
