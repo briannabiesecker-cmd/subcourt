@@ -5095,7 +5095,9 @@ function sendRetirementEmail(req) {
     'MWF Tennis League';
   var groupPlayers = req.groupPlayers || [];
   var ccList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
-  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  // Telling the requester their own request went unfilled is directly actionable
+  // for them even while Inactive — same exemption as sendConfirmationEmails.
+  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League', allowInactiveRecipients: true };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) sendLeagueEmail(emailParams);
 }
@@ -5143,7 +5145,10 @@ function sendSubNeededTomorrowEmail(req) {
   var ccList = ccPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(function(e) {
     return e && !/^anita\.sub\d+@xgmail\.com$/i.test(e);
   });
-  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  // Telling the requester (or captain) their own request went unfilled is
+  // directly actionable even while Inactive — same exemption as
+  // sendConfirmationEmails.
+  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League', allowInactiveRecipients: true };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   sendLeagueEmail(emailParams);
 }
