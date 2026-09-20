@@ -2152,11 +2152,18 @@ function _resolveEmail(name, storedEmail, players) {
   return (match && match.email) ? match.email : (storedEmail || '');
 }
 
-// The general "pickable player" list behind typeahead, Directory, the scheduler,
-// and dispatch lookups. Deliberately does NOT filter by Inactive — Inactive is
-// purely an email-suppression flag (see sendLeagueEmail/_getInactiveEmailSet),
-// not a pause on scheduling, picking, or being matched as a sub. An inactive
-// player is otherwise a completely normal player.
+// The general "pickable player" list behind typeahead, Directory, and identity
+// selection — excludes Inactive players, since an inactive player shouldn't be
+// performing new Rally transactions (submitting availability, requesting a sub,
+// volunteering, picking themselves in Directory, etc.) while paused.
+//
+// This is deliberately a DIFFERENT accessor from getPlayersWithRatings(), which
+// stays fully inclusive of Inactive players — that's what the scheduler and
+// Dispatch's matching (runMatch) actually use, so an inactive player's own
+// already-open requests, and being matched in as a substitute, still work
+// normally. Existing records that already have their email baked in (an open
+// request, a groupPlayers snapshot) are unaffected either way — _resolveEmail
+// falls back to the stored email when a player isn't found in this list.
 function getPlayers() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet) return [];
@@ -2165,6 +2172,7 @@ function getPlayers() {
   if (rows.length < 2) return [];
   rows.shift(); // remove header
   return rows
+    .filter(r => !(r[col.inactiveCol] === true || String(r[col.inactiveCol] || '').toUpperCase() === 'YES'))
     .map(r => ({
       name:    r[col.name]  || '',
       email:   (r[col.email] || '').toLowerCase(),
@@ -3264,6 +3272,7 @@ function updatePlayer(params) {
 
   var oldEmail = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
   var oldSubOnly = _readFlagCell(sheet, rowIndex, col.subOnlyCol);
+  var oldInactive = _readFlagCell(sheet, rowIndex, col.inactiveCol);
   var oldSecondaryEmail = (sheet.getRange(rowIndex, col.secondaryEmailCol + 1).getValue() || '').toString().trim();
 
   var no8am    = params.no8am    !== undefined ? (params.no8am    === 'true' || params.no8am    === true) : _readFlagCell(sheet, rowIndex, col.no8am);
@@ -3298,7 +3307,84 @@ function updatePlayer(params) {
     try { _recomputeAllPlayerRatingsFromRankings(); }
     catch(e) { Logger.log('_recomputeAllPlayerRatingsFromRankings failed after Sub Only toggle: ' + e.message); }
   }
+  // Newly Inactive — they shouldn't be performing new Rally transactions
+  // (they're now excluded from getPlayers()'s pickers), so make sure every
+  // match they're still scheduled to play already has a sub request open,
+  // rather than leaving it to them to remember to submit one.
+  if (inactive && !oldInactive) {
+    try { _autoCreateSubRequestsForInactivePlayer(name, email); }
+    catch(e) { Logger.log('_autoCreateSubRequestsForInactivePlayer failed: ' + e.message); }
+  }
   return { success: true };
+}
+
+// See updatePlayer's inactive-flip handler above. Scans every future MatchGroups
+// row this player is still listed in and, for any date they don't already have
+// a request on file for (any status — never create a second one), opens a new
+// sub request so Dispatch can start looking for a substitute right away. Mirrors
+// submitRequest's row shape exactly (see also the 3-player-group auto-Anita
+// request, which follows the same pattern).
+function _autoCreateSubRequestsForInactivePlayer(name, email) {
+  var emailLower = (email || '').toLowerCase().trim();
+  if (!emailLower) return 0;
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var mgSheet = ss.getSheetByName(TABS.matchGroups);
+  if (!mgSheet || mgSheet.getLastRow() < 2) return 0;
+
+  var todayStr = getDateStr(0);
+  var rows = mgSheet.getRange(2, 1, mgSheet.getLastRow() - 1, 17).getValues();
+  var existing = getRequests();
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  var created = 0;
+
+  rows.forEach(function(r) {
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (!rowDate || rowDate < todayStr) return;
+    var letter = r[3] ? r[3].toString().trim() : '';
+    if (!letter) return;
+
+    var players = [];
+    var isMember = false;
+    for (var pi = 0; pi < 4; pi++) {
+      var nm = r[4 + pi * 2] ? r[4 + pi * 2].toString().trim() : '';
+      var em = r[5 + pi * 2] ? r[5 + pi * 2].toString().trim() : '';
+      if (!nm) continue;
+      players.push({ name: nm, email: em });
+      if (em.toLowerCase() === emailLower) isMember = true;
+    }
+    if (!isMember) return;
+
+    var alreadyRequested = existing.some(function(er) {
+      return (er.email || '').toLowerCase() === emailLower && er.matchDate === rowDate;
+    });
+    if (alreadyRequested) return;
+
+    var otherPlayers = players.filter(function(p) { return p.email.toLowerCase() !== emailLower; });
+    var groupTime = r[16] ? r[16].toString().trim() : '';
+    var knownTime = (groupTime && groupTime !== 'Overflow') ? groupTime : '';
+
+    reqSheet.appendRow([
+      uid(), nowEasternISO(), name, email, rowDate, knownTime, 'open', '',
+      JSON.stringify(otherPlayers)
+    ]);
+    var lastRow = reqSheet.getLastRow();
+    reqSheet.getRange(lastRow, 5).setNumberFormat('@');
+    reqSheet.getRange(lastRow, 6).setNumberFormat('@');
+    reqSheet.getRange(lastRow, 9).setNumberFormat('@');
+    _setGroupLetterOnRequestRow(reqSheet, lastRow, letter);
+    _flagNo8amOnRequestRow(reqSheet, lastRow, [email].concat(otherPlayers.map(function(p) { return p.email; })));
+    created++;
+
+    // Keep the dedup list current in case this player somehow appears in more
+    // than one group/date within this same pass.
+    existing.push({ email: emailLower, matchDate: rowDate });
+  });
+
+  if (created) Logger.log('_autoCreateSubRequestsForInactivePlayer: created ' + created + ' request(s) for ' + email);
+  return created;
 }
 
 // Keeps open SubRequests and pending Volunteers records pointing at a player's current
