@@ -6737,6 +6737,20 @@ async function renderPublishedSchedule(filterEmail, filterName) {
   const mineOnlyToggle = document.getElementById('sch-mine-only');
   const mineOnly = mineOnlyToggle ? mineOnlyToggle.checked : true;
 
+  // Needed regardless of the "mine only" toggle — an Alternate whose own
+  // Volunteer to Sub record has already been matched (they subbed in
+  // somewhere else that day) shouldn't still be listed as available below.
+  let filledVolunteerKeys = new Set(); // `${date}|${emailLower}`
+  let allVolunteers = [];
+  try {
+    allVolunteers = await getVolunteers();
+    allVolunteers.forEach(v => {
+      if (v.status === 'matched' && v.email) {
+        filledVolunteerKeys.add(v.date + '|' + v.email.toLowerCase());
+      }
+    });
+  } catch(e) {}
+
   let dates = publishedSchedule.dates.filter(d => d.date >= todayStr);
   if (mineOnly && (filterEmailLower || filterNameLower)) {
     dates = dates.map(d => {
@@ -6753,15 +6767,12 @@ async function renderPublishedSchedule(filterEmail, filterName) {
     // for — a separate thing from being scheduled to play, so it's marked
     // distinctly below rather than folded into the match-group rows.
     let myVolunteerDates = {}; // date -> times[]
-    try {
-      const allVolunteers = await getVolunteers();
-      allVolunteers.forEach(v => {
-        if (v.status !== 'pending' || v.date < todayStr) return;
-        const isMe = (filterEmailLower && v.email && v.email.toLowerCase() === filterEmailLower) ||
-                     (filterNameLower  && v.name  && v.name.toLowerCase()  === filterNameLower);
-        if (isMe) myVolunteerDates[v.date] = v.times || [];
-      });
-    } catch(e) {}
+    allVolunteers.forEach(v => {
+      if (v.status !== 'pending' || v.date < todayStr) return;
+      const isMe = (filterEmailLower && v.email && v.email.toLowerCase() === filterEmailLower) ||
+                   (filterNameLower  && v.name  && v.name.toLowerCase()  === filterNameLower);
+      if (isMe) myVolunteerDates[v.date] = v.times || [];
+    });
 
     const dateMap = new Map(dates.map(d => [d.date, d]));
     Object.keys(myVolunteerDates).forEach(date => {
@@ -6818,8 +6829,12 @@ async function renderPublishedSchedule(filterEmail, filterName) {
     const _dow    = _dt.toLocaleDateString('en-US', { weekday: 'short' });
     const _mdd    = _dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const dateStr = `${_dow}<br><span style="font-size:12px;color:var(--ink-mid);">${_mdd}</span>`;
-    if (d.groups[0] && d.groups[0].sitOut)  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
-    if (d.groups[0] && d.groups[0].sitOut2) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
+    // Skip an alternate whose own Volunteer to Sub record for this date has
+    // already been matched — they've subbed in somewhere else that day, so
+    // they're no longer actually available and shouldn't still be listed here.
+    const altFilled = (p) => !!(p && p.email && filledVolunteerKeys.has(d.date + '|' + p.email.toLowerCase()));
+    if (d.groups[0] && d.groups[0].sitOut  && !altFilled(d.groups[0].sitOut))  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
+    if (d.groups[0] && d.groups[0].sitOut2 && !altFilled(d.groups[0].sitOut2)) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
     const hasVolunteerRow = !!(d.volunteerTimes && d.volunteerTimes.length);
     const rowSpan = d.groups.length + (hasVolunteerRow ? 1 : 0);
     let dateCellWritten = false;
