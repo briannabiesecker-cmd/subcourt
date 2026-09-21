@@ -7994,6 +7994,27 @@ function publishScheduleSlot(params) {
   var rSheet        = null;
   var anitaBase     = -1; // count of existing Anita players (loaded once, then incremented)
 
+  // A player scheduled to play their own match this date may have separately
+  // volunteered to sub elsewhere on the same date (e.g. before this month's
+  // schedule was generated) — that offer is no longer valid, so close it.
+  // Loaded once and reused for every group in this slot/date.
+  var volunteersForClose = getVolunteers();
+  var volSheetForClose   = null;
+  (slot.groups || []).forEach(function(group, gi) {
+    group.forEach(function(p) {
+      var pEmailLower = (p.email || '').toLowerCase();
+      var match = volunteersForClose.find(function(v) {
+        return v.email.toLowerCase() === pEmailLower && v.date === slot.date && v.status === 'pending';
+      });
+      if (match) {
+        if (!volSheetForClose) volSheetForClose = ss.getSheetByName(TABS.volunteers);
+        volSheetForClose.getRange(match.rowIndex, 7).setValue('cancelled');
+        Logger.log('publishScheduleSlot: closed ' + p.email + '\'s volunteer-to-sub record for ' +
+          slot.date + ' — they were scheduled to play their own match that day');
+      }
+    });
+  });
+
   (slot.groups || []).forEach(function(group, gi) {
     var captainEmail = (slot.captains || [])[gi] || '';
     var workingGroup = group.slice();
