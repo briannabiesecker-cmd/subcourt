@@ -1745,17 +1745,17 @@ function runAutoDispatch() {
       } else {
         // No match found
         if (isLastMinute(req, config.lastMinuteThresholdHrs) && !config.urgentSubEmailsEnabled) {
-          // Original last-minute behaviour: cancel immediately (only when urgent sub emails are off)
-          var emailNote = 'broadcast sent — last-minute, no candidates, cancelled';
+          // Original last-minute behaviour: expire immediately (only when urgent sub emails are off)
+          var emailNote = 'broadcast sent — last-minute, no candidates, expired';
           try {
             sendSubNeededTomorrowEmail(req);
           } catch(emailErr) {
-            emailNote = 'email failed (' + emailErr.message + ') — last-minute, no candidates, cancelled';
+            emailNote = 'email failed (' + emailErr.message + ') — last-minute, no candidates, expired';
             Logger.log('sendSubNeededTomorrowEmail failed for ' + req.id + ': ' + emailErr.message);
           }
-          if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+          if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('expired');
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', emailNote]);
-          Logger.log('No candidates (last-minute, cancelled): ' + req.name + ' — ' + emailNote);
+          Logger.log('No candidates (last-minute, expired): ' + req.name + ' — ' + emailNote);
         } else {
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', '']);
           Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
@@ -2388,7 +2388,7 @@ function submitRequest(params) {
   var partnerEmails = groupPlayersArr.map(function(p) { return (p.email || '').toLowerCase(); });
   var isDuplicate = getRequests().some(function(r) {
     if (r.email.toLowerCase() !== reqEmail) return false;
-    if (r.matchDate !== reqDate || r.status === 'cancelled') return false;
+    if (r.matchDate !== reqDate || r.status === 'cancelled' || r.status === 'expired') return false;
     if (!r.groupPlayers || !r.groupPlayers.length) return true;
     return r.groupPlayers.some(function(p) { return partnerEmails.indexOf((p.email || '').toLowerCase()) !== -1; });
   });
@@ -6291,7 +6291,7 @@ function _sendLateVolunteerNotification(req, volunteerName, volunteerEmail) {
   Logger.log('Late-volunteer notification sent: ' + reqEmail + ' <- ' + volunteerName + ' (' + req.id + ')');
 }
 
-// unfilledRequests — the SubRequests (now status 'cancelled') that the caller just
+// unfilledRequests — the SubRequests (now status 'expired') that the caller just
 // gave up on for lack of a sub, if any. Used to flag their group in this email.
 function sendLeftoverVolunteersEmail(targetDate, unfilledRequests) {
   if (!isEmailEnabled()) return;
@@ -6441,12 +6441,12 @@ function runPreMatchDayDispatch() {
       var ss       = SpreadsheetApp.openById(SHEET_ID);
       var reqSheet = ss.getSheetByName(TABS.requests);
       openReqs.forEach(function(req) {
-        reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+        reqSheet.getRange(req.rowIndex, 7).setValue('expired');
         try { sendSubNeededTomorrowEmail(req); } catch(e) {
-          Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
+          Logger.log('Expire notify failed for ' + req.id + ': ' + e.message);
         }
         // The requester may have also volunteered to sub elsewhere this same day
-        // (e.g. trying to switch groups) — with their own request now cancelled
+        // (e.g. trying to switch groups) — with their own request now expired
         // and no sub found, that offer should go away too rather than risk Rally
         // assigning them as a sub for someone else's match.
         try { _cancelOwnOpenVolunteerRecord(ss, req.email, targetDate); } catch(e) {
@@ -6456,7 +6456,7 @@ function runPreMatchDayDispatch() {
     }
     // Independent of whether every request got filled — a volunteer can go unused
     // even with an open request if their rating falls outside the match's skill window.
-    // openReqs here are the ones just marked 'cancelled' above — pass them through so
+    // openReqs here are the ones just marked 'expired' above — pass them through so
     // sendLeftoverVolunteersEmail can flag their group in red with a footnote.
     try { sendLeftoverVolunteersEmail(targetDate, openReqs); } catch(e) {
       Logger.log('Leftover volunteers notify failed for ' + targetDate + ': ' + e.message);

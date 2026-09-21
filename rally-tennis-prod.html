@@ -3106,7 +3106,7 @@ async function submitRequest() {
     const partnerEmails = new Set(partners.map(p => (p.email || '').toLowerCase()));
     const duplicate = existing.find(r => {
       if (r.email.toLowerCase() !== email.toLowerCase()) return false;
-      if (r.matchDate !== matchDate || r.status === 'cancelled') return false;
+      if (r.matchDate !== matchDate || r.status === 'cancelled' || r.status === 'expired') return false;
       if (!r.groupPlayers || !r.groupPlayers.length) return true;
       return r.groupPlayers.some(p => partnerEmails.has((p.email || '').toLowerCase()));
     });
@@ -3435,7 +3435,7 @@ function _hasDuplicateRequest(existing, email, slot) {
   const partnerEmails = new Set((slot.partners || []).filter(p => p.name && p.email).map(p => (p.email || '').toLowerCase()));
   return existing.some(r => {
     if (r.email.toLowerCase() !== email.toLowerCase()) return false;
-    if (r.matchDate !== slot.matchDate || r.status === 'cancelled') return false;
+    if (r.matchDate !== slot.matchDate || r.status === 'cancelled' || r.status === 'expired') return false;
     if (!r.groupPlayers || !r.groupPlayers.length) return true;
     return r.groupPlayers.some(p => partnerEmails.has((p.email || '').toLowerCase()));
   });
