@@ -3592,16 +3592,16 @@ async function loadMyRequests(email, playerName, forceRefresh = true, retries = 
         : '';
 
       return `<tr>
+        <td>${nameCell}</td>
         <td style="white-space:nowrap;">${formatDateAbbrev(r.matchDate)}</td>
         <td style="white-space:nowrap;">${timeDisplay}${editBtn ? `<span style="margin-left:6px;">${editBtn}</span>` : ''}</td>
-        <td>${nameCell}</td>
         <td>${deleteBtn}</td>
       </tr>`;
     }).join('');
 
     el.innerHTML = `<div class="table-scroll">
       <table class="dispatch-table compact">
-        <thead><tr><th>Date</th><th>Time</th><th>Requester Name</th><th></th></tr></thead>
+        <thead><tr><th>Requester Name</th><th>Date</th><th>Time</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   } catch(e) {
