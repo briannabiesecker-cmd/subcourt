@@ -2610,7 +2610,11 @@ async function submitIdentityVerifyCode() {
     return;
   }
   try {
-    const result = await apiPost({ action: 'verifyIdentityChangeCode', email: pendingIdentityChange.email, code });
+    // Retryable: on a lost response after the code was actually consumed
+    // server-side, the retry just reports "No code found" instead of a dead-end
+    // timeout — a strict improvement given this transport's known flakiness
+    // (see apiGetWithParams/getDispatchPageData comments).
+    const result = await apiPostWithRetry({ action: 'verifyIdentityChangeCode', email: pendingIdentityChange.email, code });
     if (!result.success) {
       showAlert('identity-verify-alert', 'error', result.error || 'Invalid code.');
       return;
@@ -4885,7 +4889,9 @@ async function verifyAdminCode() {
     return;
   }
   try {
-    const result = await apiPost({ action: 'verifyAdminCode', email, code });
+    // Retryable — see submitIdentityVerifyCode for why this is safe even
+    // though the server deletes the code on success.
+    const result = await apiPostWithRetry({ action: 'verifyAdminCode', email, code });
     if (!result.success) {
       showAlert('admin-auth-alert', 'error', result.error || 'Invalid code.');
       return;
