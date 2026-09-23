@@ -6089,15 +6089,22 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups, unfilledNotes) {
         '<td colspan="4" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">None</td>' +
         '</tr>';
 
-  var noteByLetter = {};
-  (unfilledNotes || []).forEach(function(n) { noteByLetter[n.groupLetter] = n; });
+  // Keyed by group letter → array, since more than one requester in the same
+  // foursome can have an unfilled request (e.g. two players in group C both
+  // couldn't find a sub) — a single note per letter would silently drop all
+  // but the last one.
+  var notesByLetter = {};
+  (unfilledNotes || []).forEach(function(n) {
+    (notesByLetter[n.groupLetter] = notesByLetter[n.groupLetter] || []).push(n);
+  });
 
   var groupRows = (groups || []).map(function(g) {
-    var note = noteByLetter[g.letter];
+    var groupNotes = notesByLetter[g.letter] || [];
     var names = g.players.map(function(p) {
-      var isRequester = note && p.email && note.requesterEmail &&
-        p.email.toLowerCase() === note.requesterEmail.toLowerCase();
-      if (isRequester) {
+      var note = p.email && groupNotes.find(function(n) {
+        return n.requesterEmail && p.email.toLowerCase() === n.requesterEmail.toLowerCase();
+      });
+      if (note) {
         return '<span style="color:#DC2626;font-weight:700;">' + p.name + note.marker + '</span>';
       }
       return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name;
@@ -6171,16 +6178,19 @@ function buildLeftoverVolunteersEmailText(volunteers, groups, unfilledNotes) {
     lines.push('None');
   }
   if (groups && groups.length) {
-    var noteByLetter = {};
-    (unfilledNotes || []).forEach(function(n) { noteByLetter[n.groupLetter] = n; });
+    var notesByLetter = {};
+    (unfilledNotes || []).forEach(function(n) {
+      (notesByLetter[n.groupLetter] = notesByLetter[n.groupLetter] || []).push(n);
+    });
     lines.push('');
     lines.push('Groups playing tomorrow:');
     groups.forEach(function(g) {
-      var note = noteByLetter[g.letter];
+      var groupNotes = notesByLetter[g.letter] || [];
       var names = g.players.map(function(p) {
-        var isRequester = note && p.email && note.requesterEmail &&
-          p.email.toLowerCase() === note.requesterEmail.toLowerCase();
-        return isRequester ? (p.name + note.marker) : p.name;
+        var note = p.email && groupNotes.find(function(n) {
+          return n.requesterEmail && p.email.toLowerCase() === n.requesterEmail.toLowerCase();
+        });
+        return note ? (p.name + note.marker) : p.name;
       }).join(', ');
       lines.push('  ' + _groupTimeLabel(g) + ': ' + names);
     });
