@@ -3134,8 +3134,17 @@ function confirmSub(params) {
     volSheet.getRange(parseInt(params.volunteerRowIndex), 7).setValue('matched');
   }
 
-  // 3. Replace requestor's slot in MatchGroups with the sub's name/email
-  updateScheduleForSub(ss, params);
+  // 3. Replace requestor's slot in MatchGroups with the sub's name/email. If this
+  // doesn't find a matching row, the request above still gets marked "filled" —
+  // log it so that mismatch is visible on the Admin Dispatch tab instead of only
+  // showing up when someone happens to compare the request against the schedule.
+  const scheduleUpdated = updateScheduleForSub(ss, params);
+  if (!scheduleUpdated) {
+    _logScheduleSyncFailure(params.requestId, params.requestorName, params.matchDate, params.matchTime,
+      params.subName, params.subEmail,
+      'confirmSub: no MatchGroups row matched requestorEmail ' + (params.requestorEmail || '') +
+        (params.groupLetter ? ' in group ' + params.groupLetter : '') + '.');
+  }
 
   // 4. Replace requestor in groupPlayers of any other open sub requests on the same day
   updateRelatedOpenRequests(ss, params);
@@ -3147,20 +3156,36 @@ function confirmSub(params) {
   // 6. Send email
   sendConfirmationEmails(params, groupPlayers);
 
-  return { success: true };
+  return { success: true, scheduleUpdated: scheduleUpdated };
+}
+
+// Records when a sub was confirmed but the MatchGroups slot swap couldn't find a
+// matching row to update — the SubRequests row still shows "filled," so without
+// this the mismatch between the two sheets is invisible until someone happens to
+// compare them by hand (which is how the Jim Slaughter/9-25 case was found).
+function _logScheduleSyncFailure(requestId, requestorName, matchDate, matchTime, subName, subEmail, note) {
+  try {
+    getOrCreateDispatchLog().appendRow([
+      nowEasternISO(), requestId || '', requestorName || '', matchDate || '', matchTime || '',
+      'schedule_sync_failed', subName || '', subEmail || '', note || ''
+    ]);
+  } catch(e) {
+    Logger.log('_logScheduleSyncFailure: append failed: ' + e.message);
+  }
 }
 
 // Replaces the requestor's player slot in MatchGroups with the confirmed sub.
+// Returns true if a matching row was found and updated, false otherwise.
 function updateScheduleForSub(ss, params) {
   var matchDate      = (params.matchDate      || '').toString().trim();
   var groupLetter    = (params.groupLetter    || '').toString().trim();
   var requestorEmail = (params.requestorEmail || '').toLowerCase().trim();
   var subName        = (params.subName        || '').toString().trim();
   var subEmail       = (params.subEmail       || '').toString().trim();
-  if (!matchDate || !requestorEmail || !subName || !subEmail) return;
+  if (!matchDate || !requestorEmail || !subName || !subEmail) return false;
 
   var sheet = ss.getSheetByName(TABS.matchGroups);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  if (!sheet || sheet.getLastRow() < 2) return false;
 
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
   for (var i = 0; i < rows.length; i++) {
@@ -3182,10 +3207,11 @@ function updateScheduleForSub(ss, params) {
       var em = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
       if (em === requestorEmail) {
         sheet.getRange(i + 2, 5 + pi * 2, 1, 2).setValues([[subName, subEmail]]);
-        return;
+        return true;
       }
     }
   }
+  return false;
 }
 
 // When a sub is confirmed, update the groupPlayers field of any other open sub
@@ -3251,9 +3277,10 @@ function markVolunteerMatched(ss, email, matchDate) {
 }
 
 // Replaces any player slot in MatchGroups that matches oldEmail on matchDate.
+// Returns true if a matching row was found and updated, false otherwise.
 function replaceSchedulePlayer(ss, matchDate, oldEmail, newName, newEmail) {
   var sheet = ss.getSheetByName(TABS.matchGroups);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  if (!sheet || sheet.getLastRow() < 2) return false;
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -3265,10 +3292,11 @@ function replaceSchedulePlayer(ss, matchDate, oldEmail, newName, newEmail) {
       var em = (r[5 + pi * 2] || '').toString().toLowerCase().trim();
       if (em === oldEmail.toLowerCase().trim()) {
         sheet.getRange(i + 2, 5 + pi * 2, 1, 2).setValues([[newName, newEmail]]);
-        return;
+        return true;
       }
     }
   }
+  return false;
 }
 
 // Looks up a player's scheduled match group for a given date.
@@ -3642,7 +3670,12 @@ function editRequestPlayers(params) {
     // Anita's email is stored directly in the MatchGroups P4 slot, so origRequestorEmail
     // is always the correct slot to replace (works for both regular and Anita requests).
     if (origRequestorEmail) {
-      replaceSchedulePlayer(ss, matchDate, origRequestorEmail, newP1Name, newP1Email);
+      var swapped = replaceSchedulePlayer(ss, matchDate, origRequestorEmail, newP1Name, newP1Email);
+      if (!swapped) {
+        _logScheduleSyncFailure('row ' + rowIndex, params.origRequestorName, matchDate, matchTime,
+          newP1Name, newP1Email,
+          'editRequestPlayers: no MatchGroups row matched ' + origRequestorEmail + ' on ' + matchDate + '.');
+      }
     }
 
     markVolunteerMatched(ss, newP1Email, matchDate);
@@ -3670,7 +3703,12 @@ function editRequestPlayers(params) {
     var oEmail = (orig.email || '').toLowerCase().trim();
     var nEmail = (nw.email   || '').toLowerCase().trim();
     if (oEmail && nEmail && oEmail !== nEmail) {
-      replaceSchedulePlayer(ss, matchDate, oEmail, nw.name || '', nw.email || '');
+      var swappedOther = replaceSchedulePlayer(ss, matchDate, oEmail, nw.name || '', nw.email || '');
+      if (!swappedOther) {
+        _logScheduleSyncFailure('row ' + rowIndex, orig.name, matchDate, matchTime,
+          nw.name || '', nw.email || '',
+          'editRequestPlayers: no MatchGroups row matched ' + oEmail + ' on ' + matchDate + ' (non-requestor slot).');
+      }
     }
   }
 
@@ -6083,13 +6121,18 @@ function manuallyAssignSub(params) {
   reqSheet.getRange(parseInt(req.rowIndex), 7).setValue('filled');
   reqSheet.getRange(parseInt(req.rowIndex), 8).setValue(subEmail);
 
-  updateScheduleForSub(ss, {
+  var scheduleUpdated = updateScheduleForSub(ss, {
     matchDate:      req.matchDate,
     groupLetter:    req.groupLetter,
     requestorEmail: req.email,
     subName:        subName,
     subEmail:       subEmail
   });
+  if (!scheduleUpdated) {
+    _logScheduleSyncFailure(requestId, req.name, req.matchDate, req.matchTime, subName, subEmail,
+      'manuallyAssignSub: no MatchGroups row matched requestorEmail ' + req.email +
+        (req.groupLetter ? ' in group ' + req.groupLetter : '') + '.');
+  }
 
   markVolunteerMatched(ss, subEmail, req.matchDate);
 
@@ -6102,7 +6145,7 @@ function manuallyAssignSub(params) {
     matchTime:      req.matchTime
   }, req.groupPlayers || []);
 
-  return { success: true };
+  return { success: true, scheduleUpdated: scheduleUpdated };
 }
 
 function retireRequest(params) {
