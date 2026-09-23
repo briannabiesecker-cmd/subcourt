@@ -58,6 +58,11 @@
       box-shadow: 0 2px 8px rgba(224, 122, 90, 0.25);
     }
     .home-btn:active { filter: brightness(0.95); }
+    .state-msg {
+      color: var(--ink-mid);
+      font-size: 15px;
+      padding: 8px 2px;
+    }
   </style>
 </head>
 <body>
@@ -69,25 +74,85 @@
       Return to Rally
     </a>
 
-    <a class="card" href="https://drive.google.com/open?id=1osjSbQbM57O_ig2MTNGfAhsEyP-H2ipP&usp=drive_fs" target="_blank" rel="noopener">
-      Rally Instructions
-      <span class="tag">PDF guide</span>
-    </a>
-
-    <a class="card" href="https://youtube.com/shorts/MY4NxYA6Lf8?feature=share" target="_blank" rel="noopener">
-      How to Add Rally to Your Home Screen
-      <span class="tag">Video</span>
-    </a>
-
-    <a class="card" href="https://youtube.com/shorts/BE5vT75etwk?feature=share" target="_blank" rel="noopener">
-      How to Create a Sub Request
-      <span class="tag">Video</span>
-    </a>
-
-    <a class="card" href="https://youtube.com/shorts/t1AQ5IORzWs?feature=share" target="_blank" rel="noopener">
-      How to Volunteer to Sub
-      <span class="tag">Video</span>
-    </a>
+    <div id="list">
+      <p class="state-msg">Loading…</p>
+    </div>
   </div>
+
+  <script>
+    // Same JSONP pattern rally-tennis-prod.html uses to call this same backend.
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzb3EnQsxBt5dLTaQpg7VJjtoBtHTyGpB2VgpfJ9TDuvezk0ihjhn5oW48a9oKiIAyYMg/exec';
+    const FOLDER_URL = 'https://drive.google.com/drive/folders/1UXeDixmjGS57l9j22UZEA7-uhNwsW_iN?usp=drive_link';
+
+    function apiGet(action, timeoutMs = 15000) {
+      return new Promise((resolve, reject) => {
+        const callbackName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const script = document.createElement('script');
+        const timeout = setTimeout(() => {
+          delete window[callbackName];
+          if (document.body.contains(script)) document.body.removeChild(script);
+          reject(new Error('Request timed out'));
+        }, timeoutMs);
+
+        window[callbackName] = function(data) {
+          clearTimeout(timeout);
+          delete window[callbackName];
+          if (document.body.contains(script)) document.body.removeChild(script);
+          resolve(data);
+        };
+
+        script.src = `${SCRIPT_URL}?action=${encodeURIComponent(action)}&callback=${callbackName}`;
+        script.onerror = () => {
+          clearTimeout(timeout);
+          delete window[callbackName];
+          reject(new Error('Script load failed'));
+        };
+        document.body.appendChild(script);
+      });
+    }
+
+    // Friendly tag + display title per file, so a new file type dropped into the
+    // folder still gets a sensible label without any code change.
+    function tagForMimeType(mimeType) {
+      if (mimeType === 'application/pdf') return 'PDF guide';
+      if (mimeType === 'application/vnd.google-apps.document') return 'Guide';
+      if (mimeType === 'application/vnd.google-apps.presentation') return 'Slides';
+      if (mimeType === 'application/vnd.google-apps.spreadsheet') return 'Spreadsheet';
+      if (mimeType.indexOf('video/') === 0) return 'Video';
+      if (mimeType.indexOf('image/') === 0) return 'Image';
+      return 'File';
+    }
+
+    function titleForName(name) {
+      return name.replace(/\.(mp4|mov|m4v|pdf)$/i, '');
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    async function loadInstructions() {
+      const list = document.getElementById('list');
+      try {
+        const files = await apiGet('getInstructionsFiles');
+        if (!files || !files.length) {
+          list.innerHTML = `<p class="state-msg">No instructions are available right now.</p>
+            <a class="card" href="${FOLDER_URL}" target="_blank" rel="noopener">Open the Instructions folder<span class="tag">Google Drive</span></a>`;
+          return;
+        }
+        list.innerHTML = files.map(f => `
+          <a class="card" href="${f.url}" target="_blank" rel="noopener">
+            ${escapeHtml(titleForName(f.name))}
+            <span class="tag">${tagForMimeType(f.mimeType)}</span>
+          </a>`).join('');
+      } catch (e) {
+        // Never leave the page stuck on "Loading…" — fall back to the folder itself.
+        list.innerHTML = `<p class="state-msg">Couldn't load the list right now.</p>
+          <a class="card" href="${FOLDER_URL}" target="_blank" rel="noopener">Open the Instructions folder<span class="tag">Google Drive</span></a>`;
+      }
+    }
+
+    loadInstructions();
+  </script>
 </body>
 </html>

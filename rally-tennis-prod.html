@@ -1805,11 +1805,8 @@
         <input type="hidden" id="dir-email" />
         <div id="dir-profile-fields" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
           <input type="email" id="dir-profile-email" placeholder="Email" style="width:200px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;" />
+          <input type="email" id="dir-secondary-email" placeholder="Secondary email (optional)" style="width:200px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;" />
           <input type="tel" id="dir-phone" placeholder="Phone" style="width:130px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;" />
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
-            <input type="checkbox" id="dir-no8am" style="width:15px;height:15px;cursor:pointer;accent-color:#B8910A;">
-            No 8 am
-          </label>
           <button class="btn btn-secondary" onclick="dirSaveMyInfo()" id="dir-save-btn" style="font-size:13px;padding:4px 12px;">Save</button>
           <span id="dir-save-msg" style="font-size:12px;color:var(--success);display:none;">Saved!</span>
           <span id="dir-save-err" style="font-size:12px;color:var(--danger);display:none;"></span>
@@ -1969,13 +1966,23 @@
               style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:120px;">
             <input type="email" id="mp-email" placeholder="Email"
               style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:160px;">
+            <input type="email" id="mp-secondary-email" placeholder="Secondary email (optional)"
+              style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:160px;">
             <input type="tel" id="mp-phone" placeholder="Phone"
               style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:130px;">
           </div>
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
-              <input type="checkbox" id="mp-no8am" style="width:15px;height:15px;cursor:pointer;">
-              No 8am
+              <input type="checkbox" id="mp-active" checked style="width:15px;height:15px;cursor:pointer;">
+              Active <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="An inactive player's existing matches are still scheduled and matched normally, and open sub requests get created automatically for any that don't have one — but they can't pick themselves or submit new requests, and only their sub confirmation emails go through; all other automated emails to them are suspended.">ⓘ</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
+              <input type="checkbox" id="mp-subonly" style="width:15px;height:15px;cursor:pointer;">
+              Sub Only <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="A Sub Only player must still be ranked, but their ranking will not skew the normal distribution of the group's ratings.">ⓘ</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
+              <input type="checkbox" id="mp-dupemail" style="width:15px;height:15px;cursor:pointer;">
+              Duplicate email <span style="color:var(--ink-light);font-size:11px;font-weight:700;vertical-align:super;cursor:help;" title="Turn this on if a player has a Comcast address or indicates they are not receiving emails.">ⓘ</span>
             </label>
             <button class="btn btn-clay btn-sm" onclick="mpSave()">Save</button>
             <button class="btn btn-sm" id="mp-delete-btn"
@@ -2571,6 +2578,7 @@ async function sendIdentityVerifyCode() {
     const result = await apiPost({ action: 'sendIdentityChangeCode', name, email, previousName: previousName || '' });
     if (!result.success) {
       showAlert('identity-verify-alert', 'error', result.error || 'Could not send code.');
+      document.getElementById('identity-verify-resend-btn').style.display = 'inline-block';
       return;
     }
     document.getElementById('identity-verify-code-section').style.display = 'block';
@@ -2578,7 +2586,15 @@ async function sendIdentityVerifyCode() {
     showAlert('identity-verify-alert', 'success', 'Code sent — check your email.');
     document.getElementById('identity-verify-code-input').focus();
   } catch(e) {
-    showAlert('identity-verify-alert', 'error', 'Failed to send code: ' + e.message);
+    // A JSONP script-load failure/timeout here doesn't mean the backend call
+    // never went through — the email may have been sent anyway (see the
+    // apiGetWithParams/getDispatchPageData comments above on this transport's
+    // flakiness). Leave the user a way to enter a code that arrived regardless,
+    // or resend, instead of stranding them with only Cancel.
+    document.getElementById('identity-verify-code-section').style.display = 'block';
+    document.getElementById('identity-verify-resend-btn').style.display = 'inline-block';
+    showAlert('identity-verify-alert', 'error',
+      'Failed to send code: ' + e.message + ' — if you got an email anyway, enter the code below. Otherwise, resend.');
   }
 }
 
@@ -2594,7 +2610,11 @@ async function submitIdentityVerifyCode() {
     return;
   }
   try {
-    const result = await apiPost({ action: 'verifyIdentityChangeCode', email: pendingIdentityChange.email, code });
+    // Retryable: on a lost response after the code was actually consumed
+    // server-side, the retry just reports "No code found" instead of a dead-end
+    // timeout — a strict improvement given this transport's known flakiness
+    // (see apiGetWithParams/getDispatchPageData comments).
+    const result = await apiPostWithRetry({ action: 'verifyIdentityChangeCode', email: pendingIdentityChange.email, code });
     if (!result.success) {
       showAlert('identity-verify-alert', 'error', result.error || 'Invalid code.');
       return;
@@ -2903,9 +2923,9 @@ let requestCache   = null;
 let volunteerCache = null;
 let configCache    = null;
 
-async function getRequests() {
+async function getRequests(retries = 2) {
   if (requestCache) return requestCache;
-  requestCache = await apiGetWithRetry({ action: 'getRequests' });
+  requestCache = await apiGetWithRetry({ action: 'getRequests' }, retries);
   return requestCache;
 }
 
@@ -2916,7 +2936,10 @@ async function getRequests() {
 // so loadMyRequests/loadReqSchedule can skip their own fetch.
 async function refreshRequestTab(email, name) {
   try {
-    const data = await apiGetWithRetry({ action: 'getRequestPageData' });
+    // Only 1 retry (not the default 2) — this is the fast/common path, and if it's
+    // still failing after one retry the fallback below is more likely to help than
+    // burning another ~60s here.
+    const data = await apiGetWithRetry({ action: 'getRequestPageData' }, 1);
     requestCache      = data.requests;
     publishedSchedule = data.publishedSchedule;
     await loadMyRequests(email, name, false);
@@ -2924,11 +2947,17 @@ async function refreshRequestTab(email, name) {
     await loadReqFilledRequests(email, name);
   } catch(e) {
     // Combined fetch failed — fall back to each section fetching independently.
+    // No retries here: each retry a caller does compounds with every other
+    // sequential call below, and this fallback used to re-run the full
+    // 2-retry/3-attempt cycle (~90s) for each of 3 sections in turn — up to
+    // ~6 minutes of "Loading…" on a slow/flaky Apps Script deployment before
+    // anything showed an error. Fail fast instead so the user sees a real
+    // error (or success) within seconds of the combined call giving up.
     requestCache      = null;
     publishedSchedule = null;
-    await loadMyRequests(email, name, true);
-    await loadReqSchedule(email, name, true);
-    await loadReqFilledRequests(email, name);
+    await loadMyRequests(email, name, true, 0);
+    await loadReqSchedule(email, name, true, 0);
+    await loadReqFilledRequests(email, name, 0);
   }
 }
 
@@ -3081,7 +3110,7 @@ async function submitRequest() {
     const partnerEmails = new Set(partners.map(p => (p.email || '').toLowerCase()));
     const duplicate = existing.find(r => {
       if (r.email.toLowerCase() !== email.toLowerCase()) return false;
-      if (r.matchDate !== matchDate || r.status === 'cancelled') return false;
+      if (r.matchDate !== matchDate || r.status === 'cancelled' || r.status === 'expired') return false;
       if (!r.groupPlayers || !r.groupPlayers.length) return true;
       return r.groupPlayers.some(p => partnerEmails.has((p.email || '').toLowerCase()));
     });
@@ -3176,7 +3205,7 @@ function clearRequestForm() {
   reqScheduleData = {};
 }
 
-async function loadReqSchedule(email, name, forceRefresh = true) {
+async function loadReqSchedule(email, name, forceRefresh = true, retries = 2) {
   const section   = document.getElementById('req-schedule-section');
   const loading   = document.getElementById('req-schedule-loading');
   const empty     = document.getElementById('req-schedule-empty');
@@ -3192,7 +3221,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
 
   try {
     if (!publishedSchedule) {
-      publishedSchedule = await apiGetWithRetry({ action: 'getPublishedSchedule' });
+      publishedSchedule = await apiGetWithRetry({ action: 'getPublishedSchedule' }, retries);
     }
     if (!publishedSchedule || !publishedSchedule.dates || !publishedSchedule.dates.length) {
       loading.style.display = 'none';
@@ -3202,7 +3231,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
     }
 
     if (forceRefresh) requestCache = null;
-    const requests = await getRequests();
+    const requests = await getRequests(retries);
     const myRequests = requests.filter(r =>
       r.email.toLowerCase() === email.toLowerCase() && r.status !== 'cancelled'
     );
@@ -3284,7 +3313,7 @@ async function loadReqSchedule(email, name, forceRefresh = true) {
 // Shows this player's own sub requests that already have a volunteer assigned —
 // i.e. "who's covering my spot" for upcoming matches. Only requests they personally
 // submitted (r.email === them), not teammates' requests for the same group.
-async function loadReqFilledRequests(email, name) {
+async function loadReqFilledRequests(email, name, retries = 2) {
   const section   = document.getElementById('req-filled-section');
   const loading   = document.getElementById('req-filled-loading');
   const empty     = document.getElementById('req-filled-empty');
@@ -3298,7 +3327,7 @@ async function loadReqFilledRequests(email, name) {
   tbody.innerHTML         = '';
 
   try {
-    const [requests] = await Promise.all([getRequests(), loadPlayerList()]);
+    const [requests] = await Promise.all([getRequests(retries), loadPlayerList()]);
     const todayStr   = localDateStr();
     const emailLower = email.toLowerCase();
 
@@ -3410,7 +3439,7 @@ function _hasDuplicateRequest(existing, email, slot) {
   const partnerEmails = new Set((slot.partners || []).filter(p => p.name && p.email).map(p => (p.email || '').toLowerCase()));
   return existing.some(r => {
     if (r.email.toLowerCase() !== email.toLowerCase()) return false;
-    if (r.matchDate !== slot.matchDate || r.status === 'cancelled') return false;
+    if (r.matchDate !== slot.matchDate || r.status === 'cancelled' || r.status === 'expired') return false;
     if (!r.groupPlayers || !r.groupPlayers.length) return true;
     return r.groupPlayers.some(p => partnerEmails.has((p.email || '').toLowerCase()));
   });
@@ -3497,7 +3526,7 @@ async function _submitScheduleCheckRequest(el, key, slot, name, email, retryHtml
   }
 }
 
-async function loadMyRequests(email, playerName, forceRefresh = true) { // v2
+async function loadMyRequests(email, playerName, forceRefresh = true, retries = 2) { // v2
   const el      = document.getElementById('my-req-list');
   const section = document.getElementById('my-req-section');
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
@@ -3506,7 +3535,7 @@ async function loadMyRequests(email, playerName, forceRefresh = true) { // v2
 
   try {
     if (forceRefresh) requestCache = null;
-    const requests = await getRequests();
+    const requests = await getRequests(retries);
 
     // Today's date string for comparison (YYYY-MM-DD)
     const todayStr     = localDateStr();
@@ -3563,16 +3592,16 @@ async function loadMyRequests(email, playerName, forceRefresh = true) { // v2
         : '';
 
       return `<tr>
+        <td>${nameCell}</td>
         <td style="white-space:nowrap;">${formatDateAbbrev(r.matchDate)}</td>
         <td style="white-space:nowrap;">${timeDisplay}${editBtn ? `<span style="margin-left:6px;">${editBtn}</span>` : ''}</td>
-        <td>${nameCell}</td>
         <td>${deleteBtn}</td>
       </tr>`;
     }).join('');
 
     el.innerHTML = `<div class="table-scroll">
       <table class="dispatch-table compact">
-        <thead><tr><th>Date</th><th>Time</th><th>Requester Name</th><th></th></tr></thead>
+        <thead><tr><th>Requester Name</th><th>Date</th><th>Time</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   } catch(e) {
@@ -4860,7 +4889,9 @@ async function verifyAdminCode() {
     return;
   }
   try {
-    const result = await apiPost({ action: 'verifyAdminCode', email, code });
+    // Retryable — see submitIdentityVerifyCode for why this is safe even
+    // though the server deletes the code on success.
+    const result = await apiPostWithRetry({ action: 'verifyAdminCode', email, code });
     if (!result.success) {
       showAlert('admin-auth-alert', 'error', result.error || 'Invalid code.');
       return;
@@ -4952,12 +4983,16 @@ let mpCurrentPlayer = null; // the player currently loaded in the form (null = n
 
 async function loadManagePlayers() {
   try {
-    adminPlayers = await apiPost({ action: 'getPlayersForAdmin' });
+    // Retried — a pure read, safe to resend, and this is the one place a
+    // post-deploy cold-start spike (Apps Script occasionally exceeds its usual
+    // ~7s right after a new version goes live) stranded the admin with a bare
+    // "Request timed out" and no automatic recovery.
+    adminPlayers = await apiPostWithRetry({ action: 'getPlayersForAdmin' });
     adminPlayers.sort((a, b) => a.name.localeCompare(b.name));
     const sel = document.getElementById('mp-select');
     if (!sel) return;
     sel.innerHTML = '<option value="">— New player —</option>' +
-      adminPlayers.map(p => `<option value="${p.email}">${p.name}</option>`).join('');
+      adminPlayers.map(p => `<option value="${p.email}">${p.name}${p.inactive ? ' (Inactive)' : ''}${p.subOnly ? ' (Sub Only)' : ''}</option>`).join('');
     mpClear();
   } catch(e) {
     showAlert('manage-players-alert', 'error', 'Failed to load players: ' + e.message);
@@ -4971,8 +5006,11 @@ function mpSelectPlayer(email) {
   mpCurrentPlayer = p;
   document.getElementById('mp-name').value    = p.name;
   document.getElementById('mp-email').value   = p.email;
+  document.getElementById('mp-secondary-email').value = p.secondaryEmail || '';
   document.getElementById('mp-phone').value   = p.phone || '';
-  document.getElementById('mp-no8am').checked = !!p.no8am;
+  document.getElementById('mp-active').checked  = !p.inactive;
+  document.getElementById('mp-subonly').checked = !!p.subOnly;
+  document.getElementById('mp-dupemail').checked = !!p.duplicateEmail;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = false;
   delBtn.style.opacity = '1';
@@ -4981,11 +5019,14 @@ function mpSelectPlayer(email) {
 
 function mpClear() {
   mpCurrentPlayer = null;
-  document.getElementById('mp-select').value  = '';
-  document.getElementById('mp-name').value    = '';
-  document.getElementById('mp-email').value   = '';
-  document.getElementById('mp-phone').value   = '';
-  document.getElementById('mp-no8am').checked = false;
+  document.getElementById('mp-select').value    = '';
+  document.getElementById('mp-name').value      = '';
+  document.getElementById('mp-email').value     = '';
+  document.getElementById('mp-secondary-email').value = '';
+  document.getElementById('mp-phone').value     = '';
+  document.getElementById('mp-active').checked  = true;
+  document.getElementById('mp-subonly').checked = false;
+  document.getElementById('mp-dupemail').checked = false;
   const delBtn = document.getElementById('mp-delete-btn');
   delBtn.disabled = true;
   delBtn.style.opacity = '0.4';
@@ -4996,18 +5037,22 @@ function mpClear() {
 async function mpSave() {
   const name  = document.getElementById('mp-name').value.trim();
   const email = document.getElementById('mp-email').value.trim();
+  const secondaryEmail = document.getElementById('mp-secondary-email').value.trim();
   const phone = document.getElementById('mp-phone').value.trim();
-  const no8am = document.getElementById('mp-no8am').checked;
+  const inactive = !document.getElementById('mp-active').checked;
+  const subOnly  = document.getElementById('mp-subonly').checked;
+  const duplicateEmail = document.getElementById('mp-dupemail').checked;
   if (!name || !email) { showAlert('manage-players-alert', 'error', 'Name and email are required.'); return; }
+  const isNewPlayer = !mpCurrentPlayer;
   try {
     let result;
     if (mpCurrentPlayer) {
-      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, phone, no8am });
+      result = await apiPost({ action: 'updatePlayer', rowIndex: mpCurrentPlayer.rowIndex, name, email, secondaryEmail, phone, inactive, subOnly, duplicateEmail });
     } else {
-      result = await apiPost({ action: 'addPlayer', name, email, phone, no8am });
+      result = await apiPost({ action: 'addPlayer', name, email, phone });
     }
     if (!result.success) throw new Error(result.error || 'Failed');
-    showAlert('manage-players-alert', 'success', mpCurrentPlayer ? 'Player updated.' : 'Player added.');
+    showAlert('manage-players-alert', 'success', isNewPlayer ? "New player saved. Now set the player's rank below." : 'Player updated.');
     await loadManagePlayers();
     // Re-select if editing so the form stays populated
     if (email) {
@@ -6526,9 +6571,9 @@ async function dirLoadProfile(name, email) {
   const p = dirEnrichedPlayers.find(x => x.email === email.toLowerCase());
   if (!p) return;
   dirCurrentPlayer = p;
-  document.getElementById('dir-profile-email').value = p.email || '';
-  document.getElementById('dir-phone').value          = p.phone || '';
-  document.getElementById('dir-no8am').checked        = !!p.no8am;
+  document.getElementById('dir-profile-email').value     = p.email || '';
+  document.getElementById('dir-secondary-email').value   = p.secondaryEmail || '';
+  document.getElementById('dir-phone').value              = p.phone || '';
   document.getElementById('dir-save-msg').style.display = 'none';
   document.getElementById('dir-save-err').style.display = 'none';
   document.getElementById('dir-profile-fields').style.display = 'flex';
@@ -6540,8 +6585,8 @@ async function dirSaveMyInfo() {
   const msg   = document.getElementById('dir-save-msg');
   const err   = document.getElementById('dir-save-err');
   const email = document.getElementById('dir-profile-email').value.trim();
+  const secondaryEmail = document.getElementById('dir-secondary-email').value.trim();
   const phone = document.getElementById('dir-phone').value.trim();
-  const no8am = document.getElementById('dir-no8am').checked;
   const name  = document.getElementById('dir-selected-name').textContent.trim();
 
   msg.style.display = 'none';
@@ -6550,18 +6595,21 @@ async function dirSaveMyInfo() {
   btn.textContent = 'Saving…';
 
   try {
+    // no8am/inactive/subOnly are deliberately omitted — updatePlayer preserves
+    // whatever they already are when the param isn't sent, so a player editing
+    // their own contact info here can't accidentally clear an admin-set flag.
     const result = await apiPost({
       action: 'updatePlayer',
       rowIndex: dirCurrentPlayer.rowIndex,
       name,
       email,
-      phone,
-      no8am
+      secondaryEmail,
+      phone
     });
     if (result && result.success) {
       dirCurrentPlayer.email = email.toLowerCase();
+      dirCurrentPlayer.secondaryEmail = secondaryEmail;
       dirCurrentPlayer.phone = phone;
-      dirCurrentPlayer.no8am = no8am;
       document.getElementById('dir-email').value = email.toLowerCase();
       msg.style.display = '';
       setTimeout(() => { msg.style.display = 'none'; }, 3000);
@@ -6695,6 +6743,20 @@ async function renderPublishedSchedule(filterEmail, filterName) {
   const mineOnlyToggle = document.getElementById('sch-mine-only');
   const mineOnly = mineOnlyToggle ? mineOnlyToggle.checked : true;
 
+  // Needed regardless of the "mine only" toggle — an Alternate whose own
+  // Volunteer to Sub record has already been matched (they subbed in
+  // somewhere else that day) shouldn't still be listed as available below.
+  let filledVolunteerKeys = new Set(); // `${date}|${emailLower}`
+  let allVolunteers = [];
+  try {
+    allVolunteers = await getVolunteers();
+    allVolunteers.forEach(v => {
+      if (v.status === 'matched' && v.email) {
+        filledVolunteerKeys.add(v.date + '|' + v.email.toLowerCase());
+      }
+    });
+  } catch(e) {}
+
   let dates = publishedSchedule.dates.filter(d => d.date >= todayStr);
   if (mineOnly && (filterEmailLower || filterNameLower)) {
     dates = dates.map(d => {
@@ -6711,15 +6773,12 @@ async function renderPublishedSchedule(filterEmail, filterName) {
     // for — a separate thing from being scheduled to play, so it's marked
     // distinctly below rather than folded into the match-group rows.
     let myVolunteerDates = {}; // date -> times[]
-    try {
-      const allVolunteers = await getVolunteers();
-      allVolunteers.forEach(v => {
-        if (v.status !== 'pending' || v.date < todayStr) return;
-        const isMe = (filterEmailLower && v.email && v.email.toLowerCase() === filterEmailLower) ||
-                     (filterNameLower  && v.name  && v.name.toLowerCase()  === filterNameLower);
-        if (isMe) myVolunteerDates[v.date] = v.times || [];
-      });
-    } catch(e) {}
+    allVolunteers.forEach(v => {
+      if (v.status !== 'pending' || v.date < todayStr) return;
+      const isMe = (filterEmailLower && v.email && v.email.toLowerCase() === filterEmailLower) ||
+                   (filterNameLower  && v.name  && v.name.toLowerCase()  === filterNameLower);
+      if (isMe) myVolunteerDates[v.date] = v.times || [];
+    });
 
     const dateMap = new Map(dates.map(d => [d.date, d]));
     Object.keys(myVolunteerDates).forEach(date => {
@@ -6776,8 +6835,12 @@ async function renderPublishedSchedule(filterEmail, filterName) {
     const _dow    = _dt.toLocaleDateString('en-US', { weekday: 'short' });
     const _mdd    = _dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const dateStr = `${_dow}<br><span style="font-size:12px;color:var(--ink-mid);">${_mdd}</span>`;
-    if (d.groups[0] && d.groups[0].sitOut)  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
-    if (d.groups[0] && d.groups[0].sitOut2) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
+    // Skip an alternate whose own Volunteer to Sub record for this date has
+    // already been matched — they've subbed in somewhere else that day, so
+    // they're no longer actually available and shouldn't still be listed here.
+    const altFilled = (p) => !!(p && p.email && filledVolunteerKeys.has(d.date + '|' + p.email.toLowerCase()));
+    if (d.groups[0] && d.groups[0].sitOut  && !altFilled(d.groups[0].sitOut))  alternates.push({ dateStr, name: d.groups[0].sitOut.name });
+    if (d.groups[0] && d.groups[0].sitOut2 && !altFilled(d.groups[0].sitOut2)) alternates.push({ dateStr, name: d.groups[0].sitOut2.name });
     const hasVolunteerRow = !!(d.volunteerTimes && d.volunteerTimes.length);
     const rowSpan = d.groups.length + (hasVolunteerRow ? 1 : 0);
     let dateCellWritten = false;

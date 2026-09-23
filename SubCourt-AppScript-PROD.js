@@ -13,6 +13,32 @@ function authorizeApp() {
   Logger.log('authorizeApp: no-op. If you see this line, authorization succeeded.');
 }
 
+// Lists the files in the Rally Instructions Drive folder — name, view link, type,
+// last-modified — so the Instructions page can build its cards live instead of
+// from a hardcoded list. Returns [] on any failure (e.g. the drive.readonly scope
+// hasn't been re-authorized yet) rather than erroring the page.
+function getInstructionsFiles() {
+  try {
+    var folder = DriveApp.getFolderById(INSTRUCTIONS_FOLDER_ID);
+    var iter = folder.getFiles();
+    var out = [];
+    while (iter.hasNext()) {
+      var f = iter.next();
+      out.push({
+        name:     f.getName(),
+        url:      f.getUrl(),
+        mimeType: f.getMimeType(),
+        updated:  f.getLastUpdated().toISOString()
+      });
+    }
+    out.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    return out;
+  } catch(e) {
+    Logger.log('getInstructionsFiles failed: ' + e.message);
+    return [];
+  }
+}
+
 // Execution-level cache for getConfig() — resets between trigger/HTTP invocations.
 var _configCache = null;
 
@@ -30,6 +56,14 @@ var MATCH_TIME_NOTIFY_QUEUE_KEY  = 'matchTimeNotifyQueue';
 // deploy.sh replaces 'rally-tennis-prod.html' with 'rally-tennis-prod.html' when pushing to prod.
 const APP_BASE_URL  = 'https://briannabiesecker-cmd.github.io/subcourt/rally-tennis-prod.html';
 const SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbzb3EnQsxBt5dLTaQpg7VJjtoBtHTyGpB2VgpfJ9TDuvezk0ihjhn5oW48a9oKiIAyYMg/exec';
+
+// The "Rally Instructions" Drive folder (K:\My Drive\Rally Instructions) — the
+// Instructions page lists whatever's in here live, so adding/removing/renaming a
+// file there needs no code change. Requires the drive.readonly scope in
+// appsscript.json (added alongside this); after that scope is added, someone with
+// edit access to the Apps Script project must re-run/re-authorize once (e.g. the
+// authorizeApp() function below) before this will work.
+const INSTRUCTIONS_FOLDER_ID = '1UXeDixmjGS57l9j22UZEA7-uhNwsW_iN';
 
 // Email enabled state is stored in Config B20 and toggled from the Admin UI.
 // Do not hardcode this — use isEmailEnabled() instead.
@@ -72,34 +106,43 @@ function getAdminEmails() {
     .filter(function(e) { return e; });
 }
 
-// Notifies admins that the Players Email Group needs a manual membership update.
-// changes: { add: [{name, email}], remove: [{name, email}] }
-function notifyGroupRosterChange(changes) {
+// Lets admins know a new player joined the roster. This used to be part of
+// notifyGroupRosterChange (removed along with the unused Players Email Group —
+// Brevo replaced it for actual sending), but that bundled two different things:
+// a Google Group membership nudge (genuinely obsolete) and a heads-up that a
+// new player was added (still wanted, independent of the Group). This restores
+// just the latter, with no Group-related content.
+function _notifyAdminsOfNewPlayer(name, email) {
   if (!isEmailEnabled()) return;
-  var add    = changes.add    || [];
-  var remove = changes.remove || [];
-  if (!add.length && !remove.length) return;
-
-  var config   = getConfig();
-  var groupEmail = config.playersGroupEmail || '';
-  var manageLink = groupEmail
-    ? 'https://groups.google.com/g/' + groupEmail.split('@')[0] + '/members'
-    : '';
-
-  var lines = ['The Players list changed — update the Players Email Group membership:', ''];
-  add.forEach(function(p)    { lines.push('Add:    ' + p.name + ' <' + p.email + '>'); });
-  remove.forEach(function(p) { lines.push('Remove: ' + p.name + ' <' + p.email + '>'); });
-  if (manageLink) {
-    lines.push('', 'Manage members: ' + manageLink);
+  var toList = getAdminEmails().slice();
+  var emailLower = (email || '').toLowerCase();
+  if (email && toList.map(function(e) { return e.toLowerCase(); }).indexOf(emailLower) === -1) {
+    toList.push(email);
   }
+  if (!toList.length) return;
 
-  var admins = getAdminEmails();
-  if (!admins.length) return;
+  var chelseaWelcomeUrl = 'https://midlothian.chelseareservations.com/tennis/TNWelcome2.aspx';
+
+  var body =
+    name + ', Welcome to the MWF Tennis League. Match rosters are assigned by Rally. ' +
+    'Court times are assigned by Chelsea. In Rally, you can click on the \'Instructions\' tab ' +
+    'for more information showing how Rally works.\n\n' +
+    'Admins, ' + name + ' has been added to the Player List.';
+
+  var htmlBody =
+    name + ', Welcome to the MWF Tennis League. Match rosters are assigned by ' +
+    '<a href="' + APP_BASE_URL + '">Rally</a>. Court times are assigned by ' +
+    '<a href="' + chelseaWelcomeUrl + '">Chelsea</a>. In <a href="' + APP_BASE_URL + '">Rally</a>, ' +
+    'you can click on the \'Instructions\' tab for more information showing how ' +
+    '<a href="' + APP_BASE_URL + '">Rally</a> works.<br><br>' +
+    'Admins, ' + name + ' has been added to the Player List.';
+
   sendLeagueEmail({
-    to: admins.join(', '),
-    subject: 'Rally — Players Email Group update needed',
-    body: lines.join('\n'),
-    name: 'MWF Tennis League'
+    to:       toList.join(', '),
+    subject:  'Rally — New player added: ' + name,
+    body:     body,
+    htmlBody: htmlBody,
+    name:     'MWF Tennis League'
   });
 }
 
@@ -583,17 +626,196 @@ function _excludeFromBcc(emails, toEmail) {
   return (emails || []).filter(function(e) { return e && e.toLowerCase() !== skip; });
 }
 
+// Primary (lowercased) -> Secondary Email, cached per script execution (cleared by
+// updatePlayer whenever a secondary email actually changes). Secondary Email is
+// never used for matching/identity/dedup anywhere else in the app — this map exists
+// solely to widen the recipient list at actual send time, in _expandSecondaryEmails.
+var _secondaryEmailMapCache = null;
+function _getSecondaryEmailMap() {
+  if (_secondaryEmailMapCache) return _secondaryEmailMapCache;
+  var map = {};
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+    if (sheet && sheet.getLastRow() >= 2) {
+      var col     = getColMap(sheet);
+      var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+      var rows    = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+      rows.forEach(function(r) {
+        var primary   = (r[col.email] || '').toString().toLowerCase().trim();
+        var secondary = (r[col.secondaryEmailCol] || '').toString().trim();
+        if (primary && secondary) map[primary] = secondary;
+      });
+    }
+  } catch(e) {
+    Logger.log('_getSecondaryEmailMap failed: ' + e.message);
+  }
+  _secondaryEmailMapCache = map;
+  return map;
+}
+
+// Widens a comma-separated address list so every address that has a Secondary
+// Email also gets that address included, deduped.
+function _expandSecondaryEmails(addrListStr) {
+  if (!addrListStr) return addrListStr;
+  var map  = _getSecondaryEmailMap();
+  var seen = {};
+  var out  = [];
+  _splitAddrList(addrListStr).forEach(function(addr) {
+    var key = addr.toLowerCase();
+    if (!seen[key]) { seen[key] = true; out.push(addr); }
+    var secondary = map[key];
+    if (secondary) {
+      var sKey = secondary.toLowerCase();
+      if (!seen[sKey]) { seen[sKey] = true; out.push(secondary); }
+    }
+  });
+  return out.join(', ');
+}
+
+// Lowercased-email -> true for every player with Duplicate Email turned on
+// (Admin Player Profile). Cached per script execution, same pattern as
+// _getSecondaryEmailMap. Replaces the old blanket "every comcast.net address"
+// detection — this is now a manual, per-player, reversible admin toggle.
+var _duplicateEmailSetCache = null;
+function _getDuplicateEmailSet() {
+  if (_duplicateEmailSetCache) return _duplicateEmailSetCache;
+  var set = {};
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+    if (sheet && sheet.getLastRow() >= 2) {
+      var col     = getColMap(sheet);
+      var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+      var rows    = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+      rows.forEach(function(r) {
+        var email = (r[col.email] || '').toString().toLowerCase().trim();
+        var flag  = r[col.duplicateEmailCol];
+        var isDup = flag === true || (flag || '').toString().toUpperCase() === 'YES';
+        if (email && isDup) set[email] = true;
+      });
+    }
+  } catch(e) {
+    Logger.log('_getDuplicateEmailSet failed: ' + e.message);
+  }
+  _duplicateEmailSetCache = set;
+  return set;
+}
+
+// Filters an email's to/cc/bcc down to just the Duplicate Email recipients —
+// returns null if none of them are flagged, so the caller can skip the extra
+// send entirely. Borrows a recipient into "to" if the filtered "to" list ends
+// up empty — MailApp requires a non-empty "to" on every send.
+function _restrictToDuplicateEmailRecipients(params) {
+  var dupSet = _getDuplicateEmailSet();
+  if (!dupSet || !Object.keys(dupSet).length) return null;
+
+  var isDup   = function(a) { return !!dupSet[a.toLowerCase()]; };
+  var toList  = _splitAddrList(params.to).filter(isDup);
+  var ccList  = _splitAddrList(params.cc).filter(isDup);
+  var bccList = _splitAddrList(params.bcc).filter(isDup);
+  if (!toList.length && !ccList.length && !bccList.length) return null;
+
+  if (!toList.length) toList = bccList.length ? [bccList.shift()] : [ccList.shift()];
+  var p = {};
+  for (var k in params) p[k] = params[k];
+  p.to  = toList.join(', ');
+  p.cc  = ccList.length  ? ccList.join(', ')  : undefined;
+  p.bcc = bccList.length ? bccList.join(', ') : undefined;
+  return p;
+}
+
+// Lowercased-email -> true for every Inactive player, keyed by BOTH their
+// primary and Secondary Email (so a secondary alias doesn't slip through
+// suppression). Cached per script execution, same pattern as
+// _getDuplicateEmailSet. Inactive is purely an email-suppression flag — see
+// sendLeagueEmail/_suppressInactiveRecipients — not a pause on scheduling,
+// picking, or being matched as a substitute (see getPlayers/getPlayersWithRatings).
+var _inactiveEmailSetCache = null;
+function _getInactiveEmailSet() {
+  if (_inactiveEmailSetCache) return _inactiveEmailSetCache;
+  var set = {};
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
+    if (sheet && sheet.getLastRow() >= 2) {
+      var col     = getColMap(sheet);
+      var lastCol = Math.max(sheet.getLastColumn(), col.totalCols);
+      var rows    = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+      rows.forEach(function(r) {
+        var flag = r[col.inactiveCol];
+        var isInactive = flag === true || (flag || '').toString().toUpperCase() === 'YES';
+        if (!isInactive) return;
+        var primary   = (r[col.email] || '').toString().toLowerCase().trim();
+        var secondary = (r[col.secondaryEmailCol] || '').toString().toLowerCase().trim();
+        if (primary)   set[primary] = true;
+        if (secondary) set[secondary] = true;
+      });
+    }
+  } catch(e) {
+    Logger.log('_getInactiveEmailSet failed: ' + e.message);
+  }
+  _inactiveEmailSetCache = set;
+  return set;
+}
+
+// Drops Inactive-player addresses out of an email's to/cc/bcc. Returns the
+// filtered params, or null if every recipient was suppressed (caller should
+// skip the send entirely rather than call Brevo/MailApp with nothing to send).
+function _suppressInactiveRecipients(params) {
+  var inactiveSet = _getInactiveEmailSet();
+  if (!inactiveSet || !Object.keys(inactiveSet).length) return params;
+
+  var keep    = function(a) { return !inactiveSet[a.toLowerCase()]; };
+  var toList  = _splitAddrList(params.to).filter(keep);
+  var ccList  = _splitAddrList(params.cc).filter(keep);
+  var bccList = _splitAddrList(params.bcc).filter(keep);
+  if (!toList.length && !ccList.length && !bccList.length) return null;
+
+  if (!toList.length) toList = bccList.length ? [bccList.shift()] : (ccList.length ? [ccList.shift()] : []);
+  if (!toList.length) return null; // nothing left to address "to" at all
+
+  var p = {};
+  for (var k in params) p[k] = params[k];
+  p.to  = toList.join(', ');
+  p.cc  = ccList.length  ? ccList.join(', ')  : undefined;
+  p.bcc = bccList.length ? bccList.join(', ') : undefined;
+  return p;
+}
+
 // Unified email sender for every real Rally email — routes through Brevo when
-// configured (own quota, unaffected by MailApp's), falling back to MailApp otherwise
-// or if Brevo itself fails.
+// configured (own quota, unaffected by MailApp's), falling back to MailApp for
+// everyone if Brevo isn't configured or fails outright.
 //
-// comcast.net recipients are routed around Brevo entirely, straight through MailApp.
-// Measured via getBrevoBounceSummary: every comcast.net address in the roster soft-
-// bounces through Brevo's shared sending IP at a ~16% rate (554 "server not available"
-// from Comcast's resimta MTA), while every other domain bounces at 0% — a domain-level
-// rejection Brevo's own automatic retries never recover from. MailApp (Google's own
-// sending infrastructure) is a separate reputation path that isn't affected by it.
+// Inactive players (Admin Player Profile toggle) are suppressed from every
+// email's recipients by default — pass allowInactiveRecipients: true (as
+// sendConfirmationEmails does) for the email types that should still reach
+// them regardless, like a sub confirmation for their own request.
+//
+// Duplicate Email players (Admin Player Profile toggle) additionally get a
+// second copy via MailApp on top of the Brevo send — a manually-controlled
+// safety net for an account known to have trouble receiving Brevo's mail
+// (comcast.net historically — see getBrevoBounceSummary/_getDuplicateEmailSet),
+// turned off again once the admin confirms Brevo is reaching them reliably.
 function sendLeagueEmail(params) {
+  // Widen to/cc/bcc with each recipient's Secondary Email, if any, before anything
+  // else touches these lists (Brevo/MailApp routing, BCC chunking) — so a
+  // secondary address is just carried along transparently from here on.
+  if (params.to || params.cc || params.bcc) {
+    var expanded = {};
+    for (var k in params) expanded[k] = params[k];
+    if (params.to)  expanded.to  = _expandSecondaryEmails(params.to);
+    if (params.cc)  expanded.cc  = _expandSecondaryEmails(params.cc);
+    if (params.bcc) expanded.bcc = _expandSecondaryEmails(params.bcc);
+    params = expanded;
+  }
+
+  if (!params.allowInactiveRecipients) {
+    var subjectForLog = params.subject || '';
+    params = _suppressInactiveRecipients(params);
+    if (!params) {
+      Logger.log('Skipping email — every recipient is Inactive: ' + subjectForLog);
+      return;
+    }
+  }
+
   var props = PropertiesService.getScriptProperties();
   var throttleKey = 'emailThrottle:' + _getEmailThrottleDateKey(new Date()) + ':' + _buildEmailContentSignature(params);
   if (props.getProperty(throttleKey)) {
@@ -602,26 +824,32 @@ function sendLeagueEmail(params) {
   }
 
   var config = getConfig();
-  var split  = _splitOffComcastRecipients(params);
 
-  if (split.comcast) _sendLeagueEmailViaMailApp(split.comcast, config);
-
-  if (split.rest) {
-    // Brevo is the primary path for everyone else — it has its own quota, independent of
-    // MailApp's daily recipient cap. Falls through to MailApp below if Brevo isn't
-    // configured or fails.
-    var sentViaBrevo = false;
-    if (config.brevoApiKey) {
-      try {
-        _sendLeagueEmailViaBrevo(split.rest, config);
-        _logEmail(split.rest.to, split.rest.subject, 'sent via Brevo');
-        sentViaBrevo = true;
-      } catch(e) {
-        Logger.log('Brevo send failed for "' + split.rest.subject + '", falling back to MailApp: ' + e.message);
-        _logEmail(split.rest.to, split.rest.subject, 'Brevo failed (' + e.message + '), trying MailApp');
-      }
+  // Brevo is the primary path for everyone — it has its own quota, independent of
+  // MailApp's daily recipient cap. Falls through to MailApp for EVERYONE below if
+  // Brevo isn't configured or fails outright.
+  var sentViaBrevo = false;
+  if (config.brevoApiKey) {
+    try {
+      _sendLeagueEmailViaBrevo(params, config);
+      _logEmail(params.to, params.subject, 'sent via Brevo');
+      sentViaBrevo = true;
+    } catch(e) {
+      Logger.log('Brevo send failed for "' + params.subject + '", falling back to MailApp: ' + e.message);
+      _logEmail(params.to, params.subject, 'Brevo failed (' + e.message + '), trying MailApp');
     }
-    if (!sentViaBrevo) _sendLeagueEmailViaMailApp(split.rest, config);
+  }
+  if (!sentViaBrevo) _sendLeagueEmailViaMailApp(params, config);
+
+  // Duplicate Email safety net — only on top of a successful Brevo send. If Brevo
+  // failed, the MailApp fallback above already reached everyone (including these
+  // recipients) once; sending it again here would just be a second, redundant copy.
+  if (sentViaBrevo) {
+    var dupParams = _restrictToDuplicateEmailRecipients(params);
+    if (dupParams) {
+      try { _sendLeagueEmailViaMailApp(dupParams, config); }
+      catch(e) { Logger.log('Duplicate Email MailApp send failed: ' + e.message); }
+    }
   }
 
   props.setProperty(throttleKey, 'sent');
@@ -629,40 +857,6 @@ function sendLeagueEmail(params) {
 
 function _splitAddrList(str) {
   return (str || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-}
-
-// Partitions an email's to/cc/bcc into a comcast.net-only params object and an
-// everyone-else params object (either may be null if that group has no recipients),
-// each carrying the rest of the original params (subject/body/htmlBody/name/etc.)
-// unchanged. Borrows a recipient into "to" if a group's own To list is empty — MailApp
-// and Brevo both require a non-empty "to" on every send.
-function _splitOffComcastRecipients(params) {
-  var toList  = _splitAddrList(params.to);
-  var ccList  = _splitAddrList(params.cc);
-  var bccList = _splitAddrList(params.bcc);
-  var isComcast = function(a) { return /@comcast\.net$/i.test(a); };
-
-  var comcastTo = [], comcastCc = [], comcastBcc = [];
-  var restTo    = [], restCc    = [], restBcc    = [];
-  toList.forEach(function(a)  { (isComcast(a) ? comcastTo  : restTo).push(a); });
-  ccList.forEach(function(a)  { (isComcast(a) ? comcastCc  : restCc).push(a); });
-  bccList.forEach(function(a) { (isComcast(a) ? comcastBcc : restBcc).push(a); });
-
-  function build(to, cc, bcc) {
-    if (!to.length && !cc.length && !bcc.length) return null;
-    if (!to.length) to = bcc.length ? [bcc.shift()] : [cc.shift()];
-    var p = {};
-    for (var k in params) p[k] = params[k];
-    p.to  = to.join(', ');
-    p.cc  = cc.length  ? cc.join(', ')  : undefined;
-    p.bcc = bcc.length ? bcc.join(', ') : undefined;
-    return p;
-  }
-
-  return {
-    comcast: build(comcastTo, comcastCc, comcastBcc),
-    rest:    build(restTo, restCc, restBcc)
-  };
 }
 
 function _sendLeagueEmailViaMailApp(params, config) {
@@ -1110,8 +1304,6 @@ function getConfig() {
       autoDispatchTimeET:       formatSheetTime(sheet.getRange('B59').getValue()) || '13:00',
       // Sender email — row 30
       senderEmail: (sheet.getRange('B30').getValue() || '').toString().trim(),
-      // Players Email Group — row 33
-      playersGroupEmail: (sheet.getRange('B33').getValue() || '').toString().trim(),
       // Brevo — rows 35, 37
       brevoApiKey:            (sheet.getRange('B35').getValue() || '').toString().trim(),
       brevoScheduleEmail:      (function() { var v = sheet.getRange('B37').getValue(); return v === 'Yes' || v === true; })(),
@@ -1155,7 +1347,6 @@ function getConfig() {
       autoDispatchEnabled:      false,
       autoDispatchTimeET:       '08:00',
       senderEmail: '',
-      playersGroupEmail: '',
       brevoApiKey: '',
       brevoScheduleEmail: false,
       urgentSubEmailsEnabled: true,
@@ -1554,17 +1745,17 @@ function runAutoDispatch() {
       } else {
         // No match found
         if (isLastMinute(req, config.lastMinuteThresholdHrs) && !config.urgentSubEmailsEnabled) {
-          // Original last-minute behaviour: cancel immediately (only when urgent sub emails are off)
-          var emailNote = 'broadcast sent — last-minute, no candidates, cancelled';
+          // Original last-minute behaviour: expire immediately (only when urgent sub emails are off)
+          var emailNote = 'broadcast sent — last-minute, no candidates, expired';
           try {
             sendSubNeededTomorrowEmail(req);
           } catch(emailErr) {
-            emailNote = 'email failed (' + emailErr.message + ') — last-minute, no candidates, cancelled';
+            emailNote = 'email failed (' + emailErr.message + ') — last-minute, no candidates, expired';
             Logger.log('sendSubNeededTomorrowEmail failed for ' + req.id + ': ' + emailErr.message);
           }
-          if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+          if (reqSheet) reqSheet.getRange(req.rowIndex, 7).setValue('expired');
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', emailNote]);
-          Logger.log('No candidates (last-minute, cancelled): ' + req.name + ' — ' + emailNote);
+          Logger.log('No candidates (last-minute, expired): ' + req.name + ' — ' + emailNote);
         } else {
           logSheet.appendRow([timestamp, req.id, req.name, req.matchDate, req.matchTime, _dispatchNoCandidateResult(result), '', '', '']);
           Logger.log('No candidates for: ' + req.name + ' (' + req.id + ')');
@@ -1647,6 +1838,7 @@ function doGet(e) {
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
     else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
+    else if (action === 'getInstructionsFiles')     result = getInstructionsFiles();
     else if (action === 'addPlayer')               result = addPlayer(e.parameter);
     else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
     else if (action === 'propagateEmailChange')    result = propagateEmailChange(e.parameter);
@@ -1895,35 +2087,58 @@ function getColMap(sheet) {
 
     // Detect actual coordEnd by finding the last column from coordStart with an @-email header.
     // This handles sheets with more or fewer than the default 5 coordinator columns.
+    // Test, Inactive, Sub Only, Secondary Email and Duplicate Email are all trailing
+    // columns after the coordinators — keep scanning past any of them instead of
+    // stopping, so a sheet with some already present still gets the others
+    // auto-detected/placed after the last one.
     var coordEnd = coordStart - 1; // default: none found
-    var testCol  = -1;
+    var testCol           = -1;
+    var inactiveCol        = -1;
+    var subOnlyCol         = -1;
+    var secondaryEmailCol  = -1;
+    var duplicateEmailCol  = -1;
     for (var i = coordStart; i < hdr.length; i++) {
-      var h = (hdr[i] || '').toString().trim();
+      var h = (hdr[i] || '').toString().trim().toLowerCase();
       if (h.indexOf('@') > 0) {
         coordEnd = i;                         // coordinator column
-      } else if (h.toLowerCase() === 'test') {
+      } else if (h === 'test') {
         testCol = i;                          // Test column already exists
-        break;
+      } else if (h === 'inactive') {
+        inactiveCol = i;                      // Inactive column already exists
+      } else if (h === 'sub only' || h === 'subonly') {
+        subOnlyCol = i;                       // Sub Only column already exists (or its shortened rename)
+      } else if (h === 'secondary email' || h === 'second email') {
+        secondaryEmailCol = i;                // Secondary Email column already exists (or its shortened rename)
+      } else if (h === 'duplicate email') {
+        duplicateEmailCol = i;                // Duplicate Email column already exists
       } else if (h) {
-        break;                                // non-empty, non-coordinator header — stop
+        break;                                // non-empty, unrecognized header — stop
       }
     }
     if (coordEnd < coordStart) coordEnd = hasPhone ? 10 : 9; // fallback to default 5-slot end
-    if (testCol === -1) testCol = coordEnd + 1;              // place Test right after last coordinator
+    if (testCol === -1) testCol = coordEnd + 1;                       // place Test right after last coordinator
+    if (inactiveCol === -1) inactiveCol = testCol + 1;                // place Inactive right after Test
+    if (subOnlyCol === -1) subOnlyCol = inactiveCol + 1;              // place Sub Only right after Inactive
+    if (secondaryEmailCol === -1) secondaryEmailCol = subOnlyCol + 1; // place Secondary Email right after Sub Only
+    if (duplicateEmailCol === -1) duplicateEmailCol = secondaryEmailCol + 1; // place Duplicate Email right after Secondary Email
 
     return hasPhone ? {
       name: 0, email: 1, phone: 2, rating: 3, no8am: 4, isAdmin: 5,
-      coordStart: 6, coordEnd: coordEnd, testCol: testCol,
-      totalCols: Math.min(testCol + 1, maxCols)
+      coordStart: 6, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol, subOnlyCol: subOnlyCol,
+      secondaryEmailCol: secondaryEmailCol, duplicateEmailCol: duplicateEmailCol,
+      totalCols: Math.min(duplicateEmailCol + 1, maxCols)
     } : {
       name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-      coordStart: 5, coordEnd: coordEnd, testCol: testCol,
-      totalCols: Math.min(testCol + 1, maxCols)
+      coordStart: 5, coordEnd: coordEnd, testCol: testCol, inactiveCol: inactiveCol, subOnlyCol: subOnlyCol,
+      secondaryEmailCol: secondaryEmailCol, duplicateEmailCol: duplicateEmailCol,
+      totalCols: Math.min(duplicateEmailCol + 1, maxCols)
     };
   } catch(e) {
-    // Safe fallback: classic layout with Test at column L
+    // Safe fallback: classic layout with Test at L, Inactive at M, Sub Only at N,
+    // Secondary Email at O, Duplicate Email at P
     return { name: 0, email: 1, phone: -1, rating: 2, no8am: 3, isAdmin: 4,
-             coordStart: 5, coordEnd: 9, testCol: 11, totalCols: 12 };
+             coordStart: 5, coordEnd: 9, testCol: 11, inactiveCol: 12, subOnlyCol: 13,
+             secondaryEmailCol: 14, duplicateEmailCol: 15, totalCols: 16 };
   }
 }
 
@@ -1937,6 +2152,18 @@ function _resolveEmail(name, storedEmail, players) {
   return (match && match.email) ? match.email : (storedEmail || '');
 }
 
+// The general "pickable player" list behind typeahead, Directory, and identity
+// selection — excludes Inactive players, since an inactive player shouldn't be
+// performing new Rally transactions (submitting availability, requesting a sub,
+// volunteering, picking themselves in Directory, etc.) while paused.
+//
+// This is deliberately a DIFFERENT accessor from getPlayersWithRatings(), which
+// stays fully inclusive of Inactive players — that's what the scheduler and
+// Dispatch's matching (runMatch) actually use, so an inactive player's own
+// already-open requests, and being matched in as a substitute, still work
+// normally. Existing records that already have their email baked in (an open
+// request, a groupPlayers snapshot) are unaffected either way — _resolveEmail
+// falls back to the stored email when a player isn't found in this list.
 function getPlayers() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet) return [];
@@ -1944,12 +2171,15 @@ function getPlayers() {
   const rows = sheet.getDataRange().getValues();
   if (rows.length < 2) return [];
   rows.shift(); // remove header
-  return rows.map(r => ({
-    name:    r[col.name]  || '',
-    email:   (r[col.email] || '').toLowerCase(),
-    phone:   col.phone >= 0 ? (r[col.phone] || '') : '',
-    isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin] || '').toUpperCase() === 'TRUE'
-  })).filter(p => p.name || p.email);
+  return rows
+    .filter(r => !(r[col.inactiveCol] === true || String(r[col.inactiveCol] || '').toUpperCase() === 'YES'))
+    .map(r => ({
+      name:    r[col.name]  || '',
+      email:   (r[col.email] || '').toLowerCase(),
+      phone:   col.phone >= 0 ? (r[col.phone] || '') : '',
+      isAdmin: r[col.isAdmin] === true || String(r[col.isAdmin] || '').toUpperCase() === 'TRUE'
+    }))
+    .filter(p => p.name || p.email);
 }
 
 // Combined home-page bootstrap call — returns players + availConfig in one round trip.
@@ -1989,10 +2219,41 @@ function getPlayersWithRatings() {
   if (rows.length > 0 && (rows[0].length <= col.testCol || !rows[0][col.testCol])) {
     sheet.getRange(1, col.testCol + 1).setValue('Test');
   }
+  // Auto-init Inactive column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.inactiveCol || !rows[0][col.inactiveCol])) {
+    sheet.getRange(1, col.inactiveCol + 1).setValue('Inactive');
+  }
+  // Auto-init Sub Only column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.subOnlyCol || !rows[0][col.subOnlyCol])) {
+    sheet.getRange(1, col.subOnlyCol + 1).setValue('Sub Only');
+  }
+  // Auto-init Secondary Email column header if missing
+  if (rows.length > 0 && (rows[0].length <= col.secondaryEmailCol || !rows[0][col.secondaryEmailCol])) {
+    sheet.getRange(1, col.secondaryEmailCol + 1).setValue('Secondary Email');
+  }
+  // Auto-init Duplicate Email column header if missing — this replaces the old
+  // blanket comcast.net-only-via-MailApp routing with a per-player admin toggle
+  // (see sendLeagueEmail/_getDuplicateEmailSet), so seed it to Yes for every
+  // existing comcast.net address as a one-time migration: that's the exact set
+  // of players who were getting MailApp-only before, and Yes now gets them
+  // Brevo+MailApp instead, which is strictly no worse than before.
+  if (rows.length > 0 && (rows[0].length <= col.duplicateEmailCol || !rows[0][col.duplicateEmailCol])) {
+    sheet.getRange(1, col.duplicateEmailCol + 1).setValue('Duplicate Email');
+    var dupSeedCol = [];
+    for (var seedRow = 1; seedRow < rows.length; seedRow++) {
+      var seedEmail = (rows[seedRow][col.email] || '').toString().toLowerCase();
+      dupSeedCol.push([/@comcast\.net$/i.test(seedEmail) ? 'YES' : '']);
+    }
+    if (dupSeedCol.length) sheet.getRange(2, col.duplicateEmailCol + 1, dupSeedCol.length, 1).setValues(dupSeedCol);
+  }
   rows.shift();
   const seen = {};
   return rows.reduce(function(acc, r) {
     const email = (r[col.email] || '').toLowerCase();
+    // Inactive is NOT filtered here — it's purely an email-suppression flag
+    // (see sendLeagueEmail/_getInactiveEmailSet), not a pause on being scheduled,
+    // rated, or matched as a substitute. An inactive player's own open requests
+    // still need to be processed by Dispatch like anyone else's.
     if (email && !seen[email]) {
       seen[email] = true;
       acc.push({
@@ -2127,7 +2388,7 @@ function submitRequest(params) {
   var partnerEmails = groupPlayersArr.map(function(p) { return (p.email || '').toLowerCase(); });
   var isDuplicate = getRequests().some(function(r) {
     if (r.email.toLowerCase() !== reqEmail) return false;
-    if (r.matchDate !== reqDate || r.status === 'cancelled') return false;
+    if (r.matchDate !== reqDate || r.status === 'cancelled' || r.status === 'expired') return false;
     if (!r.groupPlayers || !r.groupPlayers.length) return true;
     return r.groupPlayers.some(function(p) { return partnerEmails.indexOf((p.email || '').toLowerCase()) !== -1; });
   });
@@ -2815,6 +3076,14 @@ function _percentileToZScore(p) {
 // exact ties get the averaged position) -> percentile of position -> z-score
 // -> linearly rescaled to 1-5, written to column D (Rating) for every player.
 // Players nobody has ranked yet are left alone (existing Rating untouched).
+//
+// Sub Only players are still ranked by coordinators (their avgPct below is
+// computed the same as everyone else's, from the exact same rank inputs), but
+// they don't take part in the distribution itself — the z-score/rescale-to-1-5
+// math below runs only over the non-Sub-Only ("regular") players, so a cluster
+// of subs sitting at the bottom doesn't skew the spread computed for the
+// regulars. Each Sub Only player then simply copies the rating of whichever
+// regular player's avgPct is closest to their own.
 function _recomputeAllPlayerRatingsFromRankings() {
   var sheet   = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   var col     = getColMap(sheet);
@@ -2866,13 +3135,25 @@ function _recomputeAllPlayerRatingsFromRankings() {
   // Step 3: sort worst to best; exact ties (within floating-point noise) share
   // the average of their positions instead of an arbitrary tie-break.
   ranked.sort(function(a, b) { return a.avgPct - b.avgPct; });
-  var n = ranked.length;
+
+  // Split into the "regular" pool the distribution is built from, and the Sub
+  // Only players who'll just copy a regular player's rating afterward. Order is
+  // preserved (both are filtered from the already-sorted `ranked`).
+  var regular = [], subOnly = [];
+  ranked.forEach(function(item) {
+    var isSubOnly = allData[rowIndices[item.rowPos]][col.subOnlyCol] === true ||
+      (allData[rowIndices[item.rowPos]][col.subOnlyCol] || '').toString().toUpperCase() === 'YES';
+    (isSubOnly ? subOnly : regular).push(item);
+  });
+  if (!regular.length) return { success: true, updated: 0 }; // nothing to build a distribution from
+
+  var n = regular.length;
   var TIE_EPSILON = 1e-9;
   var positions = new Array(n);
   var i = 0;
   while (i < n) {
     var j = i;
-    while (j + 1 < n && Math.abs(ranked[j + 1].avgPct - ranked[i].avgPct) < TIE_EPSILON) j++;
+    while (j + 1 < n && Math.abs(regular[j + 1].avgPct - regular[i].avgPct) < TIE_EPSILON) j++;
     var sumPos = 0;
     for (var k2 = i; k2 <= j; k2++) sumPos += (k2 + 1); // 1-indexed position
     var avgPos = sumPos / (j - i + 1);
@@ -2880,17 +3161,31 @@ function _recomputeAllPlayerRatingsFromRankings() {
     i = j + 1;
   }
 
-  // Step 4/5: position -> percentile -> z-score -> rescale to 1-5.
+  // Step 4/5: position -> percentile -> z-score -> rescale to 1-5 (regular pool only).
   var zScores = positions.map(function(pos) { return _percentileToZScore((pos - 0.5) / n); });
   var zMin = Math.min.apply(null, zScores);
   var zMax = Math.max.apply(null, zScores);
   var zSpan = zMax - zMin;
 
   var updated = 0;
-  ranked.forEach(function(item, idx) {
+  regular.forEach(function(item, idx) {
     var rating = zSpan === 0 ? 3.0 : (1 + (zScores[idx] - zMin) / zSpan * 4);
     rating = Math.round(rating * 100) / 100;
+    item.rating = rating;
     allData[rowIndices[item.rowPos]][col.rating] = rating;
+    updated++;
+  });
+
+  // Sub Only players: copy the rating of whichever regular player's avgPct is
+  // closest to their own (regular is already sorted by avgPct).
+  subOnly.forEach(function(item) {
+    var closest = regular[0];
+    var bestDiff = Math.abs(closest.avgPct - item.avgPct);
+    for (var ri = 1; ri < regular.length; ri++) {
+      var diff = Math.abs(regular[ri].avgPct - item.avgPct);
+      if (diff < bestDiff) { bestDiff = diff; closest = regular[ri]; }
+    }
+    allData[rowIndices[item.rowPos]][col.rating] = closest.rating;
     updated++;
   });
 
@@ -2906,14 +3201,21 @@ function getPlayersForAdmin() {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (!sheet || sheet.getLastRow() < 2) return [];
   var col  = getColMap(sheet);
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  // Unlike getPlayers()/getPlayersWithRatings(), this deliberately does NOT filter
+  // out Inactive players — the admin Manage Players panel needs to see everyone
+  // to toggle Active/Inactive back and forth.
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(5, col.duplicateEmailCol + 1)).getValues();
   return rows.map(function(r, i) {
     return {
-      rowIndex: i + 2,
-      name:  r[col.name]  || '',
-      email: (r[col.email] || '').toLowerCase(),
-      phone: col.phone >= 0 ? (r[col.phone] || '') : '',
-      no8am: r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE'
+      rowIndex:      i + 2,
+      name:          r[col.name]  || '',
+      email:         (r[col.email] || '').toLowerCase(),
+      phone:         col.phone >= 0 ? (r[col.phone] || '') : '',
+      no8am:         r[col.no8am] === true || (r[col.no8am] || '').toString().toUpperCase() === 'TRUE',
+      inactive:      r[col.inactiveCol] === true || (r[col.inactiveCol] || '').toString().toUpperCase() === 'YES',
+      subOnly:       r[col.subOnlyCol] === true || (r[col.subOnlyCol] || '').toString().toUpperCase() === 'YES',
+      secondaryEmail: (r[col.secondaryEmailCol] || '').toString().trim(),
+      duplicateEmail: r[col.duplicateEmailCol] === true || (r[col.duplicateEmailCol] || '').toString().toUpperCase() === 'YES'
     };
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
@@ -2939,36 +3241,150 @@ function addPlayer(params) {
     : [name, email, '', no8am, false];          // classic:    name,email,rating,no8am,isAdmin
   sheet.appendRow(newRow);
   sortPlayersSheet(sheet);
-  notifyGroupRosterChange({ add: [{ name: name, email: email }] });
+  try { _notifyAdminsOfNewPlayer(name, email); }
+  catch(e) { Logger.log('_notifyAdminsOfNewPlayer failed: ' + e.message); }
   return { success: true };
 }
 
+// Reads a boolean flag cell as it's stored today (true or 'YES').
+function _readFlagCell(sheet, rowIndex, colIdx) {
+  var v = sheet.getRange(rowIndex, colIdx + 1).getValue();
+  return v === true || (v || '').toString().toUpperCase() === 'YES';
+}
+
+// name/email/phone are always supplied by every caller (Admin Manage Players,
+// Directory self-edit) and required outright. no8am/inactive/subOnly/
+// secondaryEmail/duplicateEmail are NOT sent by every caller — Directory's
+// self-edit only ever sends name/email/phone — so each one falls back to its
+// EXISTING stored value when the param is missing entirely, rather than being
+// silently reset to false/blank. A param that IS present (including an
+// explicit empty string for secondaryEmail, meaning "clear it") always wins.
 function updatePlayer(params) {
   var rowIndex = parseInt(params.rowIndex);
   var name     = (params.name  || '').trim();
   var email    = (params.email || '').toLowerCase().trim();
   var phone    = (params.phone || '').trim();
-  var no8am    = params.no8am === 'true' || params.no8am === true;
   if (!name || !email) return { success: false, error: 'Name and email are required.' };
   if (isNaN(rowIndex) || rowIndex < 2) return { success: false, error: 'Invalid row.' };
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   if (rowIndex > sheet.getLastRow()) return { success: false, error: 'Row not found.' };
   var col = getColMap(sheet);
+
   var oldEmail = (sheet.getRange(rowIndex, col.email + 1).getValue() || '').toString().toLowerCase().trim();
+  var oldSubOnly = _readFlagCell(sheet, rowIndex, col.subOnlyCol);
+  var oldInactive = _readFlagCell(sheet, rowIndex, col.inactiveCol);
+  var oldSecondaryEmail = (sheet.getRange(rowIndex, col.secondaryEmailCol + 1).getValue() || '').toString().trim();
+
+  var no8am    = params.no8am    !== undefined ? (params.no8am    === 'true' || params.no8am    === true) : _readFlagCell(sheet, rowIndex, col.no8am);
+  var inactive = params.inactive !== undefined ? (params.inactive === 'true' || params.inactive === true) : _readFlagCell(sheet, rowIndex, col.inactiveCol);
+  var subOnly  = params.subOnly  !== undefined ? (params.subOnly  === 'true' || params.subOnly  === true) : oldSubOnly;
+  var secondaryEmail = params.secondaryEmail !== undefined ? params.secondaryEmail.trim() : oldSecondaryEmail;
+  var duplicateEmail = params.duplicateEmail !== undefined
+    ? (params.duplicateEmail === 'true' || params.duplicateEmail === true)
+    : _readFlagCell(sheet, rowIndex, col.duplicateEmailCol);
+
   sheet.getRange(rowIndex, col.name  + 1).setValue(name);
   sheet.getRange(rowIndex, col.email + 1).setValue(email);
   if (col.phone >= 0) sheet.getRange(rowIndex, col.phone + 1).setValue(phone);
   sheet.getRange(rowIndex, col.no8am + 1).setValue(no8am);
+  sheet.getRange(rowIndex, col.inactiveCol + 1).setValue(inactive ? 'YES' : '');
+  sheet.getRange(rowIndex, col.subOnlyCol + 1).setValue(subOnly ? 'YES' : '');
+  sheet.getRange(rowIndex, col.secondaryEmailCol + 1).setValue(secondaryEmail);
+  sheet.getRange(rowIndex, col.duplicateEmailCol + 1).setValue(duplicateEmail ? 'YES' : '');
+  // Header auto-inits from getPlayersWithRatings()'s own self-heal on the next read.
   sortPlayersSheet(sheet);
-  // Editing an existing player's email isn't a roster add/remove, so this
-  // doesn't call notifyGroupRosterChange — that's reserved for addPlayer. The
-  // old address may still need swapping for the new one in the Players Email
-  // Group, but that's a routine profile edit, not something needing an alert.
   if (oldEmail && oldEmail !== email) {
     try { propagateEmailChange({ oldEmail: oldEmail, newEmail: email }); }
     catch(e) { Logger.log('propagateEmailChange failed: ' + e.message); }
   }
+  if (secondaryEmail !== oldSecondaryEmail) _secondaryEmailMapCache = null; // invalidate this execution's cache
+  _duplicateEmailSetCache = null; // invalidate this execution's cache regardless — cheap either way
+  _inactiveEmailSetCache  = null; // same — cheap to invalidate unconditionally
+  // Sub Only controls who counts toward the normal-distribution rating calc — a
+  // flag flip changes that pool, so ratings need to be recomputed immediately,
+  // the same as saveCoordinatorRankings already does after a ranking edit.
+  if (subOnly !== oldSubOnly) {
+    try { _recomputeAllPlayerRatingsFromRankings(); }
+    catch(e) { Logger.log('_recomputeAllPlayerRatingsFromRankings failed after Sub Only toggle: ' + e.message); }
+  }
+  // Newly Inactive — they shouldn't be performing new Rally transactions
+  // (they're now excluded from getPlayers()'s pickers), so make sure every
+  // match they're still scheduled to play already has a sub request open,
+  // rather than leaving it to them to remember to submit one.
+  if (inactive && !oldInactive) {
+    try { _autoCreateSubRequestsForInactivePlayer(name, email); }
+    catch(e) { Logger.log('_autoCreateSubRequestsForInactivePlayer failed: ' + e.message); }
+  }
   return { success: true };
+}
+
+// See updatePlayer's inactive-flip handler above. Scans every future MatchGroups
+// row this player is still listed in and, for any date they don't already have
+// a request on file for (any status — never create a second one), opens a new
+// sub request so Dispatch can start looking for a substitute right away. Mirrors
+// submitRequest's row shape exactly (see also the 3-player-group auto-Anita
+// request, which follows the same pattern).
+function _autoCreateSubRequestsForInactivePlayer(name, email) {
+  var emailLower = (email || '').toLowerCase().trim();
+  if (!emailLower) return 0;
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var mgSheet = ss.getSheetByName(TABS.matchGroups);
+  if (!mgSheet || mgSheet.getLastRow() < 2) return 0;
+
+  var todayStr = getDateStr(0);
+  var rows = mgSheet.getRange(2, 1, mgSheet.getLastRow() - 1, 17).getValues();
+  var existing = getRequests();
+  var reqSheet = ss.getSheetByName(TABS.requests);
+  var created = 0;
+
+  rows.forEach(function(r) {
+    var rowDate = r[2] instanceof Date
+      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : (r[2] ? r[2].toString() : '');
+    if (!rowDate || rowDate < todayStr) return;
+    var letter = r[3] ? r[3].toString().trim() : '';
+    if (!letter) return;
+
+    var players = [];
+    var isMember = false;
+    for (var pi = 0; pi < 4; pi++) {
+      var nm = r[4 + pi * 2] ? r[4 + pi * 2].toString().trim() : '';
+      var em = r[5 + pi * 2] ? r[5 + pi * 2].toString().trim() : '';
+      if (!nm) continue;
+      players.push({ name: nm, email: em });
+      if (em.toLowerCase() === emailLower) isMember = true;
+    }
+    if (!isMember) return;
+
+    var alreadyRequested = existing.some(function(er) {
+      return (er.email || '').toLowerCase() === emailLower && er.matchDate === rowDate;
+    });
+    if (alreadyRequested) return;
+
+    var otherPlayers = players.filter(function(p) { return p.email.toLowerCase() !== emailLower; });
+    var groupTime = r[16] ? r[16].toString().trim() : '';
+    var knownTime = (groupTime && groupTime !== 'Overflow') ? groupTime : '';
+
+    reqSheet.appendRow([
+      uid(), nowEasternISO(), name, email, rowDate, knownTime, 'open', '',
+      JSON.stringify(otherPlayers)
+    ]);
+    var lastRow = reqSheet.getLastRow();
+    reqSheet.getRange(lastRow, 5).setNumberFormat('@');
+    reqSheet.getRange(lastRow, 6).setNumberFormat('@');
+    reqSheet.getRange(lastRow, 9).setNumberFormat('@');
+    _setGroupLetterOnRequestRow(reqSheet, lastRow, letter);
+    _flagNo8amOnRequestRow(reqSheet, lastRow, [email].concat(otherPlayers.map(function(p) { return p.email; })));
+    created++;
+
+    // Keep the dedup list current in case this player somehow appears in more
+    // than one group/date within this same pass.
+    existing.push({ email: emailLower, matchDate: rowDate });
+  });
+
+  if (created) Logger.log('_autoCreateSubRequestsForInactivePlayer: created ' + created + ' request(s) for ' + email);
+  return created;
 }
 
 // Keeps open SubRequests and pending Volunteers records pointing at a player's current
@@ -4260,38 +4676,109 @@ function runMatch(params) {
 //   Future Substitute Confirm (>2 days out): adds the Chelsea "Confirm #" instruction line.
 //   Urgent Substitute Confirm (<=2 days out): CCs MTC contacts if any are set, and swaps
 //   the Chelsea instruction line for a manual-update prompt.
+// The Sub Reminder re-send (isReminder=true) needs the live MatchGroups roster
+// and the live court time — not the request's original groupPlayers snapshot
+// (stale once the sub swaps in and the original requester drops out) or its own
+// matchTime column, which only ever gets synced while the request is still
+// 'open' (see _syncGroupTimeToOpenRequests) — so a request that was TBD when
+// filled stays TBD in SubRequests forever, even once Chelsea assigns a real
+// time. Matches by the confirmed sub's email actually being a member of a
+// group that day — unambiguous even when several groups share the same time
+// slot. Returns null if no matching group is found.
+function _getCurrentGroupInfoForMatch(matchDate, subEmail, players) {
+  var groups = getMatchGroupsForDate(matchDate);
+  var subLower = (subEmail || '').toLowerCase();
+  var group = groups.find(function(g) {
+    return g.players.some(function(p) { return p.email && p.email.toLowerCase() === subLower; });
+  });
+  if (!group) return null;
+  var resolved = group.players
+    .map(function(p) { return { name: p.name, email: _resolveEmail(p.name, p.email, players) }; })
+    .filter(function(p) { return p.email; });
+  if (!resolved.length) return null;
+  return {
+    emails: resolved.map(function(p) { return p.email; }),
+    names:  resolved.map(function(p) { return p.name; }),
+    time:   group.time || ''
+  };
+}
+
+// "A and B" for 2, "A, B, and C" for 3+, the name itself for 1.
+function _joinWithAnd(list) {
+  if (!list.length) return '';
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return list[0] + ' and ' + list[1];
+  return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1];
+}
+
 function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
   groupPlayers = groupPlayers || [];
   const players    = getPlayers();
   const dateStr    = formatDate(data.matchDate);
-  const timeStr    = data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD';
   const senderName = 'MWF Tennis League';
 
-  // To: requestor + sub   CC: group partners — always resolve against current Players sheet
   const resolvedRequestorEmail = _resolveEmail(data.requestorName, data.requestorEmail, players);
   const resolvedSubEmail       = _resolveEmail(data.subName,       data.subEmail,       players);
-  const toAddresses = [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean).join(', ');
-  const groupCcList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
-  // CC anyone who volunteered for this date/time slot when the match is tomorrow or the day after,
-  // so near-term volunteers see it's already filled.
-  var volunteerCcList = [];
-  if (_isTomorrowOrDayAfterTomorrow(data.matchDate)) {
-    volunteerCcList = _getVolunteerCcEmailsForMatch(data.matchDate, data.matchTime, players);
+
+  var toAddresses, ccList;
+  var currentGroupInfo = null;
+
+  if (isReminder) {
+    // Only the 4 players currently scheduled in this group — not the original
+    // requester (already swapped out) and not every player with an unrelated
+    // open volunteer record for the same date/time.
+    currentGroupInfo = _getCurrentGroupInfoForMatch(data.matchDate, resolvedSubEmail, players);
+    toAddresses = (currentGroupInfo && currentGroupInfo.emails.length)
+      ? currentGroupInfo.emails.join(', ')
+      // Fall back to the old to/cc shape if the live group can't be found for
+      // some reason, rather than silently sending to nobody.
+      : [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean)
+          .concat(groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean))
+          .join(', ');
+    ccList = [];
+  } else {
+    // To: requestor + sub   CC: group partners — always resolve against current Players sheet
+    toAddresses = [resolvedRequestorEmail, resolvedSubEmail].filter(Boolean).join(', ');
+    var groupCcList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
+    // CC anyone who volunteered for this date/time slot when the match is tomorrow or the day after,
+    // so near-term volunteers see it's already filled.
+    var volunteerCcList = [];
+    if (_isTomorrowOrDayAfterTomorrow(data.matchDate)) {
+      volunteerCcList = _getVolunteerCcEmailsForMatch(data.matchDate, data.matchTime, players);
+    }
+    ccList = groupCcList.concat(volunteerCcList);
   }
 
-  var chelseaLine     = 'Make updates in Chelsea as required.';
-  var chelseaLineHtml = 'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.';
-  var mtcCcList     = [];
+  // For the reminder, prefer the live court time from the matched group over
+  // data.matchTime — that column only gets synced while the request is still
+  // 'open' (see _syncGroupTimeToOpenRequests), so it's stuck at blank/TBD
+  // forever on a request that was TBD when filled, even after Chelsea assigns
+  // a real time. That's exactly the case the reminder needs to correct.
+  const timeStr = (isReminder && currentGroupInfo && currentGroupInfo.time)
+    ? (TIME_LABELS[currentGroupInfo.time] || currentGroupInfo.time)
+    : (data.matchTime ? TIME_LABELS[data.matchTime] : 'TBD');
+
+  var chelseaLine, chelseaLineHtml;
   var extraLine     = null;
   var extraLineHtml = null;
+
+  if (isReminder && currentGroupInfo && currentGroupInfo.names.length) {
+    var fourPlayersLine = 'The four players are ' + _joinWithAnd(currentGroupInfo.names);
+    chelseaLine     = fourPlayersLine;
+    chelseaLineHtml = fourPlayersLine;
+  } else {
+    chelseaLine     = 'Make updates in Chelsea as required.';
+    chelseaLineHtml = 'Make updates in <a href="https://midlothian.chelseareservations.com/login.aspx">Chelsea</a> as required.';
+  }
 
   if (!isReminder) {
     if (_daysUntilMatch(data.matchDate) <= 2) {
       var config = getConfig();
-      mtcCcList = [config.mtcEmail1, config.mtcEmail2].filter(Boolean);
+      var mtcCcList = [config.mtcEmail1, config.mtcEmail2].filter(Boolean);
       if (mtcCcList.length) {
         chelseaLine     = 'MTC Admin: please update Chelsea per the information above';
         chelseaLineHtml = chelseaLine;
+        ccList = ccList.concat(mtcCcList);
       } else {
         chelseaLine     = 'Call MTC to change the player name in Chelsea';
         chelseaLineHtml = chelseaLine;
@@ -4302,10 +4789,9 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     }
   }
 
-  const ccList = groupCcList.concat(volunteerCcList).concat(mtcCcList).filter(function(email, index, arr) {
+  const ccAddresses = ccList.filter(function(email, index, arr) {
     return email && arr.map(function(item) { return String(item).toLowerCase(); }).indexOf(String(email).toLowerCase()) === index;
-  });
-  const ccAddresses = ccList.join(', ');
+  }).join(', ');
 
   const subject =
     (subjectPrefix || '') + 'MWF Tennis League — Substitute confirmed: ' + data.subName + ' for ' + data.requestorName;
@@ -4334,7 +4820,12 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
     subject:  subject,
     body:     body,
     htmlBody: htmlBody,
-    name:     senderName
+    name:     senderName,
+    // Sub confirmations (and their night-before reminder) are directly
+    // actionable for anyone on them — an Inactive requester/sub/groupmate
+    // still needs to know their match is covered, so this reaches them
+    // regardless of the usual Inactive email suppression.
+    allowInactiveRecipients: true
   };
   if (ccAddresses) emailParams.cc = ccAddresses;
 
@@ -4343,7 +4834,14 @@ function sendConfirmationEmails(data, groupPlayers, subjectPrefix, isReminder) {
 
 // Runs daily at 3:00 AM ET (see setupSubReminderTrigger). Only does anything on
 // Sun/Tue/Thu — the night before a Mon/Wed/Fri match day — when it re-sends the
-// dispatch confirmation email for every filled request on the next match date.
+// dispatch confirmation email for every filled request on the next match date
+// whose matchTime is still blank/TBD. A request that already had a real time
+// when it was filled had a complete confirmation email the first time — the
+// reminder's whole purpose is to tell everyone the court time that wasn't
+// known yet at fill time (see _syncGroupTimeToOpenRequests: matchTime only
+// ever syncs onto 'open' requests, so a request that was TBD when filled
+// stays TBD in SubRequests forever, even once Chelsea assigns a real time —
+// sendConfirmationEmails looks that real time up live instead).
 function runSubReminder() {
   var tz  = Session.getScriptTimeZone();
   var now = new Date();
@@ -4359,6 +4857,7 @@ function runSubReminder() {
     if (req.status !== 'filled') return;
     if (req.matchDate !== tomorrowStr) return;
     if (!req.assignedSub) return;
+    if (req.matchTime) return; // already had a real time when filled — no new info to send
 
     var subPlayer = players.find(function(p) { return p.email && p.email.toLowerCase() === req.assignedSub.toLowerCase(); });
     var data = {
@@ -4621,6 +5120,7 @@ function sendRetirementEmail(req) {
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:\n\n' +
     '  Date: ' + dateStr + '\n' +
     '  Time: ' + timeStr + '\n\n' +
+    'For the rest of the group, unless you hear otherwise from ' + req.name + ', you should assume this match is cancelled.\n\n' +
     'If you\'d like to launch an email to the entire group, visit the Directory page: ' + directoryUrl + '\n\n' +
     'MWF Tennis League';
   var htmlBody =
@@ -4628,11 +5128,14 @@ function sendRetirementEmail(req) {
     'Unfortunately, we were unable to find a volunteer to fill the sub request for your match:<br><br>' +
     '&nbsp;&nbsp;Date: ' + dateStr + '<br>' +
     '&nbsp;&nbsp;Time: ' + timeStr + '<br><br>' +
+    'For the rest of the group, unless you hear otherwise from ' + req.name + ', you should assume this match is cancelled.<br><br>' +
     'Click on <a href="' + directoryUrl + '">Directory</a>, if you\'d like to launch an email to the entire group.<br><br>' +
     'MWF Tennis League';
   var groupPlayers = req.groupPlayers || [];
   var ccList = groupPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(Boolean);
-  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  // Telling the requester their own request went unfilled is directly actionable
+  // for them even while Inactive — same exemption as sendConfirmationEmails.
+  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League', allowInactiveRecipients: true };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   if (isEmailEnabled()) sendLeagueEmail(emailParams);
 }
@@ -4680,7 +5183,10 @@ function sendSubNeededTomorrowEmail(req) {
   var ccList = ccPlayers.map(function(p) { return _resolveEmail(p.name, p.email, players); }).filter(function(e) {
     return e && !/^anita\.sub\d+@xgmail\.com$/i.test(e);
   });
-  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' };
+  // Telling the requester (or captain) their own request went unfilled is
+  // directly actionable even while Inactive — same exemption as
+  // sendConfirmationEmails.
+  var emailParams = { to: toEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League', allowInactiveRecipients: true };
   if (ccList.length) emailParams.cc = ccList.join(', ');
   sendLeagueEmail(emailParams);
 }
@@ -5577,7 +6083,35 @@ function _groupTimeLabel(g) {
   return g.time ? (TIME_LABELS[g.time] || g.time) : g.letter;
 }
 
-function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
+// Matches each just-cancelled "no sub found" request to its MatchGroups row (by the
+// requester's own email appearing among that group's 4 players) so the leftover-
+// volunteers email can flag it — the requester's name in red with a marker, plus a
+// footnote with a mailto: link addressed to all 4 group members. Multiple unfilled
+// groups on the same date get *, **, *** etc. in order.
+function _buildUnfilledGroupNotes(unfilledRequests, groups) {
+  var markers = ['*', '**', '***', '****', '*****'];
+  var notes = [];
+  (unfilledRequests || []).forEach(function(req) {
+    var reqEmailLower = (req.email || '').toLowerCase();
+    if (!reqEmailLower) return;
+    var group = (groups || []).find(function(g) {
+      return g.players.some(function(p) { return p.email && p.email.toLowerCase() === reqEmailLower; });
+    });
+    if (!group) return;
+    var emails = group.players.map(function(p) { return p.email; }).filter(Boolean);
+    if (!emails.length) return;
+    notes.push({
+      marker:        markers[notes.length] || '*',
+      groupLetter:   group.letter,
+      requesterName: req.name || 'The requester',
+      requesterEmail: req.email,
+      mailtoUrl:     'mailto:' + emails.join(',')
+    });
+  });
+  return notes;
+}
+
+function buildLeftoverVolunteersEmailHtml(volunteers, groups, unfilledNotes) {
   var introText = 'No more sub requests can be filled for tomorrow. The following players are available if needed.';
   var dataRows = volunteers.length
     ? volunteers.map(function(v) {
@@ -5593,8 +6127,26 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
         '<td colspan="4" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">None</td>' +
         '</tr>';
 
+  // Keyed by group letter → array, since more than one requester in the same
+  // foursome can have an unfilled request (e.g. two players in group C both
+  // couldn't find a sub) — a single note per letter would silently drop all
+  // but the last one.
+  var notesByLetter = {};
+  (unfilledNotes || []).forEach(function(n) {
+    (notesByLetter[n.groupLetter] = notesByLetter[n.groupLetter] || []).push(n);
+  });
+
   var groupRows = (groups || []).map(function(g) {
-    var names = g.players.map(function(p) { return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name; }).join(', ');
+    var groupNotes = notesByLetter[g.letter] || [];
+    var names = g.players.map(function(p) {
+      var note = p.email && groupNotes.find(function(n) {
+        return n.requesterEmail && p.email.toLowerCase() === n.requesterEmail.toLowerCase();
+      });
+      if (note) {
+        return '<span style="color:#DC2626;font-weight:700;">' + p.name + note.marker + '</span>';
+      }
+      return p.isCaptain ? '<strong>' + p.name + '</strong>' : p.name;
+    }).join(', ');
     return '<tr style="border-bottom:1px solid #f0f0f0;">' +
       '<td style="padding:8px 12px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;font-weight:600;">' + _groupTimeLabel(g) + '</td>' +
       '<td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;">' + names + '</td>' +
@@ -5609,6 +6161,15 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
       '<th style="text-align:left;padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;font-weight:600;">Players</th>' +
       '</tr>' + groupRows +
       '</table></td></tr>'
+    : '';
+
+  var footnotesHtml = (unfilledNotes || []).length
+    ? '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#DC2626;">' +
+        unfilledNotes.map(function(n) {
+          return n.marker + ' ' + n.requesterName + ' could not find a sub. If you can play twice, click on this ' +
+            '<a href="' + n.mailtoUrl + '" style="color:#DC2626;">link</a> to email the group. Otherwise, this group is cancelled.';
+        }).join('<br>') +
+      '</td></tr>'
     : '';
 
   return '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">' +
@@ -5634,6 +6195,7 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
     '</tr>' + dataRows +
     '</table></td></tr>' +
     groupsSection +
+    footnotesHtml +
     '<tr><td colspan="4" style="padding-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">Do not reply to this email.</td></tr>' +
     '</table></td></tr>' +
     '<tr><td style="padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9ca3af;background-color:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px;">' +
@@ -5641,7 +6203,7 @@ function buildLeftoverVolunteersEmailHtml(volunteers, groups) {
     '</table></td></tr></table></body></html>';
 }
 
-function buildLeftoverVolunteersEmailText(volunteers, groups) {
+function buildLeftoverVolunteersEmailText(volunteers, groups, unfilledNotes) {
   var lines = [];
   lines.push('No more sub requests can be filled for tomorrow. The following players are available if needed.');
   lines.push('');
@@ -5654,11 +6216,28 @@ function buildLeftoverVolunteersEmailText(volunteers, groups) {
     lines.push('None');
   }
   if (groups && groups.length) {
+    var notesByLetter = {};
+    (unfilledNotes || []).forEach(function(n) {
+      (notesByLetter[n.groupLetter] = notesByLetter[n.groupLetter] || []).push(n);
+    });
     lines.push('');
     lines.push('Groups playing tomorrow:');
     groups.forEach(function(g) {
-      var names = g.players.map(function(p) { return p.name; }).join(', ');
+      var groupNotes = notesByLetter[g.letter] || [];
+      var names = g.players.map(function(p) {
+        var note = p.email && groupNotes.find(function(n) {
+          return n.requesterEmail && p.email.toLowerCase() === n.requesterEmail.toLowerCase();
+        });
+        return note ? (p.name + note.marker) : p.name;
+      }).join(', ');
       lines.push('  ' + _groupTimeLabel(g) + ': ' + names);
+    });
+  }
+  if (unfilledNotes && unfilledNotes.length) {
+    lines.push('');
+    unfilledNotes.forEach(function(n) {
+      lines.push(n.marker + ' ' + n.requesterName + ' could not find a sub. If you can play twice, click on this ' +
+        'link (' + n.mailtoUrl + ') to email the group. Otherwise, this group is cancelled.');
     });
   }
   lines.push('');
@@ -5760,7 +6339,9 @@ function _sendLateVolunteerNotification(req, volunteerName, volunteerEmail) {
   Logger.log('Late-volunteer notification sent: ' + reqEmail + ' <- ' + volunteerName + ' (' + req.id + ')');
 }
 
-function sendLeftoverVolunteersEmail(targetDate) {
+// unfilledRequests — the SubRequests (now status 'expired') that the caller just
+// gave up on for lack of a sub, if any. Used to flag their group in this email.
+function sendLeftoverVolunteersEmail(targetDate, unfilledRequests) {
   if (!isEmailEnabled()) return;
   var volunteers = getLeftoverVolunteersForDate(targetDate);
 
@@ -5787,6 +6368,7 @@ function sendLeftoverVolunteersEmail(targetDate) {
   });
 
   var groups = getMatchGroupsForDate(targetDate);
+  var unfilledNotes = _buildUnfilledGroupNotes(unfilledRequests, groups);
 
   var config  = getConfig();
   var dateStr = formatDate(targetDate);
@@ -5794,8 +6376,8 @@ function sendLeftoverVolunteersEmail(targetDate) {
   var emailParams = {
     to:       toList.join(','),
     subject:  'MWF Tennis League — Players available for ' + dateStr + ' if needed',
-    body:     buildLeftoverVolunteersEmailText(volunteersWithPhone, groups),
-    htmlBody: buildLeftoverVolunteersEmailHtml(volunteersWithPhone, groups),
+    body:     buildLeftoverVolunteersEmailText(volunteersWithPhone, groups, unfilledNotes),
+    htmlBody: buildLeftoverVolunteersEmailHtml(volunteersWithPhone, groups, unfilledNotes),
     name:     'MWF Tennis League'
   };
   if (config.senderEmail) emailParams.cc = config.senderEmail;
@@ -5907,12 +6489,12 @@ function runPreMatchDayDispatch() {
       var ss       = SpreadsheetApp.openById(SHEET_ID);
       var reqSheet = ss.getSheetByName(TABS.requests);
       openReqs.forEach(function(req) {
-        reqSheet.getRange(req.rowIndex, 7).setValue('cancelled');
+        reqSheet.getRange(req.rowIndex, 7).setValue('expired');
         try { sendSubNeededTomorrowEmail(req); } catch(e) {
-          Logger.log('Cancel notify failed for ' + req.id + ': ' + e.message);
+          Logger.log('Expire notify failed for ' + req.id + ': ' + e.message);
         }
         // The requester may have also volunteered to sub elsewhere this same day
-        // (e.g. trying to switch groups) — with their own request now cancelled
+        // (e.g. trying to switch groups) — with their own request now expired
         // and no sub found, that offer should go away too rather than risk Rally
         // assigning them as a sub for someone else's match.
         try { _cancelOwnOpenVolunteerRecord(ss, req.email, targetDate); } catch(e) {
@@ -5922,7 +6504,9 @@ function runPreMatchDayDispatch() {
     }
     // Independent of whether every request got filled — a volunteer can go unused
     // even with an open request if their rating falls outside the match's skill window.
-    try { sendLeftoverVolunteersEmail(targetDate); } catch(e) {
+    // openReqs here are the ones just marked 'expired' above — pass them through so
+    // sendLeftoverVolunteersEmail can flag their group in red with a footnote.
+    try { sendLeftoverVolunteersEmail(targetDate, openReqs); } catch(e) {
       Logger.log('Leftover volunteers notify failed for ' + targetDate + ': ' + e.message);
     }
   }
@@ -7462,6 +8046,27 @@ function publishScheduleSlot(params) {
   var pSheet        = null;
   var rSheet        = null;
   var anitaBase     = -1; // count of existing Anita players (loaded once, then incremented)
+
+  // A player scheduled to play their own match this date may have separately
+  // volunteered to sub elsewhere on the same date (e.g. before this month's
+  // schedule was generated) — that offer is no longer valid, so close it.
+  // Loaded once and reused for every group in this slot/date.
+  var volunteersForClose = getVolunteers();
+  var volSheetForClose   = null;
+  (slot.groups || []).forEach(function(group, gi) {
+    group.forEach(function(p) {
+      var pEmailLower = (p.email || '').toLowerCase();
+      var match = volunteersForClose.find(function(v) {
+        return v.email.toLowerCase() === pEmailLower && v.date === slot.date && v.status === 'pending';
+      });
+      if (match) {
+        if (!volSheetForClose) volSheetForClose = ss.getSheetByName(TABS.volunteers);
+        volSheetForClose.getRange(match.rowIndex, 7).setValue('cancelled');
+        Logger.log('publishScheduleSlot: closed ' + p.email + '\'s volunteer-to-sub record for ' +
+          slot.date + ' — they were scheduled to play their own match that day');
+      }
+    });
+  });
 
   (slot.groups || []).forEach(function(group, gi) {
     var captainEmail = (slot.captains || [])[gi] || '';

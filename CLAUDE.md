@@ -1,51 +1,34 @@
 # Rally — MWF Tennis League Sub Manager
 
-Web app for managing MWF Tennis League match scheduling, sub requests, and player availability. Two instances (test/prod), shared codebase, deployed to GitHub Pages + Google Apps Script.
+Web app for managing MWF Tennis League match scheduling, sub requests, and player availability. Single prod instance, deployed to GitHub Pages + Google Apps Script.
+
+> Prior to July 2026 there was a separate test/dev instance (`SubCourt-AppScript.js`, `rally-tennis-test.html`, `rally-tennis-dev.html`). Those files were deleted in commit `a7a7428` and never recreated — prod is now the only environment. `deploy.sh` still has a `dev` target referencing the old files; it will fail until/unless that environment is rebuilt.
 
 ## Architecture
 
 | Component | Where |
 |---|---|
-| Frontend (test) | `rally-tennis-test.html` → GitHub Pages |
-| Frontend (prod) | `rally-tennis-prod.html` → GitHub Pages |
-| Backend | `SubCourt-AppScript.js` → Google Apps Script (one per env) |
-| Data | Google Sheets (one per env) |
+| Frontend | `rally-tennis-prod.html` → GitHub Pages |
+| Backend | `SubCourt-AppScript-PROD.js` → Google Apps Script |
+| Data | Google Sheets |
 
 Frontend calls Apps Script via JSONP GET (no CORS, no server). All data lives in the Sheet.
-
-## Test vs Prod differences (DO NOT port these between files)
-
-- Favicon (clay tennis ball in test, default emoji in prod)
-- Sticky test banner + lime header in test
-- `Request Sub` / `Volunteer` buttons enabled in test, disabled in prod
-- Different `SCRIPT_URL` constants (different Apps Script deployments)
-- Test sheet ID vs prod sheet ID (handled by `deploy.sh`)
-
-Everything else should be identical between the two HTML files.
 
 ## Deploying
 
 **Apps Script (use clasp, not manual paste):**
 ```bash
-bash deploy.sh test    # pushes to test Apps Script
 bash deploy.sh prod    # pushes to prod Apps Script (auto-substitutes sheet ID)
 ```
-After clasp push, **bump the deployment version** in the Apps Script editor (Deploy → Manage deployments → Edit → New version → Deploy) — clasp updates code but doesn't activate it on the web app URL.
+This already deploys to the fixed `PROD_DEPLOYMENT_ID`, which activates it on the web app URL — no manual version bump needed.
 
 **Frontend:** Push to `main` on GitHub. GitHub Pages redeploys in ~1 minute.
 
 ## Workflow
 
-1. Iterate on `rally-tennis-test.html` + `SubCourt-AppScript.js`
-2. Test on the test instance
-3. When ready, package an "update set" → port functional changes to `rally-tennis-prod.html`
-4. Run `bash deploy.sh prod` and bump prod deployment version
-
-Verify diffs after porting:
-```bash
-diff rally-tennis-prod.html rally-tennis-test.html
-```
-Only test-specific items should remain (favicon, banner, disabled buttons, SCRIPT_URL).
+1. Iterate directly on `SubCourt-AppScript-PROD.js` / `rally-tennis-prod.html`
+2. Run `bash deploy.sh prod`
+3. Push to `main` for the frontend
 
 ## Sheet structure
 
