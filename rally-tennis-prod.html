@@ -5723,7 +5723,11 @@ async function loadSettingsConfig() {
   document.getElementById('settings-config-content').innerHTML =
     '<div class="loading"><div class="spinner"></div>Loading settings…</div>';
   try {
-    const cfg = await apiPost({ action: 'getAdminConfigTables' });
+    // Retried — a pure read, safe to resend, and a single unlucky cold-start
+    // (or any other transient hiccup) otherwise turned into a bare "Request
+    // timed out" with no automatic recovery, same as the fixes already applied
+    // to the other admin tabs' reads.
+    const cfg = await apiPostWithRetry({ action: 'getAdminConfigTables' });
     renderSettingsConfigTable(cfg);
   } catch(e) {
     document.getElementById('settings-config-content').innerHTML =
