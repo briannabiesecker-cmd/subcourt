@@ -2083,6 +2083,17 @@
 
         </div>
 
+        <!-- Alternate Handling -->
+        <div class="card mt8" style="margin-top:1rem;">
+          <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:0.5rem;">Alternate Handling</div>
+          <div style="font-size:13px;color:var(--ink-mid);margin-bottom:0.75rem;">Choose what happens for a date's Alternate(s) when the schedule is published.</div>
+          <select id="sched-alternate-mode" onchange="onAlternateModeChange()" style="width:100%;font-size:15px;padding:9px 10px;border:1.5px solid var(--line);border-radius:8px;box-sizing:border-box;">
+            <option value="auto">Automatically create volunteer record for Alternates</option>
+            <option value="email">Send email for Alternates to volunteer to sub</option>
+          </select>
+          <div id="sched-alternate-mode-msg" style="font-size:12px;margin-top:6px;display:none;"></div>
+        </div>
+
         <!-- Results -->
         <div id="sched-results" style="display:none;margin-top:1.5rem;">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
@@ -5841,6 +5852,9 @@ async function loadScheduler() {
       no8amSet = new Set(config.no8amEmails.map(e => e.toLowerCase()));
     }
 
+    const altModeSel = document.getElementById('sched-alternate-mode');
+    if (altModeSel) altModeSel.value = config.alternateHandlingMode || 'auto';
+
     // --- Populate config side ---
     const badge  = document.getElementById('scheduler-status-badge');
     const title  = document.getElementById('scheduler-status-text');
@@ -6857,6 +6871,28 @@ function onCloseDateChange() {
   const chosen = new Date(val + 'T00:00:00');
   display.textContent = chosen.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   warning.style.display = chosen <= today ? '' : 'none';
+}
+
+async function onAlternateModeChange() {
+  const sel = document.getElementById('sched-alternate-mode');
+  const msg = document.getElementById('sched-alternate-mode-msg');
+  const mode = sel.value;
+  sel.disabled = true;
+  msg.style.display = 'inline';
+  msg.style.color = 'var(--ink-light)';
+  msg.textContent = 'Saving…';
+  try {
+    const result = await apiPost({ action: 'saveAlternateHandlingMode', mode });
+    if (!result.success) throw new Error(result.error || 'Failed');
+    msg.style.color = 'var(--success)';
+    msg.textContent = 'Saved.';
+    setTimeout(() => { msg.style.display = 'none'; }, 2000);
+  } catch(e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = e.message || 'Could not save.';
+  } finally {
+    sel.disabled = false;
+  }
 }
 
 function openAvailWindow() {

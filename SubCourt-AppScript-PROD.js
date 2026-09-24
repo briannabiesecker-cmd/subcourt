@@ -1102,6 +1102,123 @@ function sendSitOutNotification(playerName, playerEmail, matchDate) {
   sendLeagueEmail({ to: playerEmail, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
 }
 
+// The default times offered for an alternate's volunteer record — every slot
+// except 8:00 AM if they're flagged No8am. Shared by both Alternate Handling
+// Modes: 'auto' bakes this in immediately, 'email' bakes it in once the
+// alternate clicks "I Can Sub" (see handleAlternateConfirmSub).
+function _computeAlternateDefaultTimes(email, pSheet, ss) {
+  var times = ['08_00', '09_30', '11_00', '12_30'];
+  var lookupSheet = pSheet || ss.getSheetByName(TABS.players);
+  if (lookupSheet && lookupSheet.getLastRow() >= 2) {
+    var pLookup = lookupSheet.getRange(2, 1, lookupSheet.getLastRow() - 1, 5).getValues();
+    for (var pi = 0; pi < pLookup.length; pi++) {
+      if ((pLookup[pi][1] || '').toLowerCase().trim() === email.toLowerCase().trim()) {
+        var no8am = pLookup[pi][4]; // col E
+        if (no8am === true || (no8am && no8am.toString().toUpperCase() === 'TRUE')) {
+          times = ['09_30', '11_00', '12_30']; // exclude 8:00 AM
+        }
+        break;
+      }
+    }
+  }
+  return times;
+}
+
+// One alternate slot for a newly-published date, handled per Config's
+// Alternate Handling Mode (B72, see getConfig/saveAlternateHandlingMode):
+// 'auto' (default) creates the Volunteer record immediately and sends the
+// original informational email — unchanged from before this mode existed.
+// 'email' instead sends an "I Can Sub" link and defers creating the record
+// until the alternate actually clicks it (handleAlternateConfirmSub).
+function _handleAlternateForPublish(name, email, date, pSheet, ss) {
+  if (!email || !name) return;
+  var mode  = getConfig().alternateHandlingMode || 'auto';
+  var times = _computeAlternateDefaultTimes(email, pSheet, ss);
+  if (mode === 'email') {
+    try { sendAlternateVolunteerOfferEmail(name, email, date); }
+    catch(emailErr) { Logger.log('Alternate offer email failed for ' + email + ': ' + emailErr.message); }
+  } else {
+    var volSheet = ss.getSheetByName(TABS.volunteers);
+    var thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    upsertVolunteerTimes(volSheet, name, email.toLowerCase(), date, times, thirtyDaysAgo);
+    Logger.log('Recorded volunteer availability for alternate: ' + name + ' on ' + date + ' times: ' + times.join(','));
+    try { sendSitOutNotification(name, email, date); }
+    catch(emailErr) { Logger.log('Sit-out notify failed (email): ' + emailErr.message); }
+  }
+}
+
+// Sent instead of sendSitOutNotification when Alternate Handling Mode is
+// 'email'. The "I Can Sub" link is a plain GET to this same Apps Script
+// deployment (handleAlternateConfirmSub) — no login needed, works straight
+// from the inbox.
+function sendAlternateVolunteerOfferEmail(name, email, date) {
+  if (!email || !isEmailEnabled()) return;
+  var dateStr    = formatDate(date);
+  var volUrl     = APP_BASE_URL + '#volunteer';
+  var confirmUrl = SCRIPT_URL + '?action=alternateConfirmSub&email=' + encodeURIComponent(email) + '&date=' + encodeURIComponent(date);
+  var subject    = 'MWF Tennis League — You are the alternate for ' + dateStr;
+  var body =
+    'Hi ' + name + ',\n\n' +
+    'There was an odd number of players on ' + dateStr + ', so you are the alternate for that date.\n\n' +
+    'If you would like to sub that day, click below to volunteer:\n' +
+    confirmUrl + '\n\n' +
+    'You can also submit or edit your availability any time on the Volunteer to Sub page:\n' +
+    volUrl + '\n\n' +
+    'MWF Tennis League';
+  var htmlBody =
+    'Hi ' + name + ',<br><br>' +
+    'There was an odd number of players on ' + dateStr + ', so you are the alternate for that date.<br><br>' +
+    '<a href="' + confirmUrl + '" style="display:inline-block;background:#1a5c3a;color:#fff;padding:12px 24px;' +
+      'border-radius:6px;text-decoration:none;font-weight:bold;">I Can Sub</a><br><br>' +
+    'You can also submit or edit your availability any time on the <a href="' + volUrl + '">Volunteer to Sub</a> page.<br><br>' +
+    'MWF Tennis League';
+  sendLeagueEmail({ to: email, subject: subject, body: body, htmlBody: htmlBody, name: 'MWF Tennis League' });
+}
+
+// Landing page for the "I Can Sub" link in sendAlternateVolunteerOfferEmail.
+// A plain GET, no login — creates the same Volunteer record 'auto' mode would
+// have created immediately, just deferred until the alternate actually opts in.
+function handleAlternateConfirmSub(e) {
+  var p     = e.parameter || {};
+  var email = (p.email || '').trim().toLowerCase();
+  var date  = (p.date  || '').trim();
+  var css = 'body{font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#111;}' +
+            'h2{color:#1a5c3a;}p{line-height:1.6;font-size:15px;}';
+  var wrap = function(body) {
+    return HtmlService.createHtmlOutput(
+      '<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<style>' + css + '</style></head><body>' + body + '</body></html>'
+    );
+  };
+  if (!email || !date) return wrap('<p>Invalid link.</p>');
+
+  var players = getPlayers();
+  var player  = players.find(function(pl) { return (pl.email || '').toLowerCase() === email; });
+  var name    = player ? player.name : email;
+  var dateStr = formatDate(date);
+
+  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var times = _computeAlternateDefaultTimes(email, null, ss);
+  var volSheet      = ss.getSheetByName(TABS.volunteers);
+  var thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  var result = upsertVolunteerTimes(volSheet, name, email, date, times, thirtyDaysAgo);
+
+  if (result.created || result.merged) {
+    return wrap(
+      '<h2>Thank you' + (name ? ', ' + name.split(' ')[0] : '') + '!</h2>' +
+      '<p>You have volunteered to sub on <strong>' + dateStr + '</strong>. ' +
+      'You can review or edit this any time on the <a href="' + APP_BASE_URL + '#volunteer">Volunteer to Sub</a> page.</p>' +
+      '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+    );
+  }
+  return wrap(
+    '<h2>Already recorded</h2>' +
+    '<p>You already have a volunteer record for <strong>' + dateStr + '</strong>. ' +
+    'You can review or edit it on the <a href="' + APP_BASE_URL + '#volunteer">Volunteer to Sub</a> page.</p>' +
+    '<p style="color:#6b7280;font-size:13px;margin-top:24px;">MWF Tennis League</p>'
+  );
+}
+
 const TABS = {
   players:      'Players',
   requests:     'SubRequests',
@@ -1287,6 +1404,15 @@ function getConfig() {
       sheet.getRange('A71').setValue('Chelsea Import Enabled');
       sheet.getRange('B71').setValue('No');
     }
+    // Alternate handling mode — auto-init on first use (row 72). 'auto' matches
+    // the original behavior (volunteer record created immediately at publish);
+    // 'email' instead sends an "I Can Sub" link and waits for the alternate to
+    // click it. Set from the Admin Scheduler screen.
+    var b72 = sheet.getRange('B72').getValue();
+    if (b72 === '' || b72 === null) {
+      sheet.getRange('A72').setValue('Alternate Handling Mode');
+      sheet.getRange('B72').setValue('auto');
+    }
     var cfg = {
       // Matching engine — rows 4-7, Timing (hrs) in col B, Window (rating) in col C
       // Row 4: Pre-schedule, Row 5: A little urgent, Row 6: Urgent, Row 7: Last minute (no timing)
@@ -1329,6 +1455,8 @@ function getConfig() {
       chelseaCheckFrequencyMinutes: parseInt(sheet.getRange('B69').getValue()) || 15,
       chelseaCheckSubject:          (sheet.getRange('B70').getValue() || 'Upcoming Court Sheet').toString().trim(),
       chelseaImportEnabled:         (function() { var v = sheet.getRange('B71').getValue(); return v === 'Yes' || v === true; })(),
+      // Alternate handling — row 72
+      alternateHandlingMode:        (function() { var v = (sheet.getRange('B72').getValue() || '').toString().trim(); return v === 'email' ? 'email' : 'auto'; })(),
     };
     _configCache = cfg;
     try { CacheService.getScriptCache().put(CONFIG_CACHE_KEY, JSON.stringify(cfg), CONFIG_CACHE_TTL_SEC); } catch(e) {}
@@ -1376,6 +1504,7 @@ function getConfig() {
       chelseaCheckFrequencyMinutes: 15,
       chelseaCheckSubject: 'Upcoming Court Sheet',
       chelseaImportEnabled: false,
+      alternateHandlingMode: 'auto',
     };
   }
 }
@@ -1793,6 +1922,8 @@ function doGet(e) {
 
   // Volunteer from email link — returns an HTML confirmation page, not JSONP
   if (action === 'volunteerFromEmail') return handleVolunteerFromEmail(e);
+  // Alternate "I Can Sub" email link — same deal, plain GET, HTML response
+  if (action === 'alternateConfirmSub') return handleAlternateConfirmSub(e);
 
   let result;
 
@@ -1821,6 +1952,7 @@ function doGet(e) {
     else if (action === 'getAdminConfigTables')        result = getAdminConfigTables();
     else if (action === 'saveDispatchConfigTable')      result = saveDispatchConfigTable(e.parameter);
     else if (action === 'saveSettingsConfigTable')      result = saveSettingsConfigTable(e.parameter);
+    else if (action === 'saveAlternateHandlingMode')    result = saveAlternateHandlingMode(e.parameter);
     else if (action === 'updateRequestTime')          result = updateRequestTime(e.parameter);
     else if (action === 'updateMatchGroupTime')       result = updateMatchGroupTime(e.parameter);
     else if (action === 'debugRunChelseaImport')      result = debugRunChelseaImport(e.parameter);
@@ -5116,6 +5248,17 @@ function saveSettingsConfigTable(params) {
   return { success: true };
 }
 
+// Set from the Admin Scheduler screen's Alternate Handling choice box.
+function saveAlternateHandlingMode(params) {
+  var mode = (params.mode || '').toString().trim();
+  if (mode !== 'auto' && mode !== 'email') return { success: false, error: 'Invalid mode.' };
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.config);
+  sheet.getRange('B72').setValue(mode);
+  _configCache = null;
+  try { CacheService.getScriptCache().remove(CONFIG_CACHE_KEY); } catch(e) {}
+  return { success: true };
+}
+
 function sendRetirementEmail(req) {
   var players      = getPlayers();
   var toEmail      = _resolveEmail(req.name, req.email, players);
@@ -7558,6 +7701,8 @@ function getSchedulerDashboard() {
       });
     }
 
+    var alternateModeRaw = (configSheet.getRange('B72').getValue() || '').toString().trim();
+
     return {
       isOpen: isOpen,
       openDate: openDate,
@@ -7567,6 +7712,7 @@ function getSchedulerDashboard() {
       submissionCount: submissionCount,
       rosterCount: rosterCount,
       no8amEmails: no8amEmails,
+      alternateHandlingMode: alternateModeRaw === 'email' ? 'email' : 'auto',
       weightTeamVariance:   isNaN(wTV)     ? 1.0 : wTV,
       weightGroupVariance:  isNaN(wGV)     ? 0.5 : wGV,
       weightSocialVariety:  isNaN(wSV)     ? 2.0 : wSV,
@@ -8160,54 +8306,12 @@ function publishScheduleSlot(params) {
     saved++;
   });
 
-  // Create a Volunteer record for the sit-out player so they can be matched as a sub
-  if (sitOutEmail && sitOutName) {
-    // Check No8am flag — reuse pSheet if already loaded, otherwise open now
-    var sitOutTimes = '08_00,09_30,11_00,12_30';
-    var lookupSheet = pSheet || ss.getSheetByName(TABS.players);
-    if (lookupSheet && lookupSheet.getLastRow() >= 2) {
-      var pLookup = lookupSheet.getRange(2, 1, lookupSheet.getLastRow() - 1, 5).getValues();
-      for (var pi = 0; pi < pLookup.length; pi++) {
-        if ((pLookup[pi][1] || '').toLowerCase().trim() === sitOutEmail.toLowerCase().trim()) {
-          var no8am = pLookup[pi][4]; // col E
-          if (no8am === true || (no8am && no8am.toString().toUpperCase() === 'TRUE')) {
-            sitOutTimes = '09_30,11_00,12_30'; // exclude 8:00 AM
-          }
-          break;
-        }
-      }
-    }
-    var volSheet = ss.getSheetByName(TABS.volunteers);
-    var thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    upsertVolunteerTimes(volSheet, sitOutName, sitOutEmail.toLowerCase(), slot.date, sitOutTimes.split(','), thirtyDaysAgo);
-    Logger.log('Recorded volunteer availability for sit-out: ' + sitOutName + ' on ' + slot.date + ' times: ' + sitOutTimes);
-    try { sendSitOutNotification(sitOutName, sitOutEmail, slot.date); }
-    catch(emailErr) { Logger.log('Sit-out notify failed (email): ' + emailErr.message); }
-  }
-
-  // Create a Volunteer record for the 2nd alternate (remainder===2 case)
-  if (sitOut2Email && sitOut2Name) {
-    var sitOut2Times = '08_00,09_30,11_00,12_30';
-    var lookupSheet2 = pSheet || ss.getSheetByName(TABS.players);
-    if (lookupSheet2 && lookupSheet2.getLastRow() >= 2) {
-      var pLookup2 = lookupSheet2.getRange(2, 1, lookupSheet2.getLastRow() - 1, 5).getValues();
-      for (var pi2 = 0; pi2 < pLookup2.length; pi2++) {
-        if ((pLookup2[pi2][1] || '').toLowerCase().trim() === sitOut2Email.toLowerCase().trim()) {
-          var no8am2 = pLookup2[pi2][4];
-          if (no8am2 === true || (no8am2 && no8am2.toString().toUpperCase() === 'TRUE')) {
-            sitOut2Times = '09_30,11_00,12_30';
-          }
-          break;
-        }
-      }
-    }
-    var volSheet2 = ss.getSheetByName(TABS.volunteers);
-    var thirtyDaysAgo2 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    upsertVolunteerTimes(volSheet2, sitOut2Name, sitOut2Email.toLowerCase(), slot.date, sitOut2Times.split(','), thirtyDaysAgo2);
-    Logger.log('Recorded volunteer availability for 2nd alternate: ' + sitOut2Name + ' on ' + slot.date + ' times: ' + sitOut2Times);
-    try { sendSitOutNotification(sitOut2Name, sitOut2Email, slot.date); }
-    catch(emailErr) { Logger.log('Sit-out2 notify failed (email): ' + emailErr.message); }
-  }
+  // Handle each alternate for this date per the Config Alternate Handling Mode —
+  // 'auto' (default) creates their Volunteer record immediately, matching the
+  // original behavior; 'email' instead sends an "I Can Sub" link and waits for
+  // them to click it. See _handleAlternateForPublish.
+  _handleAlternateForPublish(sitOutName, sitOutEmail, slot.date, pSheet, ss);
+  _handleAlternateForPublish(sitOut2Name, sitOut2Email, slot.date, pSheet, ss);
 
   return { success: true, groupsWritten: saved };
 }
