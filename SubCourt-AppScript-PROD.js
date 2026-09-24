@@ -2786,23 +2786,83 @@ function isAdminEmail(email) {
   });
 }
 
+// Shared one-time-code plumbing for the admin login and identity-switch OTPs.
+//
+// _getOrCreateOneTimeCode: reuses a still-active, not-yet-used code instead of
+// always minting a new one. Without this, clicking "Resend code" (or the
+// frontend's own retry showing a resend option after a lost response)
+// overwrites the single stored code — the code in an earlier email stops
+// working immediately even though its own 10 minutes hasn't elapsed, so a
+// player who types that one gets "Incorrect code" for no fault of their own.
+// Now every email sent during one active window carries the identical code.
+//
+// _verifyOneTimeCode: a correct verify is retried by the frontend
+// (apiPostWithRetry) to recover from a lost response — but verifying isn't
+// naturally idempotent, since success used to delete the code outright. If
+// the first attempt actually succeeded server-side but the response never
+// reached the browser, the retry resubmits the same correct code against a
+// code that's already gone, and the player who typed it right gets "No code
+// found." Now a successful verify is marked used (not deleted) and a retry
+// with that exact same code within a short grace window succeeds again
+// instead of erroring.
+var ONE_TIME_CODE_USED_GRACE_MS = 60 * 1000;
+
+function _getOrCreateOneTimeCode(key) {
+  var props = PropertiesService.getScriptProperties();
+  var existing = props.getProperty(key);
+  if (existing) {
+    var data = JSON.parse(existing);
+    if (!data.usedAt && new Date() <= new Date(data.expiry)) {
+      return { code: data.code, expiry: data.expiry };
+    }
+  }
+  var code   = Math.floor(100000 + Math.random() * 900000).toString();
+  var expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  props.setProperty(key, JSON.stringify({ code: code, expiry: expiry }));
+  return { code: code, expiry: expiry };
+}
+
+function _verifyOneTimeCode(key, submittedCode) {
+  var props  = PropertiesService.getScriptProperties();
+  var stored = props.getProperty(key);
+  if (!stored) return { success: false, error: 'No code found. Please request a new one.' };
+
+  var data = JSON.parse(stored);
+
+  if (data.usedAt) {
+    var graceExpiry = new Date(new Date(data.usedAt).getTime() + ONE_TIME_CODE_USED_GRACE_MS);
+    if (submittedCode === data.code && new Date() <= graceExpiry) {
+      return { success: true }; // idempotent replay of an already-successful verify
+    }
+    props.deleteProperty(key);
+    return { success: false, error: 'No code found. Please request a new one.' };
+  }
+
+  if (new Date() > new Date(data.expiry)) {
+    props.deleteProperty(key);
+    return { success: false, error: 'Code expired. Please request a new one.' };
+  }
+  if (submittedCode !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
+
+  // Mark used rather than delete outright, so a retry of this exact request
+  // (see above) can still succeed within the grace window.
+  props.setProperty(key, JSON.stringify({ code: data.code, expiry: data.expiry, usedAt: new Date().toISOString() }));
+  return { success: true };
+}
+
 function sendAdminCode(params) {
   var email = (params.email || '').toLowerCase().trim();
   if (!email) return { success: false, error: 'Email required.' };
   if (!isAdminEmail(email)) return { success: false, error: 'Not authorized.' };
 
-  var code   = Math.floor(100000 + Math.random() * 900000).toString();
-  var expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-  PropertiesService.getScriptProperties()
-    .setProperty('admin_code_' + email, JSON.stringify({ code: code, expiry: expiry }));
+  var otp = _getOrCreateOneTimeCode('admin_code_' + email);
 
   // Admin OTP always sends regardless of EMAIL_ENABLED (testing flag)
   MailApp.sendEmail({
     to: email,
     subject: 'Rally — Your Admin Access Code',
     name: 'MWF Tennis League',
-    body: 'Your Rally admin access code is: ' + code +
+    body: 'Your Rally admin access code is: ' + otp.code +
           '\n\nThis code expires in 10 minutes.' +
           '\n\nIf you did not request this, please ignore this email.'
   });
@@ -2814,20 +2874,7 @@ function verifyAdminCode(params) {
   var email = (params.email || '').toLowerCase().trim();
   var code  = (params.code  || '').trim();
   if (!email || !code) return { success: false, error: 'Email and code required.' };
-
-  var props  = PropertiesService.getScriptProperties();
-  var stored = props.getProperty('admin_code_' + email);
-  if (!stored) return { success: false, error: 'No code found. Please request a new one.' };
-
-  var data = JSON.parse(stored);
-  if (new Date() > new Date(data.expiry)) {
-    props.deleteProperty('admin_code_' + email);
-    return { success: false, error: 'Code expired. Please request a new one.' };
-  }
-  if (code !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
-
-  props.deleteProperty('admin_code_' + email);
-  return { success: true };
+  return _verifyOneTimeCode('admin_code_' + email, code);
 }
 
 // Sent when a device tries to switch its remembered player to someone else —
@@ -2842,11 +2889,7 @@ function sendIdentityChangeCode(params) {
   var isPlayer = getPlayers().some(function(p) { return p.email === email; });
   if (!isPlayer) return { success: false, error: 'Player not found.' };
 
-  var code   = Math.floor(100000 + Math.random() * 900000).toString();
-  var expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-  PropertiesService.getScriptProperties()
-    .setProperty('identity_code_' + email, JSON.stringify({ code: code, expiry: expiry }));
+  var otp = _getOrCreateOneTimeCode('identity_code_' + email);
 
   var previousNote = previousName
     ? 'This device was last used on Rally as ' + previousName + '. '
@@ -2861,7 +2904,7 @@ function sendIdentityChangeCode(params) {
     body: 'Hi ' + name + ',\n\n' +
           previousNote +
           'To confirm you are switching this device to ' + name + ', enter this code in Rally:\n\n' +
-          code + '\n\n' +
+          otp.code + '\n\n' +
           'This code expires in 10 minutes.\n\n' +
           'If you did not request this, please ignore this email — no change will be made.'
   });
@@ -2873,20 +2916,7 @@ function verifyIdentityChangeCode(params) {
   var email = (params.email || '').toLowerCase().trim();
   var code  = (params.code  || '').trim();
   if (!email || !code) return { success: false, error: 'Email and code required.' };
-
-  var props  = PropertiesService.getScriptProperties();
-  var stored = props.getProperty('identity_code_' + email);
-  if (!stored) return { success: false, error: 'No code found. Please request a new one.' };
-
-  var data = JSON.parse(stored);
-  if (new Date() > new Date(data.expiry)) {
-    props.deleteProperty('identity_code_' + email);
-    return { success: false, error: 'Code expired. Please request a new one.' };
-  }
-  if (code !== data.code) return { success: false, error: 'Incorrect code. Please try again.' };
-
-  props.deleteProperty('identity_code_' + email);
-  return { success: true };
+  return _verifyOneTimeCode('identity_code_' + email, code);
 }
 
 // ──────────────────────────────────────────────────
