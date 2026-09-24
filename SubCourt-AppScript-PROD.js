@@ -1858,8 +1858,6 @@ function doGet(e) {
     else if (action === 'publishScheduleSlot')      result = publishScheduleSlot(e.parameter);
     else if (action === 'getPublishedSchedule')     result = getPublishedSchedule();
     else if (action === 'sendScheduleEmails')        result = sendScheduleEmails(e.parameter);
-    else if (action === 'sendTestScheduleEmail')     result = sendTestScheduleEmail();
-    else if (action === 'sendTestSubAlertEmail')        result = sendTestSubAlertEmail();
     else if (action === 'getDispatchStatus')            result = getDispatchStatus();
     else if (action === 'updateRequest')             result = updateRequest(e.parameter);
     else if (action === 'editRequestPlayers')         result = editRequestPlayers(e.parameter);
@@ -2215,10 +2213,6 @@ function getPlayersWithRatings() {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TABS.players);
   const col   = getColMap(sheet);
   const rows  = sheet.getDataRange().getValues();
-  // Auto-init Test column header if missing
-  if (rows.length > 0 && (rows[0].length <= col.testCol || !rows[0][col.testCol])) {
-    sheet.getRange(1, col.testCol + 1).setValue('Test');
-  }
   // Auto-init Inactive column header if missing
   if (rows.length > 0 && (rows[0].length <= col.inactiveCol || !rows[0][col.inactiveCol])) {
     sheet.getRange(1, col.inactiveCol + 1).setValue('Inactive');
@@ -2260,8 +2254,7 @@ function getPlayersWithRatings() {
         name:   r[col.name] || '',
         email:  email,
         rating: parseFloat(r[col.rating]) || 0,
-        no8am:  r[col.no8am] === true || (r[col.no8am] && r[col.no8am].toString().toUpperCase() === 'TRUE'),
-        isTest: r[col.testCol] === true || String(r[col.testCol] || '').toUpperCase() === 'YES'
+        no8am:  r[col.no8am] === true || (r[col.no8am] && r[col.no8am].toString().toUpperCase() === 'TRUE')
       });
     } else if (email && seen[email]) {
       Logger.log('WARNING: duplicate email in Players sheet: ' + email);
@@ -6573,47 +6566,6 @@ function _runQueuedBroadcast() {
   }
 }
 
-function sendTestSubAlertEmail() {
-  // Find open requests — use the earliest upcoming date
-  var allOpen = getRequests().filter(function(r) { return r.status === 'open'; });
-  if (!allOpen.length) {
-    return { success: false, error: 'No open sub requests found to preview.' };
-  }
-  var targetDate = Object.keys(allOpen.reduce(function(acc, r) { acc[r.matchDate] = true; return acc; }, {})).sort()[0];
-  var openReqs   = allOpen.filter(function(r) { return r.matchDate === targetDate; });
-
-  var testPlayers = getPlayersWithRatings().filter(function(p) {
-    return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email) && p.isTest;
-  });
-  if (!testPlayers.length) {
-    return { success: false, error: 'No test players found — add "Yes" in the Test column of the Players sheet.' };
-  }
-
-  var d        = new Date(targetDate + 'T12:00:00');
-  var monthDay = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-  var subject  = 'MWF Tennis, subs needed ' + monthDay;
-
-  var sent = 0, errors = [];
-  testPlayers.forEach(function(player) {
-    try {
-      sendLeagueEmail({
-        to:       player.email,
-        subject:  subject,
-        body:     buildSubNeededEmailText(openReqs, targetDate),
-        htmlBody: buildSubNeededEmailHtml(openReqs),
-        name:     'MWF Tennis League'
-      });
-      sent++;
-    } catch(e) {
-      Logger.log('Test sub alert failed for ' + player.email + ': ' + e.message);
-      errors.push(player.email + ': ' + e.message);
-    }
-  });
-
-  if (sent === 0) return { success: false, error: 'All sends failed. ' + (errors[0] || '') };
-  return { success: true, emailsSent: sent, date: targetDate };
-}
-
 // Sends the broadcast sub-needed email to marobria@gmail.com only (1 quota slot),
 // for manual forwarding to the league when the scheduled broadcast fails.
 function sendBroadcastEmailToAdmin() {
@@ -8455,51 +8407,6 @@ function sendScheduleEmails(params) {
   }
 
   return { success: true, emailsSent: allPlayers.length };
-}
-
-function sendTestScheduleEmail() {
-  var config = getConfig();
-  if (!config.brevoApiKey) {
-    return { success: false, error: 'Brevo API key not set. Enter it in Config sheet B35.' };
-  }
-
-  var sd = buildScheduleDataFromMatchGroups();
-  if (!sd || !sd.sortedDates.length) {
-    return { success: false, error: 'No published schedule found.' };
-  }
-
-  // getPlayersWithRatings() auto-inits the Test column header if missing
-  var testPlayers = getPlayersWithRatings()
-    .filter(function(p) {
-      return p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email) && p.isTest;
-    })
-    .map(function(p) { return { email: p.email, name: p.name }; });
-  if (!testPlayers.length) {
-    return { success: false, error: 'No test players found — add "Yes" in the Test column of the Players sheet.' };
-  }
-
-  var scheduleUrl = APP_BASE_URL + '#schedule';
-  var subject     = 'MWF Tennis League — ' + sd.monthLabel + ' Schedule';
-  var sent = 0, sendErrors = [];
-  testPlayers.forEach(function(recipient) {
-    try {
-      sendBrevoEmail({
-        apiKey:      config.brevoApiKey,
-        recipients:  [recipient],
-        subject:     subject,
-        htmlContent: buildScheduleHtml(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name),
-        textContent: buildScheduleTextBody(sd.dateMap, sd.sortedDates, sd.monthLabel, scheduleUrl, recipient.name)
-      });
-      sent++;
-    } catch(e) {
-      Logger.log('Brevo send failed for ' + recipient.email + ': ' + e.message);
-      sendErrors.push(recipient.email + ': ' + e.message);
-    }
-  });
-  if (sent === 0) {
-    return { success: false, error: 'All sends failed. ' + (sendErrors[0] || '') };
-  }
-  return { success: true, emailsSent: sent, errors: sendErrors.length ? sendErrors : undefined };
 }
 
 // ── Sheet helper ────────────────────────────────────
