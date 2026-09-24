@@ -4902,8 +4902,7 @@ function unlockAdmin(name) {
   document.getElementById('admin-tab-dispatch').style.display  = 'none';
   document.getElementById('admin-tab-settings').style.display  = 'none';
   checkDuplicateEmails();
-  loadManagePlayers();
-  loadCoordinatorRankings();
+  loadPlayerProfilesTab();
 }
 
 function adminSignOut() {
@@ -4933,7 +4932,7 @@ function showAdminTab(tab, btn) {
   document.getElementById('admin-tab-scheduler').style.display = tab === 'scheduler' ? '' : 'none';
   document.getElementById('admin-tab-settings').style.display  = tab === 'settings'  ? '' : 'none';
   if (tab === 'dispatch')  loadDispatch();
-  if (tab === 'players')   { checkDuplicateEmails(); loadManagePlayers(); loadCoordinatorRankings(); }
+  if (tab === 'players')   { checkDuplicateEmails(); loadPlayerProfilesTab(); }
   if (tab === 'scheduler') loadScheduler();
   if (tab === 'settings')  loadSettingsConfig();
 }
@@ -5290,21 +5289,32 @@ let rankingList = []; // ordered: [0, rankedCount) = ranked best→worst, rest =
 let rankedCount = 0;
 let rankDragFromIndex = null;
 
-async function loadCoordinatorRankings(forceRefresh) {
+// Combined load for the Admin Player Profiles tab — one round trip instead of
+// loadManagePlayers + a coordinator-rankings fetch firing as two concurrent
+// doGet calls, which could have one come back as a failed script load (Google-
+// side throttling under concurrent load) even though the other succeeded and
+// the tab looked fully rendered otherwise. loadManagePlayers() itself stays
+// separate since Save/Delete still need to refresh just the player list.
+async function loadPlayerProfilesTab() {
   const email = sessionStorage.getItem('adminEmail');
-  if (!email) return;
-  if (!forceRefresh && rankingList.length) {
-    document.getElementById('players-list').style.display = 'block';
-    return;
-  }
   document.getElementById('players-loading').classList.remove('hidden');
   document.getElementById('players-list').style.display = 'none';
   document.getElementById('players-alert').classList.add('hidden');
 
   try {
-    const result = await apiPost({ action: 'getCoordinatorRankings', email });
-    document.getElementById('players-loading').classList.add('hidden');
+    const data = await apiPostWithRetry({ action: 'getPlayerProfilesPageData', email });
 
+    adminPlayers = data.players || [];
+    adminPlayers.sort((a, b) => a.name.localeCompare(b.name));
+    const sel = document.getElementById('mp-select');
+    if (sel) {
+      sel.innerHTML = '<option value="">— New player —</option>' +
+        adminPlayers.map(p => `<option value="${p.email}">${p.name}${p.inactive ? ' (Inactive)' : ''}${p.subOnly ? ' (Sub Only)' : ''}</option>`).join('');
+      mpClear();
+    }
+
+    document.getElementById('players-loading').classList.add('hidden');
+    const result = data.rankings || {};
     if (result.notAssigned) {
       showAlert('players-alert', 'error', 'Your account is not assigned to a ranking slot. Ask the system admin to add your email to columns G–K in the Players sheet.');
       return;
@@ -5322,6 +5332,7 @@ async function loadCoordinatorRankings(forceRefresh) {
     renderRankingTable();
   } catch(e) {
     document.getElementById('players-loading').classList.add('hidden');
+    showAlert('manage-players-alert', 'error', 'Failed to load players: ' + e.message);
     showAlert('players-alert', 'error', 'Failed to load players: ' + e.message);
   }
 }

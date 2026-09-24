@@ -1838,6 +1838,7 @@ function doGet(e) {
     else if (action === 'getCoordinatorRatings')   result = getCoordinatorRatings(e.parameter);
     else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
     else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
+    else if (action === 'getPlayerProfilesPageData') result = getPlayerProfilesPageData(e.parameter);
     else if (action === 'getInstructionsFiles')     result = getInstructionsFiles();
     else if (action === 'addPlayer')               result = addPlayer(e.parameter);
     else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
@@ -3213,6 +3214,20 @@ function getPlayersForAdmin() {
   }).filter(function(p) {
     return (p.name || p.email) && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email);
   });
+}
+
+// Combined read for the Admin Player Profiles tab — one round trip instead of
+// loadManagePlayers + loadCoordinatorRankings firing as two concurrent doGet
+// calls, which could have one come back as a failed script load (Google-side
+// throttling under concurrent load) even though the other succeeded — that's
+// what "Failed to load players: Script load failed" meant here, alongside the
+// rest of the tab rendering fine. Mirrors the same fix already applied to the
+// Admin Dispatch tab's getDispatchPageData.
+function getPlayerProfilesPageData(params) {
+  return {
+    players:  getPlayersForAdmin(),
+    rankings: getCoordinatorRankings(params)
+  };
 }
 
 function sortPlayersSheet(sheet) {
