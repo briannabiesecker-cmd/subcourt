@@ -6964,10 +6964,17 @@ function checkAvailabilityWindow() {
   Logger.log('checkAvailabilityWindow: T-' + daysUntilClose + ' reminder → ' + missing.length + ' player(s)');
   if (!isEmailEnabled()) return;
 
-  var adminEmail = 'marobria@gmail.com';
+  // This is a BCC blast, so the "to" address just needs to be something valid —
+  // it was hardcoded to the admin's own inbox, which meant the admin personally
+  // received a first-person "your availability hasn't been received" reminder on
+  // every send regardless of their own submission status. Use the league's own
+  // sender address instead, so only players actually missing a submission are
+  // ever meant to be reading this (falls back to the admin address only if no
+  // sender address is configured, so "to" is never blank).
+  var toAddr = (getConfig().senderEmail || '').trim() || 'marobria@gmail.com';
   sendLeagueEmail({
-    to:       adminEmail,
-    bcc:      _excludeFromBcc(missing.map(function(p) { return p.email; }), adminEmail).join(','),
+    to:       toAddr,
+    bcc:      _excludeFromBcc(missing.map(function(p) { return p.email; }), toAddr).join(','),
     subject:  subject,
     body:     body,
     htmlBody: htmlBody,
