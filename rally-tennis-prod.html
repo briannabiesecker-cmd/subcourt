@@ -2101,6 +2101,7 @@
             <div class="flex gap8">
               <button class="btn btn-primary" id="sched-save-btn" onclick="publishScheduleToSheet()">Publish</button>
               <span id="sched-excel-wrap" title="Publish the schedule first to enable export"><button class="btn btn-secondary" id="sched-excel-btn" onclick="exportScheduleExcel()" disabled style="opacity:0.4;pointer-events:none;">Export to Excel</button></span>
+              <span id="sched-admin-preview-wrap" title="Generate the schedule first to enable export"><button class="btn btn-secondary" id="sched-admin-preview-btn" onclick="exportAdminPreview()" disabled style="opacity:0.4;pointer-events:none;">Admin Preview</button></span>
               <span id="sched-pdf-wrap" title="Publish the schedule first to enable export"><button class="btn btn-secondary" id="sched-pdf-btn" onclick="exportSchedulePDF()" disabled style="opacity:0.4;pointer-events:none;">Export to PDF</button></span>
             </div>
           </div>
@@ -5946,6 +5947,9 @@ async function runGenerateSchedule() {
     const excelBtn = document.getElementById('sched-excel-btn');
     excelBtn.disabled = false; excelBtn.style.opacity = ''; excelBtn.style.pointerEvents = '';
     document.getElementById('sched-excel-wrap').title = '';
+    const adminPreviewBtn = document.getElementById('sched-admin-preview-btn');
+    adminPreviewBtn.disabled = false; adminPreviewBtn.style.opacity = ''; adminPreviewBtn.style.pointerEvents = '';
+    document.getElementById('sched-admin-preview-wrap').title = '';
     const active = result.slots.filter(s => !s.skipped).length;
     const skipped = result.slots.filter(s => s.skipped).length;
     showAlert('scheduler-alert', 'success',
@@ -6207,6 +6211,109 @@ async function exportScheduleExcel() {
   const a      = document.createElement('a');
   a.href       = url;
   a.download   = 'schedule-' + (scheduleData.month || 'export') + '.xlsx';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Same idea as exportScheduleExcel, for admins who need the full roster context
+// rather than just who's scheduled. Three differences from that export:
+// (1) every player on the roster is a row, not just scheduled/sit-out players;
+// (2) a Rating column sits between Player and the first date column;
+// (3) a captain is marked with a trailing '*' on the group letter instead of ' [C]'.
+async function exportAdminPreview() {
+  if (!scheduleData || !scheduleData.slots) return;
+
+  const fmt = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  // Active dates (columns) from the generated schedule.
+  const dates = [];
+  scheduleData.slots.forEach(slot => {
+    if (slot.skipped) return;
+    dates.push(slot.date);
+  });
+
+  // Cell lookup: cellData[email][date] = "A", "A*" (captain), or "Avail" (sit-out).
+  const cellData = {};
+  scheduleData.slots.forEach(slot => {
+    if (slot.skipped) return;
+    slot.groups.forEach((group, gi) => {
+      const letter       = String.fromCharCode(65 + gi);
+      const captainEmail = (slot.captains || [])[gi] || '';
+      group.forEach(p => {
+        if (!p.email) return;
+        if (!cellData[p.email]) cellData[p.email] = {};
+        cellData[p.email][slot.date] = letter + (p.email === captainEmail ? '*' : '');
+      });
+    });
+    if (slot.sitOut && slot.sitOut.email) {
+      if (!cellData[slot.sitOut.email]) cellData[slot.sitOut.email] = {};
+      cellData[slot.sitOut.email][slot.date] = 'Avail';
+    }
+  });
+
+  // Every player on the roster, not just those in this month's schedule.
+  const rawPlayers = await apiPostWithRetry({ action: 'getPlayersWithRatings' });
+  const allPlayers = rawPlayers
+    .filter(p => p.email && !/^anita\.sub\d+@xgmail\.com$/i.test(p.email))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(scheduleData.month || 'Schedule');
+
+  // Column widths — Player, Rating, then one per date.
+  ws.columns = [{ width: 24 }, { width: 10 }].concat(dates.map(() => ({ width: 13 })));
+
+  // Header row
+  const headerRow = ws.addRow(['Player', 'Rating'].concat(dates.map(fmt)));
+  headerRow.height = 22;
+  headerRow.eachCell((cell, col) => {
+    cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A5C3A' } };
+    cell.font   = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF0F3D25' } } };
+  });
+
+  // Data rows with alternating shading
+  allPlayers.forEach((p, i) => {
+    const nameValue = p.no8am
+      ? { richText: [
+          { text: p.name },
+          { font: { bold: true, color: { argb: 'FFE07A5A' } }, text: '**' }
+        ] }
+      : p.name;
+    const values = [nameValue, p.rating || ''].concat(dates.map(d => (cellData[p.email] || {})[d] || ''));
+    const row = ws.addRow(values);
+    row.height = 18;
+    const bg = i % 2 === 0 ? 'FFFFFFFF' : 'FFF0F5F2';
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+      cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+      cell.border    = {
+        top:    { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        bottom: { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        left:   { style: 'hair', color: { argb: 'FFD0D8D4' } },
+        right:  { style: 'hair', color: { argb: 'FFD0D8D4' } }
+      };
+      // Bold captain cells (marked with a trailing '*') — restricted to the date
+      // columns so it can't accidentally match a name or rating.
+      if (col > 2 && typeof cell.value === 'string' && cell.value.endsWith('*')) {
+        cell.font = { bold: true };
+      }
+    });
+  });
+
+  // Freeze the header row and player name column
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement('a');
+  a.href       = url;
+  a.download   = 'admin-preview-' + (scheduleData.month || 'export') + '.xlsx';
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

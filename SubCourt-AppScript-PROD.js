@@ -1971,6 +1971,7 @@ function doGet(e) {
     else if (action === 'getCoordinatorRankings')  result = getCoordinatorRankings(e.parameter);
     else if (action === 'getPlayersForAdmin')       result = getPlayersForAdmin();
     else if (action === 'getPlayerProfilesPageData') result = getPlayerProfilesPageData(e.parameter);
+    else if (action === 'getPlayersWithRatings')    result = getPlayersWithRatings();
     else if (action === 'getInstructionsFiles')     result = getInstructionsFiles();
     else if (action === 'addPlayer')               result = addPlayer(e.parameter);
     else if (action === 'updatePlayer')            result = updatePlayer(e.parameter);
